@@ -1,7 +1,3 @@
-Here's the translation tailored for a GitHub README:
-
----
-
 **StdEx** is an extension library for Std. It contains components that may be used across various technical domains.
 
 For detailed usage instructions, please refer to: [help](help.tp)
