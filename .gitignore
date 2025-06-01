@@ -12,3 +12,6 @@ type/__history/
 type/__recovery/
 vision/__history/
 vision/color.h.gch
+disjoint_set.h
+disjoint_set留档.h
+mod.h
