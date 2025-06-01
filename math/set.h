@@ -1,5 +1,5 @@
-//Last Modified At 2025/04/12
-//@Version 1.0
+//Last Modified At 2025/06/01
+//@Version 1.0.0.1
 #ifndef _STD4573_MATH_SET_H_
 #define _STD4573_MATH_SET_H_ 1
 #include <algorithm>
@@ -7,32 +7,33 @@
 #include <map>
 #include <stdexcept>
 #include <vector>
+
 #include "math.h"
 
-namespace std {
+namespace stdex {
 	
 namespace math {
 
 template <typename _Tp>
 std::vector<std::vector<_Tp>> cartesian_product(std::vector<std::vector<_Tp>>& input) {
-	vector<vector<_Tp>> result;
+	std::vector<std::vector<_Tp>> result;
 	if (input.empty()) return result;    
 	for (auto& it:input) {
-		if (it.empty()) return vector<vector<_Tp>>();
+		if (it.empty()) return std::vector<std::vector<_Tp>>();
 	}
-	result.push_back(vector<_Tp>());
+	result.push_back(std::vector<_Tp>());
 	for (auto& it:input) { 
-		vector<vector<_Tp>> temp;
+		std::vector<std::vector<_Tp>> temp;
 		for (auto& jt:result) {
 			for (auto& kt:it) {
-				vector<_Tp> res=jt; 
+				std::vector<_Tp> res=jt; 
 				res.push_back(kt);  
 				temp.push_back(res); 
 			}
 		}
 		result.swap(temp);
 	}
-    return result;
+	return result;
 }
 
 template <typename _Tp>

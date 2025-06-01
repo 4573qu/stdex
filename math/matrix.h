@@ -1,12 +1,14 @@
-//Last Modified At 2024/08/28
-//@Version 1.1
+//Last Modified At 2025/06/01
+//@Version 1.1.0.2
 #ifndef _STD4573_MATH_MATRIX_H_
 #define _STD4573_MATH_MATRIX_H_ 1
 #define matrix_array matrix<int>
-#include <stdexcept>
+
+#include <initializer_list>
+
 #include "math.h"
 
-namespace std {
+namespace stdex {
 	
 namespace math {
 	
@@ -14,11 +16,11 @@ template <typename _Tp>
 class matrix {
 public:
 	int x_dimension_,y_dimension_;
-	_Tp** m;
+	_Tp** m_;
 
 public:
 	matrix(int x_dimension,int y_dimension);
-	matrix(int x_dimension,int y_dimension,initializer_list<_Tp> init_list);
+	matrix(int x_dimension,int y_dimension,std::initializer_list<_Tp> init_list);
 	~matrix();
 	matrix(const matrix& other);
 	matrix(matrix&& other) noexcept;
@@ -51,8 +53,8 @@ public:
 	
 	bool is_square() const;
 	_Tp value() const;
-	string print() const;
-	string print_with_squares() const;
+	std::string print() const;
+	std::string print_with_squares() const;
 };
 
 matrix<double> transform_matrix3(double x,double y,double rotate,double scale_x,double scale_y);

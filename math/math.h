@@ -1,11 +1,11 @@
-//Last Modified At 2024/08/29
-//@Version 1.0
+//Last Modified At 2025/06/01
+//@Version 1.0.0.1
 #ifndef _STD4573_MATH_MATH_H_
 #define _STD4573_MATH_MATH_H_ 1
 #include <math.h>
 #include <string>
 
-namespace std {
+namespace stdex {
 
 namespace math {
 
