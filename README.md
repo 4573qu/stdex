@@ -23,5 +23,5 @@ For project reference development mode, use:
 - **structure**: Common data structures *(Temporarily unavailable)*  
 - **syntax**: Lexical & syntax operations *(Temporarily unavailable)*  
 - **type**: Data type operations  
-  *(Currently supports bitmap/ini/json; `json` library modified from nlohmann OSS)* *(Temporarily unavailable)*  
+  *(Currently supports bitmap/ini/json; `json` library modified from [nlohmann](https://github.com/nlohmann/json) OSS)* *(Temporarily unavailable)*  
 - **vision**: Vision-related operations *(Temporarily unavailable)*  
