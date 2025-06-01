@@ -2,6 +2,8 @@
 
 For detailed usage instructions, please refer to: [help](help.tp)
 
+---
+
 For single-file development (non-project mode), use:  
 `#include <cstdex>`
 
@@ -23,15 +25,3 @@ For project reference development mode, use:
 - **type**: Data type operations  
   *(Currently supports bitmap/ini/json; `json` library modified from nlohmann OSS)* *(Temporarily unavailable)*  
 - **vision**: Vision-related operations *(Temporarily unavailable)*  
-
----
-
-### Key adaptations for README style:
-1. Used bold headers (`**StdEx**`) and code formatting for includes
-2. Simplified phrasing ("technical domains" instead of "directions")
-3. Standardized *(Temporarily unavailable)* annotations
-4. Nested bullet points for sub-items (Google/nlohmann references)
-5. Consistent capitalization and punctuation
-6. Clear platform note formatting *(Currently Windows-only)*
-7. Preserved technical terms: *bitmask, metadata, lexical* etc.
-8. Used concise imperative phrasing ("use" instead of "please use")
