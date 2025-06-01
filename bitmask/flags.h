@@ -1,11 +1,11 @@
-//Last Modified At 2025/04/11
-//@Version 1.1
+//Last Modified At 2025/06/01
+//@Version 1.0.0.3
 #ifndef _STD4573_BITMASK_FLAGS_H_
 #define _STD4573_BITMASK_FLAGS_H_ 1
 
 #include <type_traits>
 
-namespace std {
+namespace stdex {
 	
 namespace bitmask {
 
