@@ -19,9 +19,9 @@ For project reference development mode, use:
 - **math**: Mathematical operations  
 - **meta**: Metadata operations *(Temporarily unavailable)*  
 - **other**: Uncategorized items  
-  *(Includes modified `diff_match_patch` from Google OSS)* *(Temporarily unavailable)*  
+  *(Includes modified `diff_match_patch` from [Google OSS](https://github.com/google/diff-match-patch))* *(Temporarily unavailable)*  
 - **structure**: Common data structures *(Temporarily unavailable)*  
 - **syntax**: Lexical & syntax operations *(Temporarily unavailable)*  
 - **type**: Data type operations  
-  *(Currently supports bitmap/ini/json; `json` library modified from [nlohmann](https://github.com/nlohmann/json) OSS)* *(Temporarily unavailable)*  
+  *(Currently supports bitmap/ini/json; `json` library modified from [nlohmann OSS](https://github.com/nlohmann/json))* *(Temporarily unavailable)*  
 - **vision**: Vision-related operations *(Temporarily unavailable)*  
