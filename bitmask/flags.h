@@ -1,5 +1,5 @@
-//Last Modified At 2025/06/01
-//@Version 1.0.0.3
+//Last Modified At 2025/06/02
+//@Version 1.1.0.1
 #ifndef _STD4573_BITMASK_FLAGS_H_
 #define _STD4573_BITMASK_FLAGS_H_ 1
 
@@ -11,6 +11,7 @@ namespace bitmask {
 
 template <typename _Tp>
 class flags {
+	struct _flags_enhanced : std::false_type {};
 	static_assert(std::is_enum_v<_Tp>,"_Tp must be an enum type.");
 	std::underlying_type_t<_Tp> value_{0};
 	
@@ -52,5 +53,15 @@ public:
 }
 
 }
+
+#define _STDEX_ENABLE_FLAGS_ENHANCED(EnumType) \
+template<> \
+struct stdex::bitmask::flags<EnumType>::_flags_enhanced : std::true_type {}; \
+constexpr stdex::bitmask::flags<EnumType> operator <<(EnumType lhs,EnumType rhs) noexcept { \
+	return stdex::bitmask::flags<EnumType>(lhs)<<rhs; \
+} \
+constexpr stdex::bitmask::flags<EnumType> operator >>(EnumType lhs,EnumType rhs) noexcept { \
+	return stdex::bitmask::flags<EnumType>(lhs)>>rhs; \
+} 
 
 #endif
