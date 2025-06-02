@@ -11,11 +11,11 @@ namespace bitmask {
 
 template <typename _Tp>
 class flags {
-	struct _flags_enhanced : std::false_type {};
 	static_assert(std::is_enum_v<_Tp>,"_Tp must be an enum type.");
 	std::underlying_type_t<_Tp> value_{0};
 	
 public:
+	struct _flags_enhanced : std::false_type {};
 	constexpr flags()=default;
 	constexpr flags(_Tp e) : value_(static_cast<std::underlying_type_t<_Tp>>(e)) {}
 	constexpr flags& operator =(_Tp e) noexcept {
