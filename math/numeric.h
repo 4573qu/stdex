@@ -242,182 +242,157 @@ public:
 	template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
 	complex<_Tp>& operator /=(const _Up& scalar) noexcept;
     
-  
-    // 共轭
-    constexpr complex conj() const noexcept { return complex(real_, -imag_); }
-    
-    // 模的平方
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    constexpr T norm() const noexcept { 
-        return real_ * real_ + imag_ * imag_; 
-    }
-    
-    // 模
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    T abs() const noexcept { 
-        return std::hypot(real_, imag_); 
-    }
-    
-    // 辐角
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    T arg() const noexcept { 
-        return std::atan2(imag_, real_); 
-    }
-    
-    // 投影（黎曼球面投影）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex proj() const noexcept {
-        if (std::isinf(real_) || std::isinf(imag_)) {
-            return complex(std::numeric_limits<T>::infinity(), 
-                           std::copysign(T(0), imag_));
-        }
-        return *this;
-    }
-    
-    // 极坐标构造
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    static complex polar(const T& r, const T& theta = T()) noexcept {
-        return complex(r * std::cos(theta), r * std::sin(theta));
-    }
-    
-    // 字符串表示
-    std::string to_string() const {
-        std::ostringstream oss;
-        oss << "(" << real_ << ", " << imag_ << ")";
-        return oss.str();
-    }
-    
-    // 指数函数（仅对浮点类型启用）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex exp() const noexcept {
-        const T exp_real = std::exp(real_);
-        return complex(exp_real * std::cos(imag_), 
-                      exp_real * std::sin(imag_));
-    }
-    
-    // 对数函数（仅对浮点类型启用）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex log() const noexcept {
-        return complex(std::log(this->abs()), this->arg());
-    }
-    
-    // 幂函数（仅对浮点类型启用）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex pow(const complex& exponent) const {
-        return (exponent * this->log()).exp();
-    }
-    
-    // 三角函数（仅对浮点类型启用）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex sin() const noexcept {
-        return complex(std::sin(real_) * std::cosh(imag_),
-                       std::cos(real_) * std::sinh(imag_));
-    }
-    
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex cos() const noexcept {
-        return complex(std::cos(real_) * std::cosh(imag_),
-                      -std::sin(real_) * std::sinh(imag_));
-    }
-    
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex tan() const {
-        const complex c = cos();
-        if (c.real() == 0 && c.imag() == 0) {
-            throw std::domain_error("Complex tangent undefined");
-        }
-        return sin() / c;
-    }
-    
-    // 双曲函数（仅对浮点类型启用）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex sinh() const noexcept {
-        return complex(std::sinh(real_) * std::cos(imag_),
-                       std::cosh(real_) * std::sin(imag_));
-    }
-    
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex cosh() const noexcept {
-        return complex(std::cosh(real_) * std::cos(imag_),
-                       std::sinh(real_) * std::sin(imag_));
-    }
-    
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex tanh() const {
-        const complex c = cosh();
-        if (c.real() == 0 && c.imag() == 0) {
-            throw std::domain_error("Complex hyperbolic tangent undefined");
-        }
-        return sinh() / c;
-    }
-    
-    // 平方根（仅对浮点类型启用）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex sqrt() const noexcept {
-        const T r = abs();
-        return complex(std::sqrt((r + real_) / 2), 
-                       std::copysign(std::sqrt((r - real_) / 2), imag_));
-    }
-    
-    	const _Tp& real() const;
+	constexpr complex<_Tp> conj() const noexcept;
+	template <typename _Up=_Tp,enable_if_arithmetic<_Up>=nullptr>
+	constexpr _Tp norm() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	_Tp abs() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	_Tp arg() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	complex<_Tp> proj() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	static complex<_Tp> polar(const _Tp& r,const _Tp& theta=_Tp()) noexcept;
+
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	complex<_Tp> exp() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	complex<_Tp> log() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	complex<_Tp> pow(const complex<_Tp>& exponent) const;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	complex sqrt() const noexcept;
+
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	complex<_Tp> sin() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	complex<_Tp> cos() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	complex<_Tp> tan() const;
+
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	complex<_Tp> sinh() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	complex<_Tp> cosh() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	complex<_Tp> tanh() const;
+
+	const _Tp& real() const;
 	const _Tp& imag() const;
+	
+	std::string to_string() const;
 };
 
-// 非成员函数
-template <typename T>
-constexpr complex<T> operator+(const complex<T>& lhs, const complex<T>& rhs) noexcept {
-    return complex<T>(lhs) += rhs;
+template <typename _Tp>
+constexpr complex<_Tp> operator +(const complex<_Tp>& lhs,const complex<_Tp>& rhs) noexcept {
+	return complex<_Tp>(lhs)+=rhs;
+}
+template <typename _Tp,typename _Up>
+constexpr auto operator +(const complex<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	using R=decltype(lhs.real()+rhs.real());
+	return complex<R>(lhs)+=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator +(const complex<_Tp>& lhs,const _Up& rhs) noexcept {
+	return complex<_Tp>(lhs)+=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator +(const _Tp& lhs,const complex<_Up>& rhs) noexcept {
+	return complex<_Up>(lhs)+=rhs;
 }
 
-template <typename T, typename U>
-constexpr auto operator+(const complex<T>& lhs, const complex<U>& rhs) noexcept {
-    using R = decltype(lhs.real() + rhs.real());
-    return complex<R>(lhs) += rhs;
+template <typename _Tp>
+constexpr complex<_Tp> operator -(const complex<_Tp>& lhs,const complex<_Tp>& rhs) noexcept {
+	return complex<_Tp>(lhs)-=rhs;
+}
+template <typename _Tp,typename _Up>
+constexpr auto operator -(const complex<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	using R=decltype(lhs.real()-rhs.real());
+	return complex<R>(lhs)-=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator -(const complex<_Tp>& lhs,const _Up& rhs) noexcept {
+	return complex<_Tp>(lhs)-=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator -(const _Tp& lhs,const complex<_Up>& rhs) noexcept {
+	return complex<_Up>(lhs)-=rhs;
 }
 
-template <typename T, typename U, 
-          typename = typename std::enable_if<std::is_arithmetic<U>::value>::type>
-constexpr auto operator+(const complex<T>& lhs, const U& rhs) noexcept {
-    return complex<T>(lhs) += rhs;
+template <typename _Tp>
+constexpr complex<_Tp> operator *(const complex<_Tp>& lhs,const complex<_Tp>& rhs) noexcept {
+	return complex<_Tp>(lhs)*=rhs;
+}
+template <typename _Tp,typename _Up>
+constexpr auto operator *(const complex<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	using R=decltype(lhs.real()*rhs.real());
+	return complex<R>(lhs)*=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator *(const complex<_Tp>& lhs,const _Up& rhs) noexcept {
+	return complex<_Tp>(lhs)*=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator *(const _Tp& lhs,const complex<_Up>& rhs) noexcept {
+	return complex<_Up>(lhs)*=rhs;
 }
 
-template <typename T, typename U,
-          typename = typename std::enable_if<std::is_arithmetic<T>::value>::type>
-constexpr auto operator+(const T& lhs, const complex<U>& rhs) noexcept {
-    return complex<U>(lhs) += rhs;
+template <typename _Tp>
+constexpr complex<_Tp> operator /(const complex<_Tp>& lhs,const complex<_Tp>& rhs) noexcept {
+	return complex<_Tp>(lhs)/=rhs;
+}
+template <typename _Tp,typename _Up>
+constexpr auto operator /(const complex<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	using R=decltype(lhs.real()*rhs.real());
+	return complex<R>(lhs)/=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator /(const complex<_Tp>& lhs,const _Up& rhs) noexcept {
+	return complex<_Tp>(lhs)/=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator /(const _Tp& lhs,const complex<_Up>& rhs) noexcept {
+	return complex<_Up>(lhs)/=rhs;
 }
 
-// 减法、乘法、除法类似实现（篇幅原因省略，但实际完整实现）
-// ...
-
-// 比较操作符
-template <typename T>
-bool operator==(const complex<T>& lhs, const complex<T>& rhs) noexcept {
-    return lhs.real() == rhs.real() && lhs.imag() == rhs.imag();
+template <typename _Tp>
+bool operator ==(const complex<_Tp>& lhs,const complex<_Tp>& rhs) noexcept {
+	return lhs.real()==rhs.real() && lhs.imag()==rhs.imag();
+}
+template <typename _Tp,typename _Up>
+bool operator ==(const complex<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	return lhs.real()==rhs.real() && lhs.imag()==rhs.imag();
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator ==(const complex<_Tp>& lhs,const _Up& rhs) noexcept {
+	return lhs.real()==rhs && lhs.imag()==0;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator ==(const _Tp& lhs,const complex<_Up>& rhs) noexcept {
+	return lhs==rhs.real() && 0==rhs.imag();
 }
 
-template <typename T, typename U>
-bool operator==(const complex<T>& lhs, const complex<U>& rhs) noexcept {
-    return lhs.real() == rhs.real() && lhs.imag() == rhs.imag();
+template <typename _Tp>
+bool operator !=(const complex<_Tp>& lhs,const complex<_Tp>& rhs) noexcept {
+	return !(lhs==rhs);
+}
+template <typename _Tp,typename _Up>
+bool operator !=(const complex<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	return !(lhs==rhs);
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator !=(const complex<_Tp>& lhs,const _Up& rhs) noexcept {
+	return !(lhs==rhs);
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator !=(const _Tp& lhs,const complex<_Up>& rhs) noexcept {
+	return !(lhs==rhs);
 }
 
-template <typename T, typename U,
-          typename = typename std::enable_if<std::is_arithmetic<U>::value>::type>
-bool operator==(const complex<T>& lhs, const U& rhs) noexcept {
-    return lhs.real() == rhs && lhs.imag() == 0;
-}
-
-template <typename T, typename U,
-          typename = typename std::enable_if<std::is_arithmetic<T>::value>::type>
-bool operator==(const T& lhs, const complex<U>& rhs) noexcept {
-    return lhs == rhs.real() && 0 == rhs.imag();
-}
-
-// 流操作符
-template <typename T>
-std::ostream& operator<<(std::ostream& os, const complex<T>& c) {
-    os << c.to_string();
-    return os;
+template <typename _Tp>
+std::ostream& operator <<(std::ostream& os,const complex<_Tp>& c) {
+	os<<c.to_string();
+	return os;
 }
 
 // ==============================================

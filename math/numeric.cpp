@@ -929,3 +929,128 @@ stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator /=(const _Up& sca
     imag_/=scalar;
     return *this;
 }
+
+template <typename _Tp>
+constexpr stdex::math::complex<_Tp> stdex::math::complex<_Tp>::conj() const noexcept {
+	return stdex::math::complex<_Tp>(real_,-imag_);
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_arithmetic<_Up>=nullptr>
+constexpr _Tp stdex::math::complex<_Tp>::norm() const noexcept { 
+	return real_*real_+imag_*imag_; 
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+_Tp stdex::math::complex<_Tp>::abs() const noexcept { 
+	return std::hypot(real_,imag_); 
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+_Tp stdex::math::complex<_Tp>::arg() const noexcept { 
+	return std::atan2(imag_,real_); 
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::complex<_Tp>::proj() const noexcept {
+	if (std::isinf(real_) || std::isinf(imag_)) {
+		return complex(std::numeric_limits<_Tp>::infinity(),std::copysign(_Tp(0),imag_));
+	}
+	return *this;
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+static stdex::math::complex<_Tp> stdex::math::complex<_Tp>::polar(const _Tp& r,const _Tp& theta) noexcept {
+	return stdex::math::complex<_Tp>(r*std::cos(theta),r*std::sin(theta));
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::complex<_Tp>::exp() const noexcept {
+	const _Tp exp_real=std::exp(real_);
+	return stdex::math::complex<_Tp>(exp_real*std::cos(imag_),exp_real*std::sin(imag_));
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::complex<_Tp>::log() const noexcept {
+	return stdex::math::complex<_Tp>(std::log(this->abs()),this->arg());
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::complex<_Tp>::pow(const stdex::math::complex<_Tp>& exponent) const {
+	return (exponent*this->log()).exp();
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::complex<_Tp>::sqrt() const noexcept {
+	const _Tp r=abs();
+	return stdex::math::complex<_Tp>(std::sqrt((r+real_)/2),std::copysign(std::sqrt((r-real_)/2),imag_));
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::complex<_Tp>::sin() const noexcept {
+	return stdex::math::complex<_Tp>(std::sin(real_)*std::cosh(imag_),std::cos(real_) * std::sinh(imag_));
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::complex<_Tp>::cos() const noexcept {
+	return stdex::math::complex<_Tp>(std::cos(real_)*std::cosh(imag_),-std::sin(real_)*std::sinh(imag_));
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::complex<_Tp>::tan() const {
+	const stdex::math::complex<_Tp> c=cos();
+	if (c.real()==0 && c.imag()==0) {
+		throw std::domain_error("Complex tangent undefined");
+	}
+	return sin()/c;
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::complex<_Tp>::sinh() const noexcept {
+	return stdex::math::complex<_Tp>(std::sinh(real_)*std::cos(imag_),std::cosh(real_)*std::sin(imag_));
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::complex<_Tp>::cosh() const noexcept {
+	return stdex::math::complex<_Tp>(std::cosh(real_)*std::cos(imag_),std::sinh(real_)*std::sin(imag_));
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::complex<_Tp>::tanh() const {
+	const stdex::math::complex<_Tp> c=cosh();
+	if (c.real()==0 && c.imag()==0) {
+		throw std::domain_error("Complex hyperbolic tangent undefined");
+	}
+	return sinh()/c;
+}
+
+template <typename _Tp>
+const _Tp& stdex::math::complex<_Tp>::real() const {
+	return real_;
+}
+
+template <typename _Tp>
+const _Tp& stdex::math::complex<_Tp>::imag() const {
+	return imag_;
+}
+
+template <typename _Tp>
+std::string stdex::math::complex<_Tp>::to_string() const {
+	std::ostringstream oss;
+	oss<<"("<<real_<<","<<imag_<<")";
+	return oss.str();
+}
