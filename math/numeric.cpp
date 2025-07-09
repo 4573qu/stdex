@@ -772,3 +772,11 @@ stdex::math::multibase::operator rational() const {
 	result.reduce();
 	return result;
 }
+
+constexpr stdex::math::complex(const _Tp& real=_Tp(),const _Tp& imag=_Tp()) noexcept : real_(real) , imag_(imag) { }
+
+template <typename _Up>
+constexpr stdex::math::complex(const stdex::math::complex<_Up>& other) noexcept : real_(other.real()) , imag_(other.imag()) {}
+
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+constexpr complex(const _Up& real) noexcept : real_(real) , imag_(0) {}
