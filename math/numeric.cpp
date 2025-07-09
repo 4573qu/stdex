@@ -41,8 +41,8 @@ static stdex::math::bigint stdex::math::bigint::multiply(const bigint& lhs,const
 
 stdex::math::bigint::bigint() : digits_(1,0) , negative_(false) { }
 
-stdex::math::bigint::bigint(long long value) {
-	negative_=(value<0);
+stdex::math::bigint::bigint(long long num) {
+	negative_=(num<0);
 	unsigned long long abs_value=std::abs(num);
 	if (abs_value==0) {
 		digits_.push_back(0);
@@ -380,4 +380,165 @@ stdex::math::bigint::operator double() const {
 		multiplier*=base_;
 	}
 	return negative_?-result:result;
+}
+
+void stdex::math::rational::reduce() {
+	if (denominator_.zero()) {
+		throw std::domain_error("Zero denominator in rational");
+	}
+	if (numerator_.zero()) {
+		denominator_=stdex::math::bigint(1);
+		return;
+	}    
+	stdex::math::bigint gcd_val=gcd(numerator_.abs(),denominator_.abs());
+	numerator_/=gcd_val;
+	denominator_/=gcd_val;
+	if (denominator_<stdex::math::bigint(0)) {
+		numerator_=-numerator_;
+		denominator_=-denominator_;
+	}
+}
+
+stdex::math::bigint gcd(stdex::math::bigint lhs,stdex::math::bigint rhs) {
+	while (!rhs.zero()) {
+		stdex::math::bigint temp=rhs;
+		rhs=lhs%rhs;
+		lhs=temp;
+	}
+	return lhs;
+}
+
+stdex::math::rational::rational() : numerator_(0) , denominator_(1) , auto_reduce(false) { }
+
+stdex::math::rational::rational(long long num) : numerator_(num) , denominator_(1) , auto_reduce(false) { }
+
+stdex::math::rational::rational(long long num,long long den) : numerator_(num) , denominator_(den) , auto_reduce(false) {
+	//reduce();
+}
+
+stdex::math::rational::rational(const stdex::math::bigint& num, const stdex::math::bigint& den) : numerator_(num) , denominator_(den) , auto_reduce(false) {
+	//reduce();
+}
+
+stdex::math::rational::rational(const std::string& s) {
+	if (s.empty()) {
+		numerator_=0;
+		denominator_=1;
+		return;
+	}
+	size_t pos=s.find('/');
+	if (pos!=std::string::npos) {
+		numerator_=stdex::math::bigint(s.substr(0,pos));
+		denominator_=stdex::math::bigint(s.substr(pos+1));
+	} else {
+		numerator_=stdex::math::bigint(s);
+		denominator_=1;
+	}
+}
+
+stdex::math::rational stdex::math::rational::operator -() const {
+	stdex::math::rational result(*this);
+	result.numerator_=-numerator_;
+	result.denominator_=denominator_;
+	if (auto_reduce_) result.reduce();
+	return result;
+}
+
+stdex::math::rational stdex::math::rational::operator +(const stdex::math::rational& other) const {
+	stdex::math::rational result();
+	stdex::math::bigint gcd_num=gcd(denominator_,other.denominator_);
+	result.numerator_=numerator_*other.denominator_/gcd_num+other.numerator_*denominator_/gcd_num;
+	result.denominator_=denominator_*other.denominator_/gcd_num;
+	if (auto_reduce_ || other.auto_reduce_) result.reduce();
+	result.auto_reduce_=auto_reduce_ || other.auto_reduce_;
+	return result;
+}
+
+stdex::math::rational& stdex::math::rational::operator +=(const stdex::math::rational& other) {
+	*this=*this+other;
+	return *this;
+}
+
+stdex::math::rational stdex::math::rational::operator -(const stdex::math::rational& other) const {
+	return *this+(-other);
+}
+
+stdex::math::rational& stdex::math::rational::operator -=(const stdex::math::rational& other) {
+	*this=*this-other;
+	return *this;
+}
+
+stdex::math::rational stdex::math::rational::operator *(const stdex::math::rational& other) const {
+	stdex::math::rational result(*this);
+	result.numerator_=numerator_*other.numerator_;
+	result.denominator_=denominator_*other.denominator_;
+	if (auto_reduce_ || other.auto_reduce_) result.reduce();
+	result.auto_reduce_=auto_reduce_ || other.auto_reduce_;
+	return result;
+}
+
+stdex::math::rational& stdex::math::rational::operator *=(const stdex::math::rational& other) {
+	*this=*this*other;
+	return *this;
+}
+
+stdex::math::rational stdex::math::rational::operator /(const stdex::math::rational& other) const {
+	if (other.numerator_.zero()) {
+		throw std::domain_error("Division by zero in rational");
+	}
+	return *this*stdex::math::rational(other.denominator_,other.numerator_);
+}
+
+stdex::math::rational& stdex::math::rational::operator /=(const stdex::math::rational& other) {
+	*this=*this/other;
+	return *this;
+}
+
+bool stdex::math::rational::operator ==(const stdex::math::rational& other) const {
+	stdex::math::rational temp_this=*this;
+	stdex::math::rational temp_other=other;
+	temp_this.reduce();
+	temp_other.reduce();
+	return temp_this.numerator_==temp_other.numerator_ && temp_this.denominator_==temp_other.denominator_;
+}
+
+bool stdex::math::rational::operator !=(const stdex::math::rational& other) const {
+	return !(*this==other);
+}
+
+bool stdex::math::rational::operator <(const stdex::math::rational& other) const {
+	return (numerator_*other.denominator_)<(other.numerator_*denominator_);
+}
+    
+bool stdex::math::rational::operator <=(const stdex::math::rational& other) const {
+	return !(other<*this);
+}
+
+bool stdex::math::rational::operator >(const stdex::math::rational& other) const {
+	return other<*this;
+}
+    
+bool stdex::math::rational::operator >=(const rational& other) const {
+	return !(*this<other);
+}
+
+const stdex::math::bigint& num() const { return numerator_; }
+
+const stdex::math::bigint& den() const { return denominator_; }
+
+std::string stdex::math::rational::to_string() const {
+	if (denominator_==bigint(1)) {
+		return numerator_.to_string();
+	}
+    return numerator_.to_string()+"/"+denominator_.to_string();
+}
+
+stdex::math::rational::operator double() const {
+	double num=static_cast<double>(numerator_);
+	double den=static_cast<double>(denominator_);
+    return num/den;
+}
+
+stdex::math::rational::operator float() const {
+	return static_cast<float>(static_cast<double>(*this));
 }

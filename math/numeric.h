@@ -22,7 +22,7 @@ class bigint {
 	
 public:
 	bigint();
-	bigint(long long value);
+	bigint(long long num);
 	bigint(const std::string& s);
 	
 	bigint(const bigint& other);
@@ -63,7 +63,57 @@ public:
 	explicit operator int() const;
 	explicit operator double() const;
 };
+
+class rational {
+	bigint numerator_;
+	bigint denominator_;
 	
+public:
+	bool auto_reduce_;
+	void reduce();
+	
+private:
+	static bigint gcd(bigint lhs,bigint rhs);
+
+public:
+	rational();
+	rational(long long num);
+	rational(long long num,long long den);
+	rational(const bigint& num, const bigint& den);
+	rational(const std::string& s);
+    
+	rational(const rational&) = default;
+	rational(rational&&) = default;
+
+	rational& operator =(const rational&) = default;
+	rational& operator =(rational&&) = default;
+
+	rational operator -() const;
+
+	rational operator +(const rational& other) const;
+	rational& operator +=(const rational& other);
+	rational operator -(const rational& other) const;
+	rational& operator -=(const rational& other);
+	rational operator *(const rational& other) const;
+	rational& operator *=(const rational& other);
+	rational operator /(const rational& other) const;
+	rational& operator /=(const rational& other);
+
+	bool operator ==(const rational& other) const;
+	bool operator !=(const rational& other) const;
+	bool operator <(const rational& other) const;
+	bool operator <=(const rational& other) const;
+	bool operator >(const rational& other) const;
+	bool operator >=(const rational& other) const;
+	
+	const bigint& num() const;
+	const bigint& den() const;
+	
+	std::string to_string() const;
+	explicit operator double() const;
+	explicit operator float() const;
+};
+
 }
 
 }
