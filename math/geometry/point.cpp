@@ -3,7 +3,7 @@
 //@H_Version 1.0
 #include "point.h"
 template <typename _Tp>
-std::math::point2<_Tp>::point2() : x_(base_unit_trait<_Tp>::zero()) , y_(base_unit_trait<_Tp>::zero()) { }
+std::math::point2<_Tp>::point2() : x_(stdex::math::base_unit_trait<_Tp>::zero()) , y_(base_unit_trait<_Tp>::zero()) { }
 
 template <typename _Tp>
 std::math::point2<_Tp>::point2(_Tp x,_Tp y) : x_(x) , y_(y) { }
@@ -147,6 +147,6 @@ std::math::point2<_Tp> std::math::point2<_Tp>::operator /(const _Tp& other) cons
 
 template <typename _Tp>
 std::string std::math::point2<_Tp>::print() const {
-	std::string result="x="+base_unit_trait<_Tp>::to_string(x_)+",y="+base_unit_trait<_Tp>::to_string(y_);
+	std::string result="x="+stdex::math::base_unit_trait<_Tp>::to_string(x_)+",y="+stdex::math::base_unit_trait<_Tp>::to_string(y_);
 	return result;
 }

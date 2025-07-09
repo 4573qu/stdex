@@ -22,12 +22,12 @@ struct base_unit_trait {
 	static _Tp log(_Tp base,_Tp logarithm) { return (_Tp)std::log(logarithm)/(_Tp)std::log(base); }
 	static _Tp sqrt(_Tp num) { return (_Tp)std::sqrt(num); }
 	static _Tp abs(_Tp num) { return (_Tp)std::abs(num); }
-	static string to_string(_Tp value) { return std::to_string(value); }
+	static std::string to_string(_Tp value) { return std::to_string(value); }
 };
 
 template <>
-string base_unit_trait<char>::to_string(char value) {
-	return string(1,value);
+std::string base_unit_trait<char>::to_string(char value) {
+	return std::string(1,value);
 }
 
 /*define specific base_unit_trait:
