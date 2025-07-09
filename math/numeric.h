@@ -118,6 +118,7 @@ class multibase {
 	double base_;
 	double value_;
 	int precision_;
+	static double epsilon_=1e-15;
 	double parse(const std::string& s);
 
 public:
@@ -146,14 +147,15 @@ public:
 	multibase& operator -=(const multibase& other);
 	multibase operator *(const multibase& other) const;
 	multibase& operator *=(const multibase& other);
+	multibase operator /(const multibase& other) const;
+	multibase& operator /=(const multibase& other);
 
-    multibase operator/(const multibase& other) const {
-        if (std::abs(other.value) < 1e-15)
-            throw std::domain_error("Division by zero");
-        if (std::abs(base - other.base) > 1e-9)
-            throw std::domain_error("Base mismatch");
-        return multibase(base, value / other.value, std::max(precision, other.precision));
-    }
+	bool operator ==(const multibase& other) const;
+	bool operator !=(const multibase& other) const;
+	bool operator <(const multibase& other) const;
+	bool operator <=(const multibase& other) const;
+	bool operator >(const multibase& other) const;
+	bool operator >=(const multibase& other) const;
 
     // 隐式类型转换
     operator int() const { return static_cast<int>(value); }
@@ -162,17 +164,12 @@ public:
 //precision->    operator rational() const { return rational(static_cast<long long>(value * 1000000), 1000000); }
 
 //convert base
+//change epsilon_
     // 算术运算
     
 
     // 比较操作
-    bool operator==(const multibase& other) const {
-        return std::abs(value - other.value) < 1e-9;
-    }
-    bool operator<(const multibase& other) const { return value < other.value; }
-    bool operator>(const multibase& other) const { return value > other.value; }
-    bool operator<=(const multibase& other) const { return value <= other.value; }
-    bool operator>=(const multibase& other) const { return value >= other.value; }
+
 
     // 类型转换
     double to_double() const { return value; }

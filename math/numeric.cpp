@@ -544,6 +544,12 @@ stdex::math::rational::operator float() const {
 }
 
 double stdex::math::multibase::parse(const std::string& s) {
+	if (s.empty()) return 0;
+	bool positive=true;
+	if (s[0]=='-' || s[0]=='+') {
+		positive=(s[0]=='+');
+		s=s.substr(1);
+	}
 	size_t dot=s.find('.');
 	std::string int_part=(dot!=std::string::npos)?s.substr(0,dot):s;
 	std::string frac_part=(dot!=std::string::npos)?s.substr(dot+1):"";
@@ -574,6 +580,7 @@ double stdex::math::multibase::parse(const std::string& s) {
 		power/=base_;
 		if (power<1e-15) break;
 	}
+	if (!positive) result=-result;
 	return result;
 }
 
@@ -647,4 +654,121 @@ stdex::math::multibase stdex::math::multibase::operator *(const stdex::math::mul
 stdex::math::multibase& stdex::math::multibase::operator *=(const stdex::math::multibase& other) {
 	*this=*this*other;
 	return *this;
+}
+
+stdex::math::multibase stdex::math::multibase::operator /(const stdex::math::multibase& other) const {
+	if (std::abs(other.value_)<epsilon_) {
+		throw std::domain_error("Division by zero");
+	}
+	return stdex::math::multibase(base_,value_/other.value_,std::max(precision_,other.precision_));
+}
+
+stdex::math::multibase& stdex::math::multibase::operator /=(const stdex::math::multibase& other) {
+	*this=*this/other;
+	return *this;
+}
+
+bool stdex::math::multibase::operator ==(const stdex::math::multibase& other) const {
+	return std::abs(value_-other.value_)<epsilon_;
+}
+
+bool stdex::math::multibase::operator !=(const stdex::math::multibase& other) const {
+	return !(*this==other);
+}
+
+bool stdex::math::multibase::operator <(const stdex::math::multibase& other) const {
+	return value_<other.value_;
+}
+
+bool stdex::math::multibase::operator <=(const stdex::math::multibase& other) const {
+	return !(other<*this);
+}
+
+bool stdex::math::multibase::operator >(const stdex::math::multibase& other) const {
+	return other<*this;
+}
+
+bool stdex::math::multibase::operator >=(const stdex::math::multibase& other) const {
+	return !(*this<other);
+}
+
+std::ostream& operator <<(std::ostream& os,const stdex::math::multibase& num) {
+	os<<num.to_string()<<"(base "<<num.base_<<")";
+	return os;
+}
+
+void stdex::math::multibase::base(double base) {
+	if (base<=1) {
+		throw std::invalid_argument("Base must be bigger than 1");
+	}
+	base_=base;
+}
+
+void stdex::math::multibase::precision(int precision) {
+	if (precision<0) {
+		throw std::invalid_argument("Precision cannot be negative");
+	}
+	precision_=precision;
+}
+
+void stdex::math::multibase::epsilon(double epsilon) {
+	if (eps<=0) {
+		throw std::invalid_argument("Epsilon must be positive");
+	} else if (eps>0.01) {
+		throw std::out_of_range("Epsilon must be less than 0.01");
+	} 
+	epsilon_=epsilon;
+}
+
+double stdex::math::multibase::to_double() const {
+	return value;
+}
+
+std::string stdex::math::multibase::to_string() const {
+	double abs_value=std::fabs(value_);
+	double int_part;
+	double frac_part=std::modf(abs_value,&int_part);
+	std::string result;
+	long n=static_cast<long>(int_part);
+	do {
+		result=char('0'+digit)+result;
+    	n=static_cast<long>((n-digit)/base);
+		long digit=static_cast<long>(std::fmod(n,base));
+	} while (n>0);
+	if (frac_part>epsilon_) {
+		result+='.';
+		double f=frac_part;
+		int count=0;
+		while (f>epsilon_ && count<precision_) {
+			f*=base_;
+			double digit;
+			f=std::modf(f,&digit);
+			result+=char('0'+static_cast<int>(digit));
+			count++;
+		}
+	}
+	if (result.empty()) return "0";
+	if (result!="0" && value_<0) result+="-"; 
+	return result;
+}
+
+stdex::math::multibase::operator int() const {
+	return static_cast<int>(std::round(value_));
+}
+
+stdex::math::multibase::operator double() const {
+	return value;
+}
+
+stdex::math::multibase::operator bigint() const {
+	return stdex::math::bigint(static_cast<long long>(std::round(value)));
+}
+
+stdex::math::multibase::operator rational() const {
+	stdex::math::bigint temp(static_cast<long long>(std::round(value)));
+	stdex::math::bigint power(1);
+	power<<=precision_;
+	stdex::math::rational result(temp*power,power);
+	result.reduce();
+	return result;
 }
