@@ -1051,6 +1051,254 @@ const _Tp& stdex::math::complex<_Tp>::imag() const {
 template <typename _Tp>
 std::string stdex::math::complex<_Tp>::to_string() const {
 	std::ostringstream oss;
-	oss<<"("<<real_<<","<<imag_<<")";
+	oss<<"("<<real_<<","<<imag_<<"i)";
 	return oss.str();
+}
+
+template <typename _Tp>
+constexpr stdex::math::quaternion<_Tp>::quaternion(const _Tp& w,const _Tp& x,const _Tp& y,const _Tp& z) noexcept : w_(w) , x_(x) , y_(y) , z_(z) { }
+
+template <typename _Tp>
+constexpr stdex::math::quaternion<_Tp>::quaternion(const _Tp& real) noexcept : w_(real) , x_(0) , y_(0) , z_(0) { }
+
+template <typename _Tp>
+template <typename _Up>
+constexpr stdex::math::quaternion(const stdex::math::complex<_Up>& c) noexcept : w_(c.real()) , x_(c.imag()) , y_(0) , z_(0) { }
+
+template <typename _Tp>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator =(const _Tp& real) {
+	w_=real_;
+	x_=y_=z_=0;
+}
+
+template <typename _Tp>
+template <typename _Up>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator =(const stdex::math::complex<_Up>& other) {
+	w_=other.real();
+	x_=other.imag();
+}
+
+template <typename _Tp>
+template <typename _Up>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator =(const stdex::math::quaternion<_Up>& other) {
+	w_=other.w();
+	x_=other.x();
+	y_=other.y();
+	z_=other.z();
+}
+
+template <typename _Tp>
+constexpr stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::operator +() const noexcept {
+	return *this;
+}
+
+template <typename _Tp>
+constexpr stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::operator -() const noexcept {
+	return stdex::math::quaternion<_Tp>(-w_,-x_,-y_,-z_);
+}
+
+template <typename _Tp>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator +=(const stdex::math::quaternion<_Tp>& other) noexcept {
+	w_+=other.w_;
+	x_+=other.x_;
+	y_+=other.y_;
+	z_+=other.z_;
+    return *this;
+}
+
+template <typename _Tp>
+template <typename _Up>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator +=(const stdex::math::quaternion<_Up>& other) noexcept {
+	w_+=other.w();
+	x_+=other.x();
+	y_+=other.y();
+	z_+=other.z();
+    return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator +=(const _Up& scalar) noexcept {
+	w_+=scalar;
+    return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator +=(const stdex::math::complex<_Up>& complexor) noexcept {
+	w_+=complexor.real();
+	x_+=complexor.imag();
+    return *this;
+}
+
+template <typename _Tp>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator -=(const stdex::math::quaternion<_Tp>& other) noexcept {
+	w_-=other.w_;
+	x_-=other.x_;
+	y_-=other.y_;
+	z_-=other.z_;
+    return *this;
+}
+
+template <typename _Tp>
+template <typename _Up>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator -=(const stdex::math::quaternion<_Up>& other) noexcept {
+	w_-=other.w();
+	x_-=other.x();
+	y_-=other.y();
+	z_-=other.z();
+    return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator -=(const _Up& scalar) noexcept {
+	w_-=scalar;
+    return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator -=(const stdex::math::complex<_Up>& complexor) noexcept {
+	w_-=complexor.real();
+	x_-=complexor.imag();
+    return *this;
+}
+
+template <typename _Tp>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator *=(const stdex::math::quaternion<_Tp>& other) noexcept {
+	const _Tp w=w_*other.w_-x_*other.x_-y_*other.y_-z_*other.z_;
+	const _Tp x=w_*other.x_+x_*other.w_+y_*other.z_-z_*other.y_;
+	const _Tp y=w_*other.y_-x_*other.z_+y_*other.w_+z_*other.x_;
+	const _Tp z=w_*other.z_+x_*other.y_-y_*other.x_+z_*other.w_;
+	w_=w;
+	x_=x;
+	y_=y;
+	z_=z;
+	return *this;
+}
+
+template <typename _Tp>
+template <typename _Up>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator *=(const stdex::math::quaternion<_Up>& other) noexcept {
+	const _Tp w=w_*other.w()-x_*other.x()-y_*other.y()-z_*other.z();
+	const _Tp x=w_*other.x()+x_*other.w()+y_*other.z()-z_*other.y();
+	const _Tp y=w_*other.y()-x_*other.z()+y_*other.w()+z_*other.x();
+	const _Tp z=w_*other.z()+x_*other.y()-y_*other.x()+z_*other.w();
+	w_=w;
+	x_=x;
+	y_=y;
+	z_=z;
+	return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator *=(const _Up& scalar) noexcept {
+	w_*=scalar;
+	x_*=scalar;
+	y_*=scalar;
+	z_*=scalar;
+    return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator *=(const stdex::math::complex<_Up>& complexor) noexcept {
+	const _Tp w=w_*complexor.real()-x_*complexor.imag();
+	const _Tp x=w_*complexor.imag()+x_*complexor.real();
+	const _Tp y=y_*complexor.real()+z_*complexor.imag();
+	const _Tp z=y_*complexor.imag()+z_*complexor.real();
+	w_=w;
+	x_=x;
+	y_=y;
+	z_=z;
+    return *this;
+}
+
+template <typename _Tp>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator /=(const stdex::math::quaternion<_Tp>& other) noexcept {
+	const _Tp norm=other.norm();
+	if (norm==0) {
+		throw std::domain_error("Quaternion division by zero");
+	}
+	*this*=other.inverse();
+	return *this;
+}
+
+template <typename _Tp>
+template <typename _Up>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator /=(const stdex::math::quaternion<_Up>& other) noexcept {
+	const _Up norm=other.norm();
+	if (norm==0) {
+		throw std::domain_error("Quaternion division by zero");
+	}
+	*this*=other.inverse();
+	return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator *=(const _Up& scalar) noexcept {
+	w_/=scalar;
+	x_/=scalar;
+	y_/=scalar;
+	z_/=scalar;
+    return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator *=(const stdex::math::complex<_Up>& complexor) noexcept {
+	stdex::math::quaternion<_Up> temp(complexor);
+	*this*=complexor;
+    return *this;
+}
+
+template <typename _Tp>
+constexpr stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::conj() const noexcept { 
+	return stdex::math::quaternion<_Tp>(w_,-x_,-y_,-z_); 
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+constexpr _Tp stdex::math::quaternion<_Tp>::norm_sq() const noexcept { 
+	return w_*w_+x_*x_+y_*y_+z_*z_; 
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+_Tp stdex::math::quaternion<_Tp>::norm() const noexcept { 
+	return std::sqrt(norm_sq()); 
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::inverse() const {
+	const _Tp n=norm_sq();
+	if (n==0) {
+		throw std::domain_error("Quaternion has zero norm");
+	}
+	return conj()/n;
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::unit() const {
+	const _Tp n=norm();
+	if (n==0) {
+		throw std::domain_error("Quaternion has zero norm");
+	}
+	return *this/n;
+}
+
+template <typename _Tp>
+_Tp dot(const stdex::math::quaternion<_Tp>& other) const noexcept {
+	return w_*other.w_+x_*other.x_+y_*other.y_+z_*other.z_;
+}
+
+template <typename _Tp>
+template <typename _Up>
+_Tp dot(const stdex::math::quaternion<_Up>& other) const noexcept {
+	return w_*other.w()+x_*other.x()+y_*other.y()+z_*other.z();
 }
