@@ -27,7 +27,7 @@ struct base_unit_trait {
 
 template <>
 string base_unit_trait<char>::to_string(char value) {
-    return string(1,value);
+	return string(1,value);
 }
 
 /*define specific base_unit_trait:
