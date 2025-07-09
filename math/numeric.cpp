@@ -576,3 +576,75 @@ double stdex::math::multibase::parse(const std::string& s) {
 	}
 	return result;
 }
+
+stdex::math::multibase::multibase() : base_(10.0), value_(0.0), precision_(6) { }
+
+stdex::math::multibase::multibase(double base,double value,int precision) : base_(base) , value_(value) , precision_(precision) {
+	if (base_<=1) {
+		throw std::invalid_argument("Base must be bigger than 1");
+	}
+}
+
+stdex::math::multibase::multibase(double base,const std::string& s,int precision) : base_(base), precision_(precision) {
+	if (base_<=1) {
+		throw std::invalid_argument("Base must be bigger than 1");
+	}
+	value_=parse(s);
+}
+
+stdex::math::multibase& stdex::math::multibase::operator =(int value) {
+	value_=static_cast<double>(value);
+	return *this;
+}
+
+stdex::math::multibase& stdex::math::multibase::operator =(double value) {
+	value_=val;
+	return *this;
+}
+
+stdex::math::multibase& stdex::math::multibase::operator =(const stdex::math::bigint& value) {
+	value_=static_cast<double>(value);
+    return *this;
+}
+
+stdex::math::multibase& stdex::math::multibase::operator =(const stdex::math::rational& value) {
+	value_=static_cast<double>(value);
+	return *this;
+}
+
+void stdex::math::multibase::assign(const std::string* s) {
+	value_=parse(s);
+}
+
+stdex::math::multibase stdex::math::multibase::operator -() const {
+	stdex::math::multibase result(*this);
+	result.value_=-value_;
+	return result;
+}
+
+stdex::math::multibase stdex::math::multibase::operator +(const stdex::math::multibase& other) const {
+	return stdex::math::multibase(base_,value_+other.value_,std::max(precision_,other.precision_));
+}
+
+stdex::math::multibase& stdex::math::multibase::operator +=(const stdex::math::multibase& other) {
+	*this=*this+other;
+	return *this;
+}
+
+stdex::math::multibase stdex::math::multibase::operator -(const stdex::math::multibase& other) const {
+	return stdex::math::multibase(base_,value_-other.value_,std::max(precision_,other.precision_));
+}
+
+stdex::math::multibase& stdex::math::multibase::operator -=(const stdex::math::multibase& other) {
+	*this=*this-other;
+	return *this;
+}
+
+stdex::math::multibase stdex::math::multibase::operator *(const stdex::math::multibase& other) const {
+	return stdex::math::multibase(base_,value_*other.value_,std::max(precision_,other.precision_));
+}
+
+stdex::math::multibase& stdex::math::multibase::operator *=(const stdex::math::multibase& other) {
+	*this=*this*other;
+	return *this;
+}

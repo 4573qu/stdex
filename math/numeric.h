@@ -115,86 +115,64 @@ public:
 };
 
 class multibase {
-	double value_;
 	double base_;
+	double value_;
 	int precision_;
 	double parse(const std::string& s);
 
 public:
-    // 构造函数
-    non_integer_base() : base(10.0), value(0.0), precision(6) {}
-    
-    non_integer_base(double b, double v, int p = 6) : base(b), value(v), precision(p) {
-        if (base <= 1) throw std::invalid_argument("Base must be > 1");
-    }
+	multibase();
+	multibase(double base,double value,int precision=6);
+	multibase(double base,const std::string& s,int precision=6);
+	
+	multibase(const multibase&) = default;
+	multibase(multibase&&) = default;
 
-    non_integer_base(double b, const std::string& rep, int p = 6) : base(b), precision(p) {
-        if (base <= 1) throw std::invalid_argument("Base must be > 1");
-        value = parse(rep);
-    }
+	multibase& operator =(const multibase&) = default;
+	multibase& operator =(multibase&&) = default;
     
-    // 从内置类型赋值
-    non_integer_base& operator=(int val) {
-        value = static_cast<double>(val);
-        return *this;
-    }
-    
-    non_integer_base& operator=(double val) {
-        value = val;
-        return *this;
-    }
-    
-    non_integer_base& operator=(const bigint& val) {
-        value = static_cast<double>(val);
-        return *this;
-    }
-    
-    non_integer_base& operator=(const rational& val) {
-        value = static_cast<double>(val);
-        return *this;
+	multibase& operator =(int value);
+	multibase& operator =(double value);
+	multibase& operator =(const bigint& value);
+	multibase& operator =(const rational& value);
+	
+	void assign(const std::string& s);
+	
+	multibase operator -() const;
+
+	multibase operator +(const multibase& other) const;
+	multibase& operator +=(const multibase& other);
+	multibase operator -(const multibase& other) const;
+	multibase& operator -=(const multibase& other);
+	multibase operator *(const multibase& other) const;
+	multibase& operator *=(const multibase& other);
+
+    multibase operator/(const multibase& other) const {
+        if (std::abs(other.value) < 1e-15)
+            throw std::domain_error("Division by zero");
+        if (std::abs(base - other.base) > 1e-9)
+            throw std::domain_error("Base mismatch");
+        return multibase(base, value / other.value, std::max(precision, other.precision));
     }
 
     // 隐式类型转换
     operator int() const { return static_cast<int>(value); }
     operator double() const { return value; }
     operator bigint() const { return bigint(static_cast<long long>(value)); }
-    operator rational() const { return rational(static_cast<long long>(value * 1000000), 1000000); }
+//precision->    operator rational() const { return rational(static_cast<long long>(value * 1000000), 1000000); }
 
+//convert base
     // 算术运算
-    non_integer_base operator+(const non_integer_base& other) const {
-        if (std::abs(base - other.base) > 1e-9)
-            throw std::domain_error("Base mismatch");
-        return non_integer_base(base, value + other.value, std::max(precision, other.precision));
-    }
-
-    non_integer_base operator-(const non_integer_base& other) const {
-        if (std::abs(base - other.base) > 1e-9)
-            throw std::domain_error("Base mismatch");
-        return non_integer_base(base, value - other.value, std::max(precision, other.precision));
-    }
-
-    non_integer_base operator*(const non_integer_base& other) const {
-        if (std::abs(base - other.base) > 1e-9)
-            throw std::domain_error("Base mismatch");
-        return non_integer_base(base, value * other.value, std::max(precision, other.precision));
-    }
-
-    non_integer_base operator/(const non_integer_base& other) const {
-        if (std::abs(other.value) < 1e-15)
-            throw std::domain_error("Division by zero");
-        if (std::abs(base - other.base) > 1e-9)
-            throw std::domain_error("Base mismatch");
-        return non_integer_base(base, value / other.value, std::max(precision, other.precision));
-    }
+    
 
     // 比较操作
-    bool operator==(const non_integer_base& other) const {
+    bool operator==(const multibase& other) const {
         return std::abs(value - other.value) < 1e-9;
     }
-    bool operator<(const non_integer_base& other) const { return value < other.value; }
-    bool operator>(const non_integer_base& other) const { return value > other.value; }
-    bool operator<=(const non_integer_base& other) const { return value <= other.value; }
-    bool operator>=(const non_integer_base& other) const { return value >= other.value; }
+    bool operator<(const multibase& other) const { return value < other.value; }
+    bool operator>(const multibase& other) const { return value > other.value; }
+    bool operator<=(const multibase& other) const { return value <= other.value; }
+    bool operator>=(const multibase& other) const { return value >= other.value; }
 
     // 类型转换
     double to_double() const { return value; }
@@ -232,7 +210,7 @@ public:
     }
 
     // 友元输出
-    friend std::ostream& operator<<(std::ostream& os, const non_integer_base& num) {
+    friend std::ostream& operator<<(std::ostream& os, const multibase& num) {
         os << num.to_string() << " (base " << num.base << ")";
         return os;
     }
