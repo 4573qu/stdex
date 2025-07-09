@@ -20,7 +20,7 @@ static stdex::math::bigint stdex::math::bigint::multiply(const bigint& lhs,const
 	size_t n=std::max(lhs.digits_.size(),rhs.digits_.size());
 	if (n<=32) return a*b;
 	size_t k=(n+1)/2;
-	bigint lhs_low,lhs_high,rhs_low,rhs_high;
+	stdex::math::bigint lhs_low,lhs_high,rhs_low,rhs_high;
 	void (*process)()=[](const bigint& origin,bigint& low,bigint& high,size_t k) -> void {
 		low.digits_.assign(origin.digits_.begin(),origin.digits_+std::min(k,origin.digits_.size()));
 		if (origin.digits_.size()>k) {
@@ -29,9 +29,9 @@ static stdex::math::bigint stdex::math::bigint::multiply(const bigint& lhs,const
 	};
 	process(lhs,lhs_low,lhs_high,k);
 	process(rhs,rhs_low,rhs_high,k);
-	bigint z0=multiply(lhs_low,rhs_low);
-	bigint z2=multiply(lhs_high,rhs_high);
-	bigint z1=multiply(lhs_low+lhs_high,rhs_low+rhs_high)-z0-z2;
+	stdex::math::bigint z0=multiply(lhs_low,rhs_low);
+	stdex::math::bigint z2=multiply(lhs_high,rhs_high);
+	stdex::math::bigint z1=multiply(lhs_low+lhs_high,rhs_low+rhs_high)-z0-z2;
 	z2<<=2*k;
 	z1<<=k;
 	return z2+z1+z0;
@@ -85,4 +85,238 @@ stdex::math::bigint::bigint(const std::string& s) {
 		digits_.push_back(digit);
 	}
 	normalize();
+}
+
+stdex::math::bigint::bigint(const stdex::math::bigint& other) : digits_(other.digits_) , negative_(other.negative_) { }
+
+stdex::math::bigint::bigint(stdex::math::bigint&& other) noexcept : digits_(other.digits_) , negative_(other.negative_) {
+	other.digits_=std::vector<int>(1,0);
+	other.negative_=false;
+}
+
+stdex::math::bigint& stdex::math::bigint::operator =(const stdex::math::bigint& other) {
+	if (this!=&other) {
+		digits_=other.digits_;
+		negative_=other.negative_;
+	}
+	return *this;
+}
+
+stdex::math::bigint& stdex::math::bigint::operator =(stdex::math::bigint&& other) noexcept {
+	if (this!=&other) {
+		digits_=other.digits_;
+		negative_=other.negative_;
+		other.digits_=std::vector<int>(1,0);
+		other.negative_=false;
+	}
+	return *this;
+}
+
+stdex::math::bigint stdex::math::bigint::operator -() const {
+	stdex::math::bigint result=*this;
+	if (!zero()) {
+		result.negative_=!negative_;	
+	}
+	return result;
+}
+
+stdex::math::bigint operator +(const stdex::math::bigint& other) const {
+	if (negative_!=other.negative_) {
+		if (negative_) {
+			return other-(-(*this));
+		}
+		return *this-(-other);
+	}
+	stdex::math::bigint result;
+	result.negative_=negative_;
+	result.digits_.resize(std::max(digits_.size(),other.digits_.size())+1);
+	int carry=0;
+	for (int i=0;i<result.digits_.size();i++) {
+		int d1=(i<digits_.size())?digits_[i]:0;
+		int d2=(i<other.digits_.size())?other.digits_[i]:0;
+		int sum=d1+d2+carry;
+		result.digits_[i]=sum%base_;
+		carry=sum/base_;
+	}
+	result.normalize();
+	return result;
+}
+
+stdex::math::bigint& stdex::math::bigint::operator +=(const stdex::math::bigint& other) {
+	*this=*this+other;
+	return *this;
+}
+
+stdex::math::bigint operator -(const stdex::math::bigint& other) const {
+	if (negative_!=other.negative_) {
+		return *this+(-other);
+	}
+	stdex::math::bigint result;
+	if (abs()<other.abs()) {
+		result=other.abs()-abs();
+		result.negative_=!negative_;
+		return result;
+	}
+	result.negative_=negative_;
+	result.digits_.resize(digits_.size());
+	int borrow=0;
+	for (int i=0;i<digits_.size();i++) {
+		int d1=digits_[i];
+		int d2=(i<other.digits_.size())?other.digits_[i]:0;
+		int diff=d1-d2-borrow;
+		if (diff<0) {
+			diff+=base_;
+			borrow=1;
+		} else {
+			borrow=0;
+		}
+		result.digits_[i]=diff;
+	}
+	result.normalize();
+	return result;
+}
+
+stdex::math::bigint& stdex::math::bigint::operator -=(const stdex::math::bigint& other) {
+	*this=*this-other;
+	return *this;
+}
+
+stdex::math::bigint operator *(const stdex::math::bigint& other) const {
+	if (zero() || other.zero()) {
+		return stdex::math::bigint(0);	
+	}
+	stdex::math::bigint result;
+	if (digits_.size()>32 || other.digits_.size()>32) {
+		result=multiply(*this,other);
+		result.negative_=negative_^other.negative_;
+		result.normalize();
+		return result;
+	}	
+	result.digits_.resize(digits_.size()+other.digits_.size(),0);
+	result.negative_=negative_^other.negative_;
+	for (int i=0;i<digits_.size();i++) {
+		long long carry=0;
+		for (int j=0;j<other.digits_.size() || carry;j++) {
+			long long product=result.digits_[i+j]+static_cast<long long>(digits_[i])*(j<other.digits_.size()?other.digits_[j]:0)+carry;
+			result.digits_[i+j]=product%base_;
+			carry=product/base_;
+		}
+	}
+	result.normalize();
+	return result;
+}
+
+stdex::math::bigint& stdex::math::bigint::operator *=(const stdex::math::bigint& other) {
+	*this=*this*other;
+	return *this;
+}
+
+stdex::math::bigint operator /(const stdex::math::bigint& other) const {
+	if (divisor.zero()) {
+		throw std::domain_error("Division by zero");
+	}
+	stdex::math::bigint dividend=abs();
+	stdex::math::bigint div=other.abs();
+	if (dividend<div) {
+		return stdex::math::bigint(0);
+	}
+	stdex::math::bigint quotient,remainder;
+	size_t n=div.digits_.size();
+	size_t m=dividend.digits_.size()-n;    
+	if (n==1) {
+		long long carry=0;
+		quotient.digits_.resize(m+1);
+		for (int i=dividend.digits_.size()-1;i>=0;i--) {
+			long long current=dividend.digits_[i]+carry*base_;
+			quotient.digits_[i]=current/div.digits_[0];
+			carry=current%div.digits_[0];
+        }
+		quotient.normalize();
+		quotient.negative_=negative_^other.negative_;
+	    return quotient;
+	}
+	int d=base_/(div.digits_.back()+1);
+	dividend*=d;
+	div*=d;    
+	quotient.digits_.resize(m+1,0);
+	for (int j=m;j>=0;j--) {
+		long long q_hat=(static_cast<long long>(dividend.digits_[j+n])*base_+dividend.digits_[j+n-1];
+		long long r_hat=q_hat%div.digits_[n-1];
+		q_hat=q_hat/div.digits_[n-1];
+		while (q_hat>=base_ || (q_hat*(n>1?div.digits_[n-2]:0)>base_*r_hat+(j+n-2>=0?dividend.digits_[j+n-2]:0))) {
+			q_hat--;
+			r_hat+=div.digits_[n-1];
+			if (r_hat>=base_) {
+				break;
+			}
+		}
+		stdex::math::bigint temp=div*static_cast<int>(q_hat);
+		if (temp>dividend.subnum(j,j+n)) {
+			q_hat--;
+			temp=temp-div;
+		}
+		quotient.digits_[j]=q_hat;
+		stdex::math::bigint diff=dividend.subnum(j,j+n)-temp;
+		for (int i=0;i<n;i++) {
+			dividend.digits_[j+i]=(i<diff.digits_.size())?diff.digits_[i]:0;
+		}
+	}
+	quotient.normalize();
+	quotient.negative_=negative_^other.negative_;
+	return quotient;
+}
+
+stdex::math::bigint& stdex::math::bigint::operator /=(const stdex::math::bigint& other) {
+	*this=*this/other;
+	return *this;
+}
+
+
+stdex::math::bigint operator %(const stdex::math::bigint& other) const {
+	stdex::math::bigint quotient=*this/other;
+	return *this-quotient*other;
+}
+
+stdex::math::bigint& stdex::math::bigint::operator %=(const stdex::math::bigint& other) {
+	*this=*this%other;
+	return *this;
+}
+
+bool stdex::math::bigint::operator ==(const stdex::math::bigint& other) const {
+	return digits_==other.digits_ && negative_==other.negative_;
+}
+
+bool stdex::math::bigint::operator !=(const stdex::math::bigint& other) const {
+	return !(*this==other);
+}
+
+bool stdex::math::bigint::operator <(const stdex::math::bigint& other) const {
+	if (negative_!=other.negative_) {
+		return negative_;
+	}
+	if (digits_.size()!=other.digits_.size()) {
+		return negative_?(digits_.size()>other.digits_.size()):(digits_.size()<other.digits_.size());
+	}
+	for (int i=digits_.size()-1;i>=0;i--) {
+		if (digits_[i]!=other.digits_[i]) {
+			return negative_?(digits_[i]>other.digits_[i]):(digits_[i]<other.digits_[i]);
+		}
+	}
+	return false;
+}
+
+bool stdex::math::bigint::operator >(const stdex::math::bigint& other) const {
+	return other<*this;
+}
+
+bool stdex::math::bigint::operator <=(const stdex::math::bigint& other) const {
+	return !(other<*this);
+}
+
+bool stdex::math::bigint::operator >=(const stdex::math::bigint& other) const {
+	return !(*this<other);
+}
+
+bool stdex::math::bigint::zero() const {
+	return digits_.size()==1 && digits_[0]==0;
 }

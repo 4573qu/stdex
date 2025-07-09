@@ -27,6 +27,7 @@ public:
 	
 	bigint(const bigint& other);
 	bigint(bigint&& other) noexcept;
+	
 	bigint& operator =(const bigint& other);
 	bigint& operator =(bigint&& other) noexcept;
 	
