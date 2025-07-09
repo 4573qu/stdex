@@ -53,10 +53,12 @@ public:
 	bool operator <=(const bigint& other) const;
 	bool operator >(const bigint& other) const;
 	bool operator >=(const bigint& other) const;
-	
+
 	bigint operator <<(size_t n) const;
 	bigint& operator <<=(size_t n);
-	
+
+	friend std::ostream& operator <<(std::ostream& os,const bigint& num);
+
 	bool zero() const;
 	bigint abs() const;
 	bigint subnum(size_t start,size_t end) const;
@@ -66,6 +68,8 @@ public:
 	explicit operator int() const;
 	explicit operator double() const;
 };
+
+std::ostream& operator <<(std::ostream&, const bigint&);
 
 class rational {
 	bigint numerator_;
@@ -109,6 +113,8 @@ public:
 	bool operator >(const rational& other) const;
 	bool operator >=(const rational& other) const;
 	
+	friend std::ostream& operator <<(std::ostream& os,const rational& num);
+	
 	const bigint& num() const;
 	const bigint& den() const;
 	
@@ -116,6 +122,8 @@ public:
 	explicit operator double() const;
 	explicit operator float() const;
 };
+
+std::ostream& operator <<(std::ostream&, const rational&);
 
 class multibase {
 	double base_;
@@ -177,6 +185,8 @@ public:
 	explicit operator bigint() const;
 	explicit operator rational() const;
 };
+
+std::ostream& operator <<(std::ostream& os,const multibase& num);
 
 template <typename _Tp>
 struct is_complex_arithmetic : std::is_arithmetic<_Tp> {};

@@ -72,7 +72,9 @@ stdex::math::bigint::bigint(const std::string& s) {
 			start=1;
 		}
 	}
-	while (start<s.size() && s[start]=='0') start++;
+	while (start<s.size() && s[start]=='0') {
+		start++;
+	}
 	if (start==s.size()) {
 		digits_.push_back(0);
 		negative_=false;
@@ -80,7 +82,7 @@ stdex::math::bigint::bigint(const std::string& s) {
 	}
 	for (int i=s.size()-1;i>=static_cast<int>(start);i-=9) {
 		int digit=0;
-		for (int j=std::max(static_cast<int>(start),i-8);j<=i;i++) {
+		for (int j=std::max(static_cast<int>(start),i-8);j<=i;j++) {
 			if (!std::isdigit(s[j])) {
 				throw std::invalid_argument("Invalid character in bigint string");
 			}
@@ -241,27 +243,37 @@ stdex::math::bigint stdex::math::bigint::operator /(const stdex::math::bigint& o
 	}
 	int d=base_/(div.digits_.back()+1);
 	dividend*=d;
-	div*=d;    
+	div*=d;
+	n=div.digits_.size();
+	m=dividend.digits_.size()-n;
+	dividend.digits_.resize(n+m+1,0);
 	quotient.digits_.resize(m+1,0);
 	for (int j=m;j>=0;j--) {
-		long long q_hat=(static_cast<long long>(dividend.digits_[j+n])*base_+dividend.digits_[j+n-1]);
+		long long q_hat=static_cast<long long>(dividend.digits_[j+n])*base_+dividend.digits_[j+n-1];
 		long long r_hat=q_hat%div.digits_[n-1];
-		q_hat=q_hat/div.digits_[n-1];
-		while (q_hat>=base_ || (q_hat*(n>1?div.digits_[n-2]:0)>base_*r_hat+(j+n-2>=0?dividend.digits_[j+n-2]:0))) {
-			q_hat--;
-			r_hat+=div.digits_[n-1];
-			if (r_hat>=base_) {
+		q_hat/=div.digits_[n-1];
+		if (q_hat>=base_) {
+			q_hat=base_-1;
+			r_hat=dividend.digits_[j+n]*base_+dividend.digits_[j+n-1]-q_hat*div.digits_[n-1];
+		}
+		while (r_hat<base_) {
+			long long check=q_hat*(n>=2?div.digits_[n-2]:0);
+			long long current=base_*r_hat+(j+n-2>=0?dividend.digits_[j+n-2]:0);
+			if (check>current) {
+				q_hat--;
+				r_hat+=div.digits_[n-1];
+			} else {
 				break;
 			}
 		}
 		stdex::math::bigint temp=div*static_cast<int>(q_hat);
-		if (temp>dividend.subnum(j,j+n)) {
+		if (temp>dividend.subnum(j,j+n+1)) {
 			q_hat--;
-			temp=temp-div;
+			temp-=div;
 		}
 		quotient.digits_[j]=q_hat;
-		stdex::math::bigint diff=dividend.subnum(j,j+n)-temp;
-		for (int i=0;i<n;i++) {
+		stdex::math::bigint diff=dividend.subnum(j,j+n+1)-temp;
+		for (int i=0;i<=n;i++) {
 			dividend.digits_[j+i]=(i<diff.digits_.size())?diff.digits_[i]:0;
 		}
 	}
@@ -333,6 +345,11 @@ stdex::math::bigint stdex::math::bigint::operator <<(size_t n) const {
 stdex::math::bigint& stdex::math::bigint::operator <<=(size_t n) {
 	*this=*this<<n;
 	return *this;
+}
+
+std::ostream& stdex::math::operator <<(std::ostream& os,const stdex::math::bigint& num) {
+	os<<num.to_string();
+	return os;
 }
 
 bool stdex::math::bigint::zero() const {
@@ -528,6 +545,11 @@ bool stdex::math::rational::operator >=(const rational& other) const {
 	return !(*this<other);
 }
 
+std::ostream& stdex::math::operator <<(std::ostream& os,const stdex::math::rational& num) {
+	os<<num.to_string();
+	return os;
+}
+
 const stdex::math::bigint& stdex::math::rational::num() const { return numerator_; }
 
 const stdex::math::bigint& stdex::math::rational::den() const { return denominator_; }
@@ -699,7 +721,7 @@ bool stdex::math::multibase::operator >=(const stdex::math::multibase& other) co
 	return !(*this<other);
 }
 
-std::ostream& operator <<(std::ostream& os,const stdex::math::multibase& num) {
+std::ostream& stdex::math::operator <<(std::ostream& os,const stdex::math::multibase& num) {
 	os<<num.to_string()<<"(base "<<num.base()<<")";
 	return os;
 }
