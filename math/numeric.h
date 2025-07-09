@@ -114,6 +114,131 @@ public:
 	explicit operator float() const;
 };
 
+class multibase {
+	double value_;
+	double base_;
+	int precision_;
+	double parse(const std::string& s);
+
+public:
+    // 构造函数
+    non_integer_base() : base(10.0), value(0.0), precision(6) {}
+    
+    non_integer_base(double b, double v, int p = 6) : base(b), value(v), precision(p) {
+        if (base <= 1) throw std::invalid_argument("Base must be > 1");
+    }
+
+    non_integer_base(double b, const std::string& rep, int p = 6) : base(b), precision(p) {
+        if (base <= 1) throw std::invalid_argument("Base must be > 1");
+        value = parse(rep);
+    }
+    
+    // 从内置类型赋值
+    non_integer_base& operator=(int val) {
+        value = static_cast<double>(val);
+        return *this;
+    }
+    
+    non_integer_base& operator=(double val) {
+        value = val;
+        return *this;
+    }
+    
+    non_integer_base& operator=(const bigint& val) {
+        value = static_cast<double>(val);
+        return *this;
+    }
+    
+    non_integer_base& operator=(const rational& val) {
+        value = static_cast<double>(val);
+        return *this;
+    }
+
+    // 隐式类型转换
+    operator int() const { return static_cast<int>(value); }
+    operator double() const { return value; }
+    operator bigint() const { return bigint(static_cast<long long>(value)); }
+    operator rational() const { return rational(static_cast<long long>(value * 1000000), 1000000); }
+
+    // 算术运算
+    non_integer_base operator+(const non_integer_base& other) const {
+        if (std::abs(base - other.base) > 1e-9)
+            throw std::domain_error("Base mismatch");
+        return non_integer_base(base, value + other.value, std::max(precision, other.precision));
+    }
+
+    non_integer_base operator-(const non_integer_base& other) const {
+        if (std::abs(base - other.base) > 1e-9)
+            throw std::domain_error("Base mismatch");
+        return non_integer_base(base, value - other.value, std::max(precision, other.precision));
+    }
+
+    non_integer_base operator*(const non_integer_base& other) const {
+        if (std::abs(base - other.base) > 1e-9)
+            throw std::domain_error("Base mismatch");
+        return non_integer_base(base, value * other.value, std::max(precision, other.precision));
+    }
+
+    non_integer_base operator/(const non_integer_base& other) const {
+        if (std::abs(other.value) < 1e-15)
+            throw std::domain_error("Division by zero");
+        if (std::abs(base - other.base) > 1e-9)
+            throw std::domain_error("Base mismatch");
+        return non_integer_base(base, value / other.value, std::max(precision, other.precision));
+    }
+
+    // 比较操作
+    bool operator==(const non_integer_base& other) const {
+        return std::abs(value - other.value) < 1e-9;
+    }
+    bool operator<(const non_integer_base& other) const { return value < other.value; }
+    bool operator>(const non_integer_base& other) const { return value > other.value; }
+    bool operator<=(const non_integer_base& other) const { return value <= other.value; }
+    bool operator>=(const non_integer_base& other) const { return value >= other.value; }
+
+    // 类型转换
+    double to_double() const { return value; }
+    
+    std::string to_string() const {
+        if (value < 0) throw std::domain_error("Negative values not supported");
+        
+        double intPart;
+        double fracPart = std::modf(value, &intPart);
+        std::string result;
+
+        // 转换整数部分
+        long n = static_cast<long>(intPart);
+        do {
+            long digit = static_cast<long>(std::fmod(n, base));
+            result = char('0' + digit) + result;
+            n = static_cast<long>((n - digit) / base);
+        } while (n > 0);
+
+        // 转换小数部分
+        if (fracPart > 1e-10) {
+            result += '.';
+            double f = fracPart;
+            int count = 0;
+            while (f > 1e-10 && count < precision) {
+                f *= base;
+                double digit;
+                f = std::modf(f, &digit);
+                result += char('0' + static_cast<int>(digit));
+                count++;
+            }
+        }
+
+        return result.empty() ? "0" : result;
+    }
+
+    // 友元输出
+    friend std::ostream& operator<<(std::ostream& os, const non_integer_base& num) {
+        os << num.to_string() << " (base " << num.base << ")";
+        return os;
+    }
+};
+
+
 }
 
 }

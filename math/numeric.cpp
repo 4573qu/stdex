@@ -542,3 +542,37 @@ stdex::math::rational::operator double() const {
 stdex::math::rational::operator float() const {
 	return static_cast<float>(static_cast<double>(*this));
 }
+
+double stdex::math::multibase::parse(const std::string& s) {
+	size_t dot=s.find('.');
+	std::string int_part=(dot!=std::string::npos)?s.substr(0,dot):s;
+	std::string frac_part=(dot!=std::string::npos)?s.substr(dot+1):"";
+	double result=0.0;
+	double power=1.0;
+	for (int i=int_part.size()-1;i>=0;i--) {
+		char c=int_part[i];
+		if (c<'0' || c>'9') {
+			throw std::invalid_argument("Invalid digit");
+		}
+		int digit=c-'0';
+		if (digit>=base_) {
+			throw std::invalid_argument("Digit exceeds base");
+		}
+		result+=digit*power;
+		power*=base_;
+	}
+	power=1.0/base_;
+	for (char c:frac_part) {
+		if (c<'0' || c>'9') {
+			throw std::invalid_argument("Invalid digit");
+		}
+		int digit=c-'0';
+		if (digit>=base) {
+			throw std::invalid_argument("Digit exceeds base");
+		}
+		result+=digit*power;
+		power/=base_;
+		if (power<1e-15) break;
+	}
+	return result;
+}
