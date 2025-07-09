@@ -704,6 +704,18 @@ void stdex::math::multibase::base(double base) {
 	base_=base;
 }
 
+double stdex::math::multibase::base() {
+	return base_;
+}
+
+int stdex::math::multibase::precision() {
+	return precision_;
+}
+
+static double stdex::math::multibase::epsilon() {
+	return epsilon_;
+}
+
 void stdex::math::multibase::precision(int precision) {
 	if (precision<0) {
 		throw std::invalid_argument("Precision cannot be negative");
@@ -773,10 +785,147 @@ stdex::math::multibase::operator rational() const {
 	return result;
 }
 
-constexpr stdex::math::complex(const _Tp& real=_Tp(),const _Tp& imag=_Tp()) noexcept : real_(real) , imag_(imag) { }
+template <typename _Tp>
+constexpr stdex::math::complex<_Tp>::complex(const _Tp& real=_Tp(),const _Tp& imag=_Tp()) noexcept : real_(real) , imag_(imag) { }
 
+template <typename _Tp>
 template <typename _Up>
-constexpr stdex::math::complex(const stdex::math::complex<_Up>& other) noexcept : real_(other.real()) , imag_(other.imag()) {}
+constexpr stdex::math::complex<_Tp>::complex(const stdex::math::complex<_Up>& other) noexcept : real_(other.real()) , imag_(other.imag()) {}
 
+template <typename _Tp>
 template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
-constexpr complex(const _Up& real) noexcept : real_(real) , imag_(0) {}
+constexpr stdex::math::complex<_Tp>::complex(const _Up& real) noexcept : real_(real) , imag_(0) { }
+
+template <typename _Tp>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator =(const _Tp& real) {
+	real_=real;
+	imag_=0;
+    return *this;
+}
+
+template <typename _Tp>
+template <typename _Up>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator =(const stdex::math::complex<_Up>& other) {
+	real_=other.real();
+	imag_=other.imag();
+    return *this;
+}
+
+template <typename _Tp>
+constexpr stdex::math::complex<_Tp> stdex::math::complex<_Tp>::operator +() const noexcept {
+	return *this;
+}
+
+template <typename _Tp>
+constexpr stdex::math::complex<_Tp> stdex::math::complex<_Tp>::operator -() const noexcept {
+	return stdex::math::complex<_Tp>(-real_,-imag_);
+}
+
+template <typename _Tp>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator +=(const stdex::math::complex<_Tp>& other) noexcept {
+	real_+=other.real_;
+	imag_+=other.imag_;
+	return *this;
+}
+
+template <typename _Tp>
+template <typename _Up>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator +=(const stdex::math::complex<_Up>& other) noexcept {
+	real_+=other.real();
+	imag_+=other.imag();
+    return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator +=(const _Up& scalar) noexcept {
+	real_+=scalar;
+	return *this;
+}
+
+template <typename _Tp>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator -=(const stdex::math::complex<_Tp>& other) noexcept {
+	real_-=other.real_;
+	imag_-=other.imag_;
+	return *this;
+}
+
+template <typename _Tp>
+template <typename _Up>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator -=(const stdex::math::complex<_Up>& other) noexcept {
+	real_-=other.real();
+	imag_-=other.imag();
+    return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator -=(const _Up& scalar) noexcept {
+	real_-=scalar;
+	return *this;
+}
+
+template <typename _Tp>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator *=(const stdex::math::complex<_Tp>& other) noexcept {
+	const _Tp r=real_*other.real_-imag_*other.imag_;
+	const _Tp i=real_*other.imag_+imag_*other.real_;
+	real_=r;
+	imag_=i;
+	return *this;
+}
+
+template <typename _Tp>
+template <typename _Up>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator *=(const stdex::math::complex<_Up>& other) noexcept {
+	const _Tp r=real_*other.real()-imag_*other.imag();
+	const _Tp i=real_*other.imag()+imag_*other.real();
+	real_=r;
+	imag_=i;
+	return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator *=(const _Up& scalar) noexcept {
+	real_*=scalar;
+	imag_*=scalar;
+	return *this;
+}
+
+template <typename _Tp>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator /=(const stdex::math::complex<_Tp>& other) noexcept {
+	const _Tp denom=other.real_*other.real_+other.imag_*other.imag_;
+	if (denom==0) {
+		throw std::domain_error("Complex division by zero");
+	}   
+	const _Tp r=(real_*other.real_+imag_*other.imag_)/denom;
+	const _Tp i=(imag_*other.real_-real_*other.imag_)/denom;
+	real_=r;
+	imag_=i;
+	return *this;
+}
+
+template <typename _Tp>
+template <typename _Up>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator /=(const stdex::math::complex<_Up>& other) noexcept {
+	const _Tp denom=other.real()*other.real()+other.imag()*other.imag();
+	if (denom==0) {
+		throw std::domain_error("Complex division by zero");
+	}
+	const _Tp r=(real_*other.real()+imag_*other.imag())/denom;
+	const _Tp i=(imag_*other.real()-real_*other.imag())/denom;
+	real_=r;
+	imag_=i;
+	return *this;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator /=(const _Up& scalar) noexcept {
+	if (scalar==0) {
+		throw std::domain_error("Complex division by zero");
+	}
+	real_/=scalar;
+    imag_/=scalar;
+    return *this;
+}

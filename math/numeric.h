@@ -160,6 +160,9 @@ public:
 
 	friend std::ostream& operator <<(std::ostream& os,const multibase& num);
 
+	double base();
+	int precision();
+	static double epsilon();
 	void base(double base);
 	void precision(int precision);
 	static void epsilon(double epsilon);
@@ -204,132 +207,42 @@ public:
 	constexpr complex(const complex<_Up>& other) noexcept;
 	template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
 	constexpr complex(const _Up& real) noexcept;
-	
+
 	complex(const complex&) = default;
 	complex(complex&&) = default;
 
-	complex& operator =(const complex&) = default;
-	complex& operator =(complex&&) = default;
+	complex<_Tp>& operator =(const complex<_Tp>&) = default;
+	complex<_Tp>& operator =(complex<_Tp>&&) = default;
+
+	complex<_Tp>& operator =(const _Tp& re);
+	template <typename _Up>
+	complex<_Tp>& operator =(const complex<_Up>& other);
+
+	constexpr complex<_Tp> operator +() const noexcept;
+	constexpr complex<_Tp> operator -() const noexcept;
+
+	complex<_Tp>& operator +=(const complex<_Tp>& other) noexcept;
+	template <typename _Up>
+	complex<_Tp>& operator +=(const complex<_Up>& other) noexcept;
+	template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+	complex<_Tp>& operator +=(const _Up& scalar) noexcept;
+	complex<_Tp>& operator -=(const complex<_Tp>& other) noexcept;
+	template <typename _Up>
+	complex<_Tp>& operator -=(const complex<_Up>& other) noexcept;
+	template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+	complex<_Tp>& operator -=(const _Up& scalar) noexcept;
+	complex<_Tp>& operator *=(const complex<_Tp>& other) noexcept;
+	template <typename _Up>
+	complex<_Tp>& operator *=(const complex<_Up>& other) noexcept;
+	template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+	complex<_Tp>& operator *=(const _Up& scalar) noexcept;
+	complex<_Tp>& operator /=(const complex<_Tp>& other) noexcept;
+	template <typename _Up>
+	complex<_Tp>& operator /=(const complex<_Up>& other) noexcept;
+	template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+	complex<_Tp>& operator /=(const _Up& scalar) noexcept;
     
-    // 赋值操作符
-    complex& operator=(const T& re) {
-        real_ = re;
-        imag_ = 0;
-        return *this;
-    }
-    
-    template <typename U>
-    complex& operator=(const complex<U>& other) {
-        real_ = other.real();
-        imag_ = other.imag();
-        return *this;
-    }
-    
-    // 实部和虚部访问
-    constexpr T real() const noexcept { return real_; }
-    constexpr T imag() const noexcept { return imag_; }
-    
-    void real(T re) noexcept { real_ = re; }
-    void imag(T im) noexcept { imag_ = im; }
-    
-    // 算术操作符
-    complex& operator+=(const complex& other) noexcept {
-        real_ += other.real_;
-        imag_ += other.imag_;
-        return *this;
-    }
-    
-    template <typename U>
-    complex& operator+=(const complex<U>& other) noexcept {
-        real_ += other.real();
-        imag_ += other.imag();
-        return *this;
-    }
-    
-    template <typename U, EnableIfArithmetic<U> = nullptr>
-    complex& operator+=(const U& scalar) noexcept {
-        real_ += scalar;
-        return *this;
-    }
-    
-    complex& operator-=(const complex& other) noexcept {
-        real_ -= other.real_;
-        imag_ -= other.imag_;
-        return *this;
-    }
-    
-    template <typename U>
-    complex& operator-=(const complex<U>& other) noexcept {
-        real_ -= other.real();
-        imag_ -= other.imag();
-        return *this;
-    }
-    
-    template <typename U, EnableIfArithmetic<U> = nullptr>
-    complex& operator-=(const U& scalar) noexcept {
-        real_ -= scalar;
-        return *this;
-    }
-    
-    complex& operator*=(const complex& other) noexcept {
-        const T r = real_ * other.real_ - imag_ * other.imag_;
-        const T i = real_ * other.imag_ + imag_ * other.real_;
-        real_ = r;
-        imag_ = i;
-        return *this;
-    }
-    
-    template <typename U>
-    complex& operator*=(const complex<U>& other) noexcept {
-        const T r = real_ * other.real() - imag_ * other.imag();
-        const T i = real_ * other.imag() + imag_ * other.real();
-        real_ = r;
-        imag_ = i;
-        return *this;
-    }
-    
-    template <typename U, EnableIfArithmetic<U> = nullptr>
-    complex& operator*=(const U& scalar) noexcept {
-        real_ *= scalar;
-        imag_ *= scalar;
-        return *this;
-    }
-    
-    complex& operator/=(const complex& other) {
-        const T denom = other.real_ * other.real_ + other.imag_ * other.imag_;
-        if (denom == 0) throw std::domain_error("Complex division by zero");
-        
-        const T r = (real_ * other.real_ + imag_ * other.imag_) / denom;
-        const T i = (imag_ * other.real_ - real_ * other.imag_) / denom;
-        real_ = r;
-        imag_ = i;
-        return *this;
-    }
-    
-    template <typename U>
-    complex& operator/=(const complex<U>& other) {
-        const T denom = other.real() * other.real() + other.imag() * other.imag();
-        if (denom == 0) throw std::domain_error("Complex division by zero");
-        
-        const T r = (real_ * other.real() + imag_ * other.imag()) / denom;
-        const T i = (imag_ * other.real() - real_ * other.imag()) / denom;
-        real_ = r;
-        imag_ = i;
-        return *this;
-    }
-    
-    template <typename U, EnableIfArithmetic<U> = nullptr>
-    complex& operator/=(const U& scalar) {
-        if (scalar == 0) throw std::domain_error("Complex division by zero");
-        real_ /= scalar;
-        imag_ /= scalar;
-        return *this;
-    }
-    
-    // 一元操作符
-    constexpr complex operator+() const noexcept { return *this; }
-    constexpr complex operator-() const noexcept { return complex(-real_, -imag_); }
-    
+  
     // 共轭
     constexpr complex conj() const noexcept { return complex(real_, -imag_); }
     
@@ -445,6 +358,9 @@ public:
         return complex(std::sqrt((r + real_) / 2), 
                        std::copysign(std::sqrt((r - real_) / 2), imag_));
     }
+    
+    	const _Tp& real() const;
+	const _Tp& imag() const;
 };
 
 // 非成员函数
@@ -727,6 +643,7 @@ public:
     quaternion pow(const T& exponent) const {
         return (log() * exponent).exp();
     }
+    
     
     // 字符串表示
     std::string to_string() const {
