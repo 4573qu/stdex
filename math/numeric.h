@@ -466,144 +466,192 @@ public:
 	_Tp dot(const quaternion<_Tp>& other) const noexcept;
 	template <typename _Up>
 	_Tp dot(const quaternion<_Up>& other) const noexcept;
-    
-    // 旋转向量（仅对浮点类型启用）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    static quaternion rotation(const T& angle, const T& ax, const T& ay, const T& az) noexcept {
-        const T half_angle = angle / 2;
-        const T sin_half = std::sin(half_angle);
-        return quaternion(std::cos(half_angle), 
-                          ax * sin_half,
-                          ay * sin_half,
-                          az * sin_half);
-    }
-    
-    // 旋转向量（重载）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    static quaternion rotation(const T& angle, const complex<T>& axis) noexcept {
-        return rotation(angle, axis.real(), axis.imag(), 0);
-    }
-    
-    // 应用旋转到向量
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    quaternion rotate_vector(const T& vx, const T& vy, const T& vz) const {
-        const quaternion p(0, vx, vy, vz);
-        const quaternion result = *this * p * this->inverse();
-        return result;
-    }
-    
-    // 应用旋转到复数（视为2D向量）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    complex<T> rotate_complex(const complex<T>& c) const {
-        const quaternion result = rotate_vector(c.real(), c.imag(), 0);
-        return complex<T>(result.x(), result.y());
-    }
-    
-    // 指数函数（仅对浮点类型启用）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    quaternion exp() const noexcept {
-        const complex<T> v(x_, y_);
-        const T v_norm = v.abs();
-        const T exp_w = std::exp(w_);
-        
-        if (v_norm == 0) {
-            return quaternion(exp_w, 0, 0, 0);
-        }
-        
-        const T cos_v = std::cos(v_norm);
-        const T sin_v = std::sin(v_norm);
-        const T scale = exp_w * sin_v / v_norm;
-        
-        return quaternion(exp_w * cos_v,
-                          x_ * scale,
-                          y_ * scale,
-                          z_ * scale);
-    }
-    
-    // 对数函数（仅对浮点类型启用）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    quaternion log() const noexcept {
-        const T q_norm = this->norm();
-        const complex<T> v(x_, y_);
-        const T v_norm = v.abs();
-        
-        if (q_norm == 0 || v_norm == 0) {
-            return quaternion(std::log(q_norm), 0, 0, 0);
-        }
-        
-        const T scale = std::acos(w_ / q_norm) / v_norm;
-        return quaternion(std::log(q_norm),
-                          x_ * scale,
-                          y_ * scale,
-                          z_ * scale);
-    }
-    
-    // 幂函数（仅对浮点类型启用）
-    template <typename U = T, EnableIfFloatingPoint<U> = nullptr>
-    quaternion pow(const T& exponent) const {
-        return (log() * exponent).exp();
-    }
-    
-        
-    // 分量访问
-    const _Tp& w() const noexcept { return w_; }
-    const _Tp& x() const noexcept { return x_; }
-    const _Tp& y() const noexcept { return y_; }
-    const _Tp& z() const noexcept { return z_; }
-        constexpr T real() const noexcept { return w_; }
-    constexpr complex<T> imag() const noexcept { return complex<T>(x_, y_); }
-    
-    // 字符串表示
-    std::string to_string() const {
-        std::ostringstream oss;
-        oss << "(" << w_ << ", " << x_ << "i, " << y_ << "j, " << z_ << "k)";
-        return oss.str();
-    }
+
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	static quaternion<_Tp> rotation(const _Tp& angle,const _Tp& ax,const _Tp& ay,const _Tp& az) noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	static quaternion<_Tp> rotation(const _Tp& angle,const complex<_Tp>& axis) noexcept;
+	template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+	quaternion<_Tp> rotate_vector(const _Tp& vx,const _Tp& vy,const _Tp& vz) const;
+	template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+	complex<_Tp> rotate_complex(const complex<_Tp>& c) const;
+
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	quaternion<_Tp> exp() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	quaternion<_Tp> log() const noexcept;
+	template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+	quaternion<_Tp> pow(const T& exponent) const;
+
+	const _Tp& w() const noexcept;
+	const _Tp& x() const noexcept;
+	const _Tp& y() const noexcept;
+	const _Tp& z() const noexcept;
+	const _Tp& real() const noexcept;
+	const _Tp& imag() const noexcept;
+	const complex<_Tp> complex() const noexcept;
+
+	std::string to_string() const;
 };
 
-// 非成员函数
-template <typename T>
-constexpr quaternion<T> operator+(const quaternion<T>& lhs, const quaternion<T>& rhs) noexcept {
-    return quaternion<T>(lhs) += rhs;
+template <typename _Tp>
+constexpr quaternion<_Tp> operator +(const quaternion<_Tp>& lhs,const quaternion<_Tp>& rhs) noexcept {
+    return quaternion<_Tp>(lhs)+=rhs;
+}
+template <typename _Tp,typename _Up>
+constexpr quaternion<_Tp> operator +(const quaternion<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+    using R=decltype(lhs.w()+rhs.w());
+    return quaternion<R>(lhs)+rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator +(const quaternion<_Tp>& lhs,const _Up& rhs) noexcept {
+	return quaternion<_Tp>(lhs)+=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator +(const _Tp& lhs,const quaternion<_Up>& rhs) noexcept {
+	return qauternion<_Up>(lhs)+=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator +(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	return quaternion<_Tp>(lhs)+=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator +(const complex<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+	return qauternion<_Up>(lhs)+=rhs;
 }
 
-template <typename T>
-constexpr quaternion<T> operator*(const quaternion<T>& lhs, const quaternion<T>& rhs) noexcept {
-    return quaternion<T>(lhs) *= rhs;
+template <typename _Tp>
+constexpr quaternion<_Tp> operator -(const quaternion<_Tp>& lhs,const quaternion<_Tp>& rhs) noexcept {
+    return quaternion<_Tp>(lhs)-=rhs;
+}
+template <typename _Tp,typename _Up>
+constexpr auto operator -(const quaternion<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+    using R=decltype(lhs.w()-rhs.w());
+    return quaternion<R>(lhs)-rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator -(const quaternion<_Tp>& lhs,const _Up& rhs) noexcept {
+	return quaternion<_Tp>(lhs)-=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator -(const _Tp& lhs,const quaternion<_Up>& rhs) noexcept {
+	return qauternion<_Up>(lhs)-=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator -(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	return quaternion<_Tp>(lhs)-=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator -(const complex<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+	return qauternion<_Up>(lhs)-=rhs;
 }
 
-// 标量乘法
-template <typename T, typename U,
-          typename = typename std::enable_if<std::is_arithmetic<U>::value>::type>
-constexpr quaternion<T> operator*(const quaternion<T>& lhs, const U& scalar) noexcept {
-    return quaternion<T>(lhs) *= scalar;
+template <typename _Tp>
+constexpr quaternion<_Tp> operator *(const quaternion<_Tp>& lhs,const quaternion<_Tp>& rhs) noexcept {
+    return quaternion<_Tp>(lhs)*=rhs;
+}
+template <typename _Tp,typename _Up>
+constexpr quaternion<_Tp> operator *(const quaternion<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+    using R=decltype(lhs.w()*rhs.w());
+    return quaternion<R>(lhs)*rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator *(const quaternion<_Tp>& lhs,const _Up& rhs) noexcept {
+	return quaternion<_Tp>(lhs)*=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator *(const _Tp& lhs,const quaternion<_Up>& rhs) noexcept {
+	return qauternion<_Up>(lhs)*=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator *(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	return quaternion<_Tp>(lhs)*=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator *(const complex<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+	return qauternion<_Up>(lhs)*=rhs;
 }
 
-template <typename T, typename U,
-          typename = typename std::enable_if<std::is_arithmetic<T>::value>::type>
-constexpr quaternion<U> operator*(const T& scalar, const quaternion<U>& rhs) noexcept {
-    return quaternion<U>(rhs) *= scalar;
+template <typename _Tp>
+constexpr quaternion<_Tp> operator /(const quaternion<_Tp>& lhs,const quaternion<_Tp>& rhs) noexcept {
+    return quaternion<_Tp>(lhs)/=rhs;
+}
+template <typename _Tp,typename _Up>
+constexpr quaternion<_Tp> operator /(const quaternion<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+    using R=decltype(lhs.w()*rhs.w());
+    return quaternion<R>(lhs)/rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator /(const quaternion<_Tp>& lhs,const _Up& rhs) noexcept {
+	return quaternion<_Tp>(lhs)/=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator /(const _Tp& lhs,const quaternion<_Up>& rhs) noexcept {
+	return qauternion<_Up>(lhs)/=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator /(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	return quaternion<_Tp>(lhs)/=rhs;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+constexpr auto operator /(const complex<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+	return qauternion<_Up>(lhs)/=rhs;
 }
 
-// 比较操作符
-template <typename T>
-bool operator==(const quaternion<T>& lhs, const quaternion<T>& rhs) noexcept {
-    return lhs.w() == rhs.w() && 
-           lhs.x() == rhs.x() && 
-           lhs.y() == rhs.y() && 
-           lhs.z() == rhs.z();
+template <typename _Tp>
+bool operator ==(const quaternion<_Tp>& lhs,const quaternion<_Tp>& rhs) noexcept {
+	return lhs.w()==rhs.w() && lhs.x()==rhs.x() && lhs.y()==rhs.y() && lhs.z()==rhs.z();
+}
+template <typename _Tp,typename _Up>
+bool operator ==(const quaternion<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+	return lhs.w()==rhs.w() && lhs.x()==rhs.x() && lhs.y()==rhs.y() && lhs.z()==rhs.z();
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator ==(const quaternion<_Tp>& lhs,const _Up& rhs) noexcept {
+	return lhs.w()==rhs && lhs.x()==0 && lhs.y()==0 && lhs.z()==0;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator ==(const _Tp& lhs,const quaternion<_Up>& rhs) noexcept {
+	return lhs==rhs.w() && 0==rhs.x() && 0==rhs.y() && 0==rhs.z();
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator ==(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	return lhs.w()==rhs.real() && lhs.x()==rhs.imag() && lhs.y()==0 && lhs.z()==0;
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator ==(const complex<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+	return lhs.real()==rhs.w() && lhs.imag()==rhs.x() && 0==rhs.y() && 0==rhs.z();
 }
 
-template <typename T>
-bool operator!=(const quaternion<T>& lhs, const quaternion<T>& rhs) noexcept {
-    return !(lhs == rhs);
+template <typename _Tp>
+bool operator !=(const quaternion<_Tp>& lhs,const quaternion<_Tp>& rhs) noexcept {
+	return !(lhs==rhs);
+}
+template <typename _Tp,typename _Up>
+bool operator !=(const quaternion<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+	return !(lhs==rhs);
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator !=(const quaternion<_Tp>& lhs,const _Up& rhs) noexcept {
+	return !(lhs==rhs);
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator !=(const _Tp& lhs,const quaternion<_Up>& rhs) noexcept {
+	return !(lhs==rhs);
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator !=(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
+	return !(lhs==rhs);
+}
+template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
+bool operator !=(const complex<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
+	return !(lhs==rhs);
 }
 
-// 流操作符
-template <typename T>
-std::ostream& operator<<(std::ostream& os, const quaternion<T>& q) {
-    os << q.to_string();
-    return os;
+template <typename _Tp>
+std::ostream& operator <<(std::ostream& os,const quaternion<_Tp>& q) {
+	os<<q.to_string();
+	return os;
 }
 
 }

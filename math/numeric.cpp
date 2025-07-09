@@ -1302,3 +1302,108 @@ template <typename _Up>
 _Tp dot(const stdex::math::quaternion<_Up>& other) const noexcept {
 	return w_*other.w()+x_*other.x()+y_*other.y()+z_*other.z();
 }
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::rotation(const _Tp& angle,const _Tp& ax,const _Tp& ay,const _Tp& az) noexcept {
+	const _Tp half_angle=angle/2;
+	const _Tp sin_half=std::sin(half_angle);
+	return stdex::math::quaternion<_Tp>(std::cos(half_angle),ax*sin_half,ay*sin_half,az*sin_half);
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::rotation(const _Tp& angle,const complex<_Tp>& axis) noexcept {
+	return rotation(angle,axis.real(),axis.imag(),0);
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::rotate_vector(const _Tp& vx,const _Tp& vy,const _Tp& vz) const {
+	const stdex::math::quaternion<_Tp> p(0,vx,vy,vz);
+	const stdex::math::quaternion<_Tp> result=*this*p*this->inverse();
+	return result;
+}
+
+template <typename _Tp>
+template <typename _Up,enable_if_arithmetic<_Up>=nullptr>
+stdex::math::complex<_Tp> stdex::math::quaternion<_Tp>::rotate_complex(const complex<_Tp>& c) const {
+	const stdex::math::quaternion<_Tp> result=rotate_vector(c.real(),c.imag(),0);
+	return stdex::math::complex<_Tp>(result.x(),result.y());
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::exp() const noexcept {
+	const stdex::math::complex<_Tp> v(x_,y_);
+	const _Tp v_norm=v.abs();
+	const _Tp exp_w=std::exp(w_);
+	if (v_norm==0) {
+		return stdex::math::quaternion<_Tp>::(exp_w,0,0,0);
+	}  
+	const _Tp cos_v=std::cos(v_norm);
+	const _Tp sin_v=std::sin(v_norm);
+	const _Tp scale=exp_w*sin_v/v_norm;
+	return stdex::math::quaternion<_Tp>::(exp_w*cos_v,x_*scale,y_*scale,z_*scale);
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::log() const noexcept {
+	const _Tp q_norm=this->norm();
+	const stdex::math::complex<_Tp> v(x_,y_);
+	const _Tp v_norm=v.abs();
+	if (q_norm==0 || v_norm==0) {
+		return stdex::math::quaternion<_Tp>(std::log(q_norm),0,0,0);
+	}
+	const _Tp scale=std::acos(w_/q_norm)/v_norm;
+	return stdex::math::quaternion<_Tp>(std::log(q_norm),x_*scale,y_*scale,z_*scale);
+}
+
+template <typename _Tp>
+template <typename _Up=_Tp,enable_if_floating<_Up>=nullptr>
+stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::pow(const _Tp& exponent) const {
+	return (log()*exponent).exp();
+}
+
+template <typename _Tp>
+const _Tp& stdex::math::quaternion<_Tp>::w() const noexcept {
+	return w_;
+}
+
+template <typename _Tp>
+const _Tp& stdex::math::quaternion<_Tp>::x() const noexcept {
+	return x_;
+}
+
+template <typename _Tp>
+const _Tp& stdex::math::quaternion<_Tp>::y() const noexcept {
+	return y_;
+}
+
+template <typename _Tp>
+const _Tp& stdex::math::quaternion<_Tp>::z() const noexcept {
+	return z_;
+}
+
+template <typename _Tp>
+const _Tp& stdex::math::quaternion<_Tp>::real() const noexcept {
+	return w_;
+}
+
+template <typename _Tp>
+const _Tp& stdex::math::quaternion<_Tp>::imag() const noexcept {
+	return x_;
+}
+
+template <typename _Tp>
+const stdex::math::complex<_Tp> stdex::math::quaternion<_Tp>::complex() const noexcept {
+	return stdex::math::complex<_Tp>(w_,x_);
+}
+
+template <typename _Tp>
+std::string stdex::math::complex<_Tp>::to_string() const {
+	std::ostringstream oss;
+	oss<<"("<<w_<<","<<x_<<"i,"<<y_<<"j,"<<z_<<"k)";
+	return oss.str();
+}
