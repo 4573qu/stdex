@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdexcept>
+#include <iomanip>
+#include <sstream>
 
 void stdex::math::bigint::normalize() {
 	while (digits_.size()>1 && digits_.back()==0) {
@@ -305,18 +307,77 @@ bool stdex::math::bigint::operator <(const stdex::math::bigint& other) const {
 	return false;
 }
 
-bool stdex::math::bigint::operator >(const stdex::math::bigint& other) const {
-	return other<*this;
-}
-
 bool stdex::math::bigint::operator <=(const stdex::math::bigint& other) const {
 	return !(other<*this);
+}
+
+bool stdex::math::bigint::operator >(const stdex::math::bigint& other) const {
+	return other<*this;
 }
 
 bool stdex::math::bigint::operator >=(const stdex::math::bigint& other) const {
 	return !(*this<other);
 }
 
+stdex::math::bigint stdex::math::bigint::operator <<(size_t n) const {
+	if (zero()) return;
+	digits_.insert(digits_.begin(),n,0);
+}
+
+stdex::math::bigint& stdex::math::bigint::operator <<=(size_t n) {
+	*this=*this<<other;
+	return *this;
+}
+
 bool stdex::math::bigint::zero() const {
 	return digits_.size()==1 && digits_[0]==0;
+}
+
+stdex::math::bigint stdex::math::bigint::abs() const {
+	stdex::math::bigint result=*this;
+	result.negative_=false;
+	return result;
+}
+
+stdex::math::bigint stdex::math::bigint::subnum(size_t start,size_t end) const {
+	stdex::math::bigint result;
+	result.digits_.assign(digits_.begin()+start, (end<=digits_.size())?digits_.begin()+end:digits_.end());
+	return result;
+}
+
+std::string stdex::math::bigint::to_string() const {
+	if (zero()) {
+		return "0";
+	}
+	std::ostringstream oss;
+	if (negative_) {
+		oss<<'-';
+	}
+	oss<<digits_.back();
+	for (int i=digits.size()-2;i>=0;i--) {
+		oss<<std::setw(9)<<std::setfill('0')<<digits_[i];
+	}    
+	return oss.str();
+}
+
+stdex::math::bigint::operator long long() const {
+	long long result=0;
+	for (int i=digits_.size()-1;i>=0;i--) {
+		result=result*base_+digits_[i];
+	}
+	return negative_?-result:result;
+}
+
+stdex::math::bigint::operator int() const {
+	return static_cast<int>(static_cast<long long>(*this));
+}
+
+stdex::math::bigint::operator double() const {
+	double result=0.0;
+	double multiplier=1.0;
+	for (int i=0;i<digits_.size();i++) {
+		result+=digits_[i]*multiplier;
+		multiplier*=base_;
+	}
+	return negative_?-result:result;
 }
