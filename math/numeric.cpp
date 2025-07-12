@@ -349,7 +349,7 @@ stdex::math::bigint& stdex::math::bigint::operator <<=(size_t n) {
 	return *this;
 }
 
-std::istream& stdex::math::operator <<(std::istream& is,stdex::math::bigint& num) {
+std::istream& stdex::math::operator >>(std::istream& is,stdex::math::bigint& num) {
 	std::string input;
 	bool use_int=true;
 	int int_input;
@@ -592,8 +592,8 @@ std::istream& stdex::math::operator >>(std::istream& is,stdex::math::rational& n
 	std::string	input;
 	is>>input;
 	stdex::math::rational temp(input);
-	num.num()=input.num();
-	num.den()=input.den();
+	num.num()=temp.num();
+	num.den()=temp.den();
 	return is;
 }
 
@@ -602,9 +602,9 @@ std::ostream& stdex::math::operator <<(std::ostream& os,const stdex::math::ratio
 	return os;
 }
 
-stdex::math::bigint& stdex::math::rational::num() const { return numerator_; }
+stdex::math::bigint& stdex::math::rational::num() { return numerator_; }
 
-stdex::math::bigint& stdex::math::rational::den() const { return denominator_; }
+stdex::math::bigint& stdex::math::rational::den() { return denominator_; }
 
 std::string stdex::math::rational::to_string() const {
 	if (denominator_==bigint(1)) {
@@ -773,7 +773,7 @@ bool stdex::math::multibase::operator >=(const stdex::math::multibase& other) co
 	return !(*this<other);
 }
 
-std::istream& stdex::math::operator <<(std::istream& is,stdex::math::multibase& num) {
+std::istream& stdex::math::operator >>(std::istream& is,stdex::math::multibase& num) {
 	std::string input;
 	is>>input;
 	num.assign(input);

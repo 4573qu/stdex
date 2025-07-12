@@ -55,11 +55,9 @@ public:
 	bool operator >(const bigint& other) const;
 	bool operator >=(const bigint& other) const;
 
-private:
 	bigint operator <<(size_t n) const;
 	bigint& operator <<=(size_t n);
 
-public:
 	friend std::istream& operator >>(std::istream& is,bigint& num);
 	friend std::ostream& operator <<(std::ostream& os,const bigint& num);
 
@@ -76,7 +74,8 @@ public:
 	explicit operator double() const;
 };
 
-std::ostream& operator <<(std::ostream&, const bigint&);
+std::istream& operator >>(std::istream&,bigint&);
+std::ostream& operator <<(std::ostream&,const bigint&);
 
 class rational {
 	bigint numerator_;
@@ -123,15 +122,16 @@ public:
 	friend std::istream& operator >>(std::istream& is,rational& num);
 	friend std::ostream& operator <<(std::ostream& os,const rational& num);
 
-	bigint& num() const;
-	bigint& den() const;
+	bigint& num();
+	bigint& den();
 
 	std::string to_string() const;
 	explicit operator double() const;
 	explicit operator float() const;
 };
 
-std::ostream& operator <<(std::ostream&, const rational&);
+std::istream& operator >>(std::istream&,rational&);
+std::ostream& operator <<(std::ostream&,const rational&);
 
 class multibase {
 	double base_;
@@ -195,7 +195,8 @@ public:
 	explicit operator rational() const;
 };
 
-std::ostream& operator <<(std::ostream& os,const multibase& num);
+std::istream& operator >>(std::istream&,multibase&);
+std::ostream& operator <<(std::ostream&,const multibase&);
 
 template <typename _Tp>
 struct is_complex_arithmetic : std::is_arithmetic<_Tp> {};
