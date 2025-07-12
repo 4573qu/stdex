@@ -1,10 +1,12 @@
-//Last Modified At 2025/07/09
-//@Version 1.0.0.0
-//@H_Version 1.0.0.0
+//Last Modified At 2025/07/12
+//@Version 1.0.0.1
+//@H_Version 1.0.0.1
 #include "numeric.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <climits>
 #include <stdexcept>
 #include <iomanip>
 #include <sstream>
@@ -347,6 +349,47 @@ stdex::math::bigint& stdex::math::bigint::operator <<=(size_t n) {
 	return *this;
 }
 
+std::istream& stdex::math::operator <<(std::istream& is,stdex::math::bigint& num) {
+	std::string input;
+	bool use_int=true;
+	int int_input;
+	if (is>>input) {
+		bool is_int=true;
+		int start=0;
+		if (!input.empty() && input[0]=='-') {
+			start=1;
+			if (input.size()==1) {
+				is_int=false;
+			}
+		}
+		for (int i=start;is_int && i<input.size();i++) {
+			if (!std::isdigit(static_cast<unsigned char>(input[i]))) {
+				is_int=false;
+			}
+		}
+		if (is_int) {
+			char* end;
+			long val=std::strtol(input.c_str(),&end,10);
+			if (end==input.c_str()+input.size() && val>=INT_MIN && val<=INT_MAX) {
+				int_input=static_cast<int>(val);
+			}
+		} else {
+			use_int=false;
+		}
+	} else {
+		use_int=false;
+	}
+	stdex::math::bigint temp;
+	if (use_int) {
+		new(&temp) stdex::math::bigint(int_input);
+	} else {
+		new(&temp) stdex::math::bigint(input);
+	}
+	num.digits_=temp.digits_;
+	num.negative_=temp.negative_;
+	return is;
+}
+
 std::ostream& stdex::math::operator <<(std::ostream& os,const stdex::math::bigint& num) {
 	os<<num.to_string();
 	return os;
@@ -545,14 +588,23 @@ bool stdex::math::rational::operator >=(const rational& other) const {
 	return !(*this<other);
 }
 
+std::istream& stdex::math::operator >>(std::istream& is,stdex::math::rational& num) {
+	std::string	input;
+	is>>input;
+	stdex::math::rational temp(input);
+	num.num()=input.num();
+	num.den()=input.den();
+	return is;
+}
+
 std::ostream& stdex::math::operator <<(std::ostream& os,const stdex::math::rational& num) {
 	os<<num.to_string();
 	return os;
 }
 
-const stdex::math::bigint& stdex::math::rational::num() const { return numerator_; }
+stdex::math::bigint& stdex::math::rational::num() const { return numerator_; }
 
-const stdex::math::bigint& stdex::math::rational::den() const { return denominator_; }
+stdex::math::bigint& stdex::math::rational::den() const { return denominator_; }
 
 std::string stdex::math::rational::to_string() const {
 	if (denominator_==bigint(1)) {
@@ -719,6 +771,13 @@ bool stdex::math::multibase::operator >(const stdex::math::multibase& other) con
 
 bool stdex::math::multibase::operator >=(const stdex::math::multibase& other) const {
 	return !(*this<other);
+}
+
+std::istream& stdex::math::operator <<(std::istream& is,stdex::math::multibase& num) {
+	std::string input;
+	is>>input;
+	num.assign(input);
+	return is;
 }
 
 std::ostream& stdex::math::operator <<(std::ostream& os,const stdex::math::multibase& num) {

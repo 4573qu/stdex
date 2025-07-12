@@ -1,9 +1,10 @@
-//Last Modified At 2025/07/09
-//@Version 1.0.0.0
+//Last Modified At 2025/07/12
+//@Version 1.0.0.1
 #ifndef _STD4573_MATH_NUMERIC_H_
 #define _STD4573_MATH_NUMERIC_H_ 1
 
 #include <cstddef>
+#include <iostream>
 #include <type_traits>
 #include <vector>
 
@@ -54,15 +55,21 @@ public:
 	bool operator >(const bigint& other) const;
 	bool operator >=(const bigint& other) const;
 
+private:
 	bigint operator <<(size_t n) const;
 	bigint& operator <<=(size_t n);
 
+public:
+	friend std::istream& operator >>(std::istream& is,bigint& num);
 	friend std::ostream& operator <<(std::ostream& os,const bigint& num);
 
 	bool zero() const;
 	bigint abs() const;
+	
+private:
 	bigint subnum(size_t start,size_t end) const;
 	
+public:
 	std::string to_string() const;
 	explicit operator long long() const;
 	explicit operator int() const;
@@ -112,12 +119,13 @@ public:
 	bool operator <=(const rational& other) const;
 	bool operator >(const rational& other) const;
 	bool operator >=(const rational& other) const;
-	
+
+	friend std::istream& operator >>(std::istream& is,rational& num);
 	friend std::ostream& operator <<(std::ostream& os,const rational& num);
-	
-	const bigint& num() const;
-	const bigint& den() const;
-	
+
+	bigint& num() const;
+	bigint& den() const;
+
 	std::string to_string() const;
 	explicit operator double() const;
 	explicit operator float() const;
@@ -168,6 +176,7 @@ public:
 	bool operator >(const multibase& other) const;
 	bool operator >=(const multibase& other) const;
 
+	friend std::istream& operator >>(std::istream& is,multibase& num);
 	friend std::ostream& operator <<(std::ostream& os,const multibase& num);
 
 	double base() const;
