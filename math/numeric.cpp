@@ -351,7 +351,7 @@ stdex::math::bigint& stdex::math::bigint::operator <<=(size_t n) {
 
 std::istream& stdex::math::operator >>(std::istream& is,stdex::math::bigint& num) {
 	std::string input;
-	bool use_int=true;
+	bool use_int=false;
 	int int_input;
 	if (is>>input) {
 		bool is_int=true;
