@@ -28,7 +28,7 @@ public:
 		if (exponent<0) {
 			throw std::invalid_argument("Negative exponent is illegal");
 		}
-		coeffcients_[exponent]=coeff;
+		coefficients_[exponent]=coeff;
 	}
 	template <typename _Up>
 	_Up evaluate(_Up x) const {
@@ -36,7 +36,7 @@ public:
 		_Up power(1);
 		_Up last_power(0);
 		for (auto& it:coefficients_) {
-			for (last_power;i<it.first;last_power+=1) { //Avoid _Up lacks operator ++
+			for (last_power;last_power<it.first;last_power+=1) { //Avoid _Up lacks operator ++
 				power*=x;
 			}
 			result+=it.second*power;
@@ -62,9 +62,13 @@ public:
 		}
 		return polynomial<_Tp>(deriv);
 	}
-	//JIFEN
-	polynomial<_Tp> integral() const {
-		
+	polynomial<_Tp> integral(_Tp constnum=0) const {
+		std::map<_Tp,int> integ();
+		for (auto& it:coefficients_) {
+			integ[it.first+1]=it.second/it.first;
+		}
+		integ[0]=constnum;
+		return polynomial<_Tp>(integ);
 	}
 	//CHAZHI
 	polynomial<_Tp> interpolate(const std::vector<_Tp>& x_points, const std::vector<_Tp>& y_points);
@@ -72,28 +76,43 @@ public:
 		if (coefficients_.empty()) {
 			return -1;
 		}
-		for (std::map<_Tp,_Tp>::iterator it=coefficients_.rbegin();it!=coefficients_.rend();it++) {
-			if (it->second!=base_unit_trait<_Tp>.zero()) {	
+		for (auto it=coefficients_.rbegin();it!=coefficients_.rend();it++) {
+			if (it->second!=base_unit_trait<_Tp>::zero()) {	
 				return it->first;
 			}
 		}
 		return -1;
 	}
-	//GET CHENGYUAN
+	std::map<_Tp,_Tp>& coefficients() { return coefficients_; }
+	std::string to_string(const std::string& var="x") {
+		std::string result;
+		for (auto it=coefficients_.rbegin();it!=coefficients_.rend();it++) {
+				if constexpr (std::is_arithmetic_v<_Tp>) {
+					result+=std::to_string(it.second)+var+"^"+std::to_string(it.first);
+				} else {
+					result+=it.second.to_string()+var+"^"+it.first.to_string();
+				}
+				if (it!=(--coefficients_.rend())) {
+					result+="+";
+				}
+		}
+		return result;
+	}
 };
 
 //ZUIDAGONGYUE(lcm SHI ZUIXIAOGONGBEI)
-template <typename _Tp>
-polynomial<_Tp> gcd(const polynomial<_Tp>&,const polynomial<_Tp>&);
+//template <typename _Tp>
+//polynomial<_Tp> gcd(const polynomial<_Tp>&,const polynomial<_Tp>&);
 //up to chengyuanhanshu?
 
+/*
 template <typename _Tp=polynomial<double>>
 class rational_function {
 	_Tp numerator_;
 	_Tp denominator_;
 public:
-	auto evaluate(auto x) const { /*...*/ }
-	rational_function derivative() const { /*...*/ }
+	auto evaluate(auto x) const {  }
+	rational_function derivative() const {  }
 };
 
 template <typename _Tp>
@@ -126,6 +145,7 @@ class laurent_polynomial {
 public:
 	
 };
+*/
 
 }
 

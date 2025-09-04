@@ -1,6 +1,6 @@
-//Last Modified At 2025/07/12
-//@Version 1.0.0.1
-//@H_Version 1.0.0.1
+//Last Modified At 2025/07/20
+//@Version 1.0.0.2
+//@H_Version 1.0.0.2
 #include "numeric.h"
 
 #include <algorithm>
@@ -351,7 +351,7 @@ stdex::math::bigint& stdex::math::bigint::operator <<=(size_t n) {
 
 std::istream& stdex::math::operator >>(std::istream& is,stdex::math::bigint& num) {
 	std::string input;
-	bool use_int=false;
+	/*bool use_int=false;
 	int int_input;
 	if (is>>input) {
 		bool is_int=true;
@@ -378,15 +378,19 @@ std::istream& stdex::math::operator >>(std::istream& is,stdex::math::bigint& num
 		}
 	} else {
 		use_int=false;
+	}*/
+	if (is>>input) {
+		stdex::math::bigint temp(input);
+		num.digits_=temp.digits_;
+		num.negative_=temp.negative_;
+	} else {
+		is.setstate(std::ios::failbit);
 	}
-	stdex::math::bigint temp;
-	if (use_int) {
+	/*if (use_int) {
 		new(&temp) stdex::math::bigint(int_input);
 	} else {
 		new(&temp) stdex::math::bigint(input);
-	}
-	num.digits_=temp.digits_;
-	num.negative_=temp.negative_;
+	}*/
 	return is;
 }
 
@@ -590,16 +594,29 @@ bool stdex::math::rational::operator >=(const rational& other) const {
 
 std::istream& stdex::math::operator >>(std::istream& is,stdex::math::rational& num) {
 	std::string	input;
-	is>>input;
-	stdex::math::rational temp(input);
-	num.num()=temp.num();
-	num.den()=temp.den();
+	if (is>>input) {
+		stdex::math::rational temp(input);
+		num.num()=temp.num();
+		num.den()=temp.den();
+	} else {
+		is.setstate(std::ios::failbit);
+	}
 	return is;
 }
 
 std::ostream& stdex::math::operator <<(std::ostream& os,const stdex::math::rational& num) {
 	os<<num.to_string();
 	return os;
+}
+
+stdex::math::rational stdex::math::rational::abs() const {
+	stdex::math::rational result=*this;
+	if (result>0) {
+		return result;
+	} else {
+		return -result;
+	}
+	return result;
 }
 
 stdex::math::bigint& stdex::math::rational::num() { return numerator_; }
@@ -775,8 +792,11 @@ bool stdex::math::multibase::operator >=(const stdex::math::multibase& other) co
 
 std::istream& stdex::math::operator >>(std::istream& is,stdex::math::multibase& num) {
 	std::string input;
-	is>>input;
-	num.assign(input);
+	if (is>>input) {
+		num.assign(input);
+	} else {
+		is.setstate(std::ios::failbit);
+	}
 	return is;
 }
 

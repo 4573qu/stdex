@@ -694,6 +694,7 @@ class p_adic {
 		}
 		return true;
 	}
+	
 	static long mod_inverse(long a,long p) {
 		a%=p;
 		if (a<0) {
@@ -714,105 +715,43 @@ class p_adic {
 		}
 		return t1<0;t1+p:t1;
 	}
-	void validate_base() const {
-		if (base_<2 || !is_prime(base_)) {
-			throw std::invalid_argument("Base must be prime");
-		}
-	}
-	p_adic& normalize() {
-		auto first_nzero=std::find_if(digits_.begin(),digits_.end(),[](long d) { return d!=0; });
-		if (first_nzero==digits_.end()) {
-			zero_=true;
-			negative_=false;
-			valuation_=0;
-			digits_.clear();
-			return *this;
-		}
-		valuation_+=std::distance(digits_.begin(),first_nzero);
-		digits_.erase(digits_.begin(),first_nzero);
-		if (digits_.size()>precision_) {
-			digits_.resize(precision_);
-		}
-        zero_=digits_.empty()||std::all_of(digits_.begin(),digits_.end(),[](long d) { return !d; });
-		if (zero_) {
-			negative_=false;
-			valuation_=0;
-		}
-        return *this;
-	}
-	void assign(long long value) {
-		negative_=value<0;
-		abs_assign(std::abs(value));
-	}
-	void abs_assign(long long value) {
-		digits_.clear();
-		valuation_=0;
-		zero_=!value;
-		if (zero_) {
-			return;
-		}
-		while (value>0 && digits_.size()<precision_) {
-			digits_.push_back(value%base_);
-			value/=base_;
-		}
-		std::reverse(digits_.begin(),digits_.end());
-	}
-	void assign(const std::string& s) {
-		digits_.clear();
-		valuation_=0;
-		negative_=false;
-		zero_=true;
-		std::string s=str;
-		s.erase(std::remove_if(s.begin(),s.end(),::isspace),s.end());
-		if (s.empty()) {
-			return;
-		}
-		int start=0;
-		if (s[0]=='-') {
-			negative_=true;
-			start=1;
-		} else if (s[0]=='+') {
-			start=1;
-		}
-		int dot_pos=s.find('.');
-		std::string integer_part,fractional_part;
-		if (dot_pos!=std::string::npos) {
-			integer_part=s.substr(start,dot_pos-start);
-			fractional_part=s.substr(dot_pos+1);
-		} else {
-			integer_part=s.substr(start);
-		}
-		if (integer_part.empty() && fractional_part.empty()) {
-			return;
-		}
-		for (char c:integer_part) {
-            long digit;
-			if (c>='0' && c<='9') digit=c-'0';
-			if (c>='A' && c<='Z') digit=10+(c-'A');
-			if (c>='a' && c<='z') digit=10+(c-'a');
-			throw std::invalid_argument("Invalid digit character");      
-			if (digit>=base_) {
-				throw std::invalid_argument("Invalid digit for base");
+	
+	void normalize() {
+		long carry=0;
+		for (int i=0;i<digits_.size();i++) {
+			digits_[i]+=carry;
+			carry=digits_[i]/static_cast<long>(base_);
+			digits_[i]%=base_;
+			if (digits_[i]<0) {
+				digits_[i]+=base_;
+				carry--;
 			}
+		}
+		while (carry) {
+			long digit=carry%base_;
+			carry/=base_;
 			digits_.push_back(digit);
 		}
-		if (!fractional_part.empty()) {
-			valuation_=-static_cast<long>(fractional_part.size());
-			for (auto it=fractional_part.rbegin();it!=fractional_part.rend();it++) {
-				long digit;
-				char c=*it;
-				if (c>='0' && c<='9') digit=c-'0';
-				if (c>='A' && c<='Z') digit=10+(c-'A');
-				if (c>='a' && c<='z') digit=10+(c-'a');
-				throw std::invalid_argument("Invalid digit character"); 
-                if (digit>=base_) {
-					throw std::invalid_argument("Invalid digit for base");
-				}
-				digits_.insert(digits_.begin(), digit);
+		size_t leading_zeros=0;
+		for (auto it=digits_.rbegin();it!=digits_.rend();it++) {
+			if (*it) {
+				break;
+			}
+			leading_zeros++;
+		}
+		if (leading_zeros>0) {
+			digits_.resize(digits_.size()-leading_zeros);
+		}
+		if (digits_.empty()) {
+			valuation_=0;
+			negative_=false;
+		} else {
+			while (!digits_.empty() && !digits_.front()) {
+				digits_.erase(digits_.begin());
+				valuation_++;
 			}
 		}
-		normalize();
-    }
+	}
 	void hensel_lift(p_adic& result,const p_adic& a,const p_adic& b,int target_precision) const {
 		p_adic x(b.base_,0,1);
 		x.digits_.resize(1);
@@ -838,9 +777,6 @@ class p_adic {
 		result=x.truncate(target_precision);
 	}
 	static void align_exponents(p_adic& lhs,p_adic& rhs) {
-		if (lhs.valuation_==rhs.valuation_) {
-			return;
-		}
 		const int min_valuation=std::min(lhs.valuation_,rhs.valuation_);
 		if (lhs.valuation_>min_valuation) {
 			int shift=lhs.valuation_-min_valuation;
@@ -920,20 +856,34 @@ class p_adic {
 	}
 
 public:
-	p_adic() : base_(2) , precision_(20), valuation_(0) , zero_(true) , negative_(false) {	}
 	explicit p_adic(unsigned base,int precision=20) : base_(base) , precision_(precision) , valuation_(0) , zero_(true) , negative_(false) {
-		validate_base();
-		//throw std::invalid_argument("Base must be prime bigger than 1");
+		if (base<2) {
+			throw std::invalid_argument("Base must be prime bigger than 1");
+		}
+		digits_.resize(precision,0);
 	}
-	p_adic(unsigned base,long long value,int precision=20) : base_(base) , precision_(precision) , valuation_(0) , zero_(!value) , negative_(value<0) {
-		validate_base();
-		if (zero_) {
+	p_adic(unsigned base,long value,int precision) : base_(base) , precision_(precision) , valuation_(0) , zero_(!value) , negative_(false) {
+		if (base<2) {
+			throw std::invalid_argument("Base must be prime bigger than 1");
+		}
+		long abs_value=std::abs(value);
+		digits_.clear();
+		if (!abs_value) {
+			digits_.push_back(0);
+			negative_=false;
 			return;
 		}
-		abs_assign(std::abs(value));
+		while (abs_value>0 && digits_.size()<precision) {
+			digits_.push_back(abs_value%base);
+			abs_value/=base;
+		}
+		std::reverse(digits_.begin(),digits_.end());
+		normalize();
 	}
 	p_adic(unsigned base,rational value,int precision) : base_(base) , precision_(precision) , valuation_(0) , zero_(value==0) , negative_(value<0) {
-		validate_base();
+		if (base<2) {
+			throw std::invalid_argument("Base must be prime bigger than 1");
+		}
 		if (value.den()==0) {
 			throw std::domain_error("Division by zero");
 		}
@@ -942,18 +892,31 @@ public:
 		p_adic den(base_,(long long)(value.den().abs()),precision);
 		*this=num/den;
 	}
-	p_adic(const std::vector<long>& digits,int base,long valuation,int precision=20,bool negative=false) : base_(base) , precision_(precision) , valuation_(valuation) , negative_(negative) , digits_(digits) {
-		validate_base();
-		normalize();
+	/*p_adic(unsigned base,const std::string& digit_str,int precision) : base_(base) , precision_(precision) , zero_(true) {
+		if (base<2) {
+			throw std::invalid_argument("Base must be prime bigger than 1");
+		}
+		digits_.resize(precision,0);
+		std::istringstream iss(digit_str);
+		std::vector<long> coeffs;
+		long coeff;
+		while (iss>>coeff) {
+			if (coeff<0 || static_cast<unsigned>(coeff)>=base) {
+				throw std::invalid_argument("Invalid digit for base");
+			}
+			coeffs.push_back(coeff);
+		}
+		if (coeffs.empty()) {
+			return;
+		}
+		std::reverse(coeffs.begin(),coeffs.end());
+		zero_=false;
+		int min_size=std::min(precision,static_cast<int>(coeffs.size()));
+		for (int i=0;i<min_size;i++) {
+			digits_[i]=coeffs[i];
+		}
 	}
-	p_adic(std::initializer_list<long> digits,int base,long valuation,int precision=20,bool negative=false) : base_(base) , precision_(precision) , valuation_(valuation) , negative_(negative) , digits_(digits) {
-		validate_base();
-		normalize();
-	}
-	p_adic(const std::string& s,int base,int precision=20) : base_(base) , precision_(precision) {
-		validate_base();
-		assign(s);
-	}
+	//from vector*/
 
 	p_adic(const p_adic&) = default;
 	p_adic(p_adic&&) = default;
@@ -961,9 +924,6 @@ public:
 	p_adic& operator =(const p_adic&) = default;
 	p_adic& operator =(p_adic&&) = default;
 
-	p_adic operator +() const {
-		return *this;
-	}
 	p_adic operator -() const {
 		p_adic result=*this;
 		if (!zero_) {
@@ -1129,10 +1089,7 @@ public:
 		p_adic lhs=*this;
 		p_adic rhs=other;
 		align_exponents(lhs,rhs);
-		if (lhs.digits_.size()!=rhs.digits_.size()) {
-			return lhs.digits_.size()<rhs.digits_.size();
-		}
- 		for (int i=lhs.digits_.size()-1;i>=0;i--) {
+		for (int i=lhs.digits_.size()-1;i>=0;i--) {
 			if (lhs.digits_[i]<rhs.digits_[i]) {
 				return negative_?false:true;
 			}
@@ -1155,10 +1112,9 @@ public:
 	//friend std::ostream& operator <<(std::ostream& os,const p_adic& num);
 	
 	p_adic abs() const {
-		if (negative_) {
-			return -(*this);
-		}
-		return *this;
+		p_adic result=*this;
+		result.negative_=!negative_;
+		return result;
 	}
 	p_adic shift(int exponent) const {
 		p_adic result=*this;
