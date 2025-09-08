@@ -1,5 +1,5 @@
-//Last Modified At 2025/07/20
-//@Version 1.0.0.2
+//Last Modified At 2025/09/09
+//@Version 1.0.0.3
 //@H_Version 1.0.0.2
 #include "numeric.h"
 
@@ -593,7 +593,7 @@ bool stdex::math::rational::operator >=(const rational& other) const {
 }
 
 std::istream& stdex::math::operator >>(std::istream& is,stdex::math::rational& num) {
-	std::string	input;
+	std::string input;
 	if (is>>input) {
 		stdex::math::rational temp(input);
 		num.num()=temp.num();
@@ -611,11 +611,8 @@ std::ostream& stdex::math::operator <<(std::ostream& os,const stdex::math::ratio
 
 stdex::math::rational stdex::math::rational::abs() const {
 	stdex::math::rational result=*this;
-	if (result>0) {
-		return result;
-	} else {
-		return -result;
-	}
+	if (result>0) return result;
+	else return -result;
 	return result;
 }
 
@@ -624,16 +621,14 @@ stdex::math::bigint& stdex::math::rational::num() { return numerator_; }
 stdex::math::bigint& stdex::math::rational::den() { return denominator_; }
 
 std::string stdex::math::rational::to_string() const {
-	if (denominator_==bigint(1)) {
-		return numerator_.to_string();
-	}
-    return numerator_.to_string()+"/"+denominator_.to_string();
+	if (denominator_==bigint(1)) return numerator_.to_string();
+	return numerator_.to_string()+"/"+denominator_.to_string();
 }
 
 stdex::math::rational::operator double() const {
 	double num=static_cast<double>(numerator_);
 	double den=static_cast<double>(denominator_);
-    return num/den;
+	return num/den;
 }
 
 stdex::math::rational::operator float() const {
@@ -655,25 +650,17 @@ double stdex::math::multibase::parse(const std::string& s) {
 	double power=1.0;
 	for (int i=int_part.size()-1;i>=0;i--) {
 		char c=int_part[i];
-		if (c<'0' || c>'9') {
-			throw std::invalid_argument("Invalid digit");
-		}
+		if (c<'0' || c>'9') throw std::invalid_argument("Invalid digit");
 		int digit=c-'0';
-		if (digit>=base_) {
-			throw std::invalid_argument("Digit exceeds base");
-		}
+		if (digit>=base_) throw std::invalid_argument("Digit exceeds base");
 		result+=digit*power;
 		power*=base_;
 	}
 	power=1.0/base_;
 	for (char c:frac_part) {
-		if (c<'0' || c>'9') {
-			throw std::invalid_argument("Invalid digit");
-		}
+		if (c<'0' || c>'9') throw std::invalid_argument("Invalid digit");
 		int digit=c-'0';
-		if (digit>=base_) {
-			throw std::invalid_argument("Digit exceeds base");
-		}
+		if (digit>=base_) throw std::invalid_argument("Digit exceeds base");
 		result+=digit*power;
 		power/=base_;
 		if (power<1e-15) break;
@@ -685,15 +672,11 @@ double stdex::math::multibase::parse(const std::string& s) {
 stdex::math::multibase::multibase() : base_(10.0), value_(0.0), precision_(6) { }
 
 stdex::math::multibase::multibase(double base,double value,int precision) : base_(base) , value_(value) , precision_(precision) {
-	if (base_<=1) {
-		throw std::invalid_argument("Base must be bigger than 1");
-	}
+	if (base_<=1) throw std::invalid_argument("Base must be bigger than 1");
 }
 
 stdex::math::multibase::multibase(double base,const std::string& s,int precision) : base_(base), precision_(precision) {
-	if (base_<=1) {
-		throw std::invalid_argument("Base must be bigger than 1");
-	}
+	if (base_<=1) throw std::invalid_argument("Base must be bigger than 1");
 	value_=parse(s);
 }
 
@@ -709,7 +692,7 @@ stdex::math::multibase& stdex::math::multibase::operator =(double value) {
 
 stdex::math::multibase& stdex::math::multibase::operator =(const stdex::math::bigint& value) {
 	value_=static_cast<double>(value);
-    return *this;
+	return *this;
 }
 
 stdex::math::multibase& stdex::math::multibase::operator =(const stdex::math::rational& value) {
@@ -755,9 +738,7 @@ stdex::math::multibase& stdex::math::multibase::operator *=(const stdex::math::m
 }
 
 stdex::math::multibase stdex::math::multibase::operator /(const stdex::math::multibase& other) const {
-	if (std::abs(other.value_)<epsilon_) {
-		throw std::domain_error("Division by zero");
-	}
+	if (std::abs(other.value_)<epsilon_) throw std::domain_error("Division by zero");
 	return stdex::math::multibase(base_,value_/other.value_,std::max(precision_,other.precision_));
 }
 
@@ -792,11 +773,8 @@ bool stdex::math::multibase::operator >=(const stdex::math::multibase& other) co
 
 std::istream& stdex::math::operator >>(std::istream& is,stdex::math::multibase& num) {
 	std::string input;
-	if (is>>input) {
-		num.assign(input);
-	} else {
-		is.setstate(std::ios::failbit);
-	}
+	if (is>>input) num.assign(input);
+	else is.setstate(std::ios::failbit);
 	return is;
 }
 
@@ -806,9 +784,7 @@ std::ostream& stdex::math::operator <<(std::ostream& os,const stdex::math::multi
 }
 
 void stdex::math::multibase::base(double base) {
-	if (base<=1) {
-		throw std::invalid_argument("Base must be bigger than 1");
-	}
+	if (base<=1) throw std::invalid_argument("Base must be bigger than 1");
 	base_=base;
 }
 
@@ -825,18 +801,13 @@ double stdex::math::multibase::epsilon() {
 }
 
 void stdex::math::multibase::precision(int precision) {
-	if (precision<0) {
-		throw std::invalid_argument("Precision cannot be negative");
-	}
+	if (precision<0) throw std::invalid_argument("Precision cannot be negative");
 	precision_=precision;
 }
 
 void stdex::math::multibase::epsilon(double epsilon) {
-	if (epsilon<=0) {
-		throw std::invalid_argument("Epsilon must be positive");
-	} else if (epsilon>0.01) {
-		throw std::out_of_range("Epsilon must be less than 0.01");
-	} 
+	if (epsilon<=0) throw std::invalid_argument("Epsilon must be positive");
+	else if (epsilon>0.01) throw std::out_of_range("Epsilon must be less than 0.01");
 	epsilon_=epsilon;
 }
 
@@ -908,7 +879,7 @@ template <typename _Tp>
 stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator =(const _Tp& real) {
 	real_=real;
 	imag_=0;
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -916,7 +887,7 @@ template <typename _Up>
 stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator =(const stdex::math::complex<_Up>& other) {
 	real_=other.real();
 	imag_=other.imag();
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -941,7 +912,7 @@ template <typename _Up>
 stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator +=(const stdex::math::complex<_Up>& other) noexcept {
 	real_+=other.real();
 	imag_+=other.imag();
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -963,7 +934,7 @@ template <typename _Up>
 stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator -=(const stdex::math::complex<_Up>& other) noexcept {
 	real_-=other.real();
 	imag_-=other.imag();
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -1003,9 +974,7 @@ stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator *=(const _Up& sca
 template <typename _Tp>
 stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator /=(const stdex::math::complex<_Tp>& other) noexcept {
 	const _Tp denom=other.real_*other.real_+other.imag_*other.imag_;
-	if (denom==0) {
-		throw std::domain_error("Complex division by zero");
-	}   
+	if (denom==0) throw std::domain_error("Complex division by zero");
 	const _Tp r=(real_*other.real_+imag_*other.imag_)/denom;
 	const _Tp i=(imag_*other.real_-real_*other.imag_)/denom;
 	real_=r;
@@ -1017,9 +986,7 @@ template <typename _Tp>
 template <typename _Up>
 stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator /=(const stdex::math::complex<_Up>& other) noexcept {
 	const _Tp denom=other.real()*other.real()+other.imag()*other.imag();
-	if (denom==0) {
-		throw std::domain_error("Complex division by zero");
-	}
+	if (denom==0) throw std::domain_error("Complex division by zero");
 	const _Tp r=(real_*other.real()+imag_*other.imag())/denom;
 	const _Tp i=(imag_*other.real()-real_*other.imag())/denom;
 	real_=r;
@@ -1030,12 +997,10 @@ stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator /=(const stdex::m
 template <typename _Tp>
 template <typename _Up,typename>
 stdex::math::complex<_Tp>& stdex::math::complex<_Tp>::operator /=(const _Up& scalar) noexcept {
-	if (scalar==0) {
-		throw std::domain_error("Complex division by zero");
-	}
+	if (scalar==0) throw std::domain_error("Complex division by zero");
 	real_/=scalar;
-    imag_/=scalar;
-    return *this;
+	imag_/=scalar;
+	return *this;
 }
 
 template <typename _Tp>
@@ -1064,9 +1029,7 @@ _Tp stdex::math::complex<_Tp>::arg() const noexcept {
 template <typename _Tp>
 template <typename _Up,typename>
 stdex::math::complex<_Tp> stdex::math::complex<_Tp>::proj() const noexcept {
-	if (std::isinf(real_) || std::isinf(imag_)) {
-		return complex(std::numeric_limits<_Tp>::infinity(),std::copysign(_Tp(0),imag_));
-	}
+	if (std::isinf(real_) || std::isinf(imag_)) return complex(std::numeric_limits<_Tp>::infinity(),std::copysign(_Tp(0),imag_));
 	return *this;
 }
 
@@ -1118,9 +1081,7 @@ template <typename _Tp>
 template <typename _Up,typename>
 stdex::math::complex<_Tp> stdex::math::complex<_Tp>::tan() const {
 	const stdex::math::complex<_Tp> c=cos();
-	if (c.real()==0 && c.imag()==0) {
-		throw std::domain_error("Complex tangent undefined");
-	}
+	if (c.real()==0 && c.imag()==0) throw std::domain_error("Complex tangent undefined");
 	return sin()/c;
 }
 
@@ -1140,9 +1101,7 @@ template <typename _Tp>
 template <typename _Up,typename>
 stdex::math::complex<_Tp> stdex::math::complex<_Tp>::tanh() const {
 	const stdex::math::complex<_Tp> c=cosh();
-	if (c.real()==0 && c.imag()==0) {
-		throw std::domain_error("Complex hyperbolic tangent undefined");
-	}
+	if (c.real()==0 && c.imag()==0) throw std::domain_error("Complex hyperbolic tangent undefined");
 	return sinh()/c;
 }
 
@@ -1211,7 +1170,7 @@ stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator +=(const st
 	x_+=other.x_;
 	y_+=other.y_;
 	z_+=other.z_;
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -1221,14 +1180,14 @@ stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator +=(const st
 	x_+=other.x();
 	y_+=other.y();
 	z_+=other.z();
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
 template <typename _Up,typename>
 stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator +=(const _Up& scalar) noexcept {
 	w_+=scalar;
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -1236,7 +1195,7 @@ template <typename _Up,typename>
 stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator +=(const stdex::math::complex<_Up>& complexor) noexcept {
 	w_+=complexor.real();
 	x_+=complexor.imag();
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -1245,7 +1204,7 @@ stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator -=(const st
 	x_-=other.x_;
 	y_-=other.y_;
 	z_-=other.z_;
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -1255,14 +1214,14 @@ stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator -=(const st
 	x_-=other.x();
 	y_-=other.y();
 	z_-=other.z();
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
 template <typename _Up,typename>
 stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator -=(const _Up& scalar) noexcept {
 	w_-=scalar;
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -1270,7 +1229,7 @@ template <typename _Up,typename>
 stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator -=(const stdex::math::complex<_Up>& complexor) noexcept {
 	w_-=complexor.real();
 	x_-=complexor.imag();
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -1307,7 +1266,7 @@ stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator *=(const _U
 	x_*=scalar;
 	y_*=scalar;
 	z_*=scalar;
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -1321,15 +1280,13 @@ stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator *=(const st
 	x_=x;
 	y_=y;
 	z_=z;
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
 stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator /=(const stdex::math::quaternion<_Tp>& other) noexcept {
 	const _Tp norm=other.norm();
-	if (norm==0) {
-		throw std::domain_error("Quaternion division by zero");
-	}
+	if (norm==0) throw std::domain_error("Quaternion division by zero");
 	*this*=other.inverse();
 	return *this;
 }
@@ -1338,9 +1295,7 @@ template <typename _Tp>
 template <typename _Up>
 stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator /=(const stdex::math::quaternion<_Up>& other) noexcept {
 	const _Up norm=other.norm();
-	if (norm==0) {
-		throw std::domain_error("Quaternion division by zero");
-	}
+	if (norm==0) throw std::domain_error("Quaternion division by zero");
 	*this*=other.inverse();
 	return *this;
 }
@@ -1352,7 +1307,7 @@ stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator /=(const _U
 	x_/=scalar;
 	y_/=scalar;
 	z_/=scalar;
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -1360,7 +1315,7 @@ template <typename _Up,typename>
 stdex::math::quaternion<_Tp>& stdex::math::quaternion<_Tp>::operator /=(const stdex::math::complex<_Up>& complexor) noexcept {
 	stdex::math::quaternion<_Up> temp(complexor);
 	*this*=complexor;
-    return *this;
+	return *this;
 }
 
 template <typename _Tp>
@@ -1384,9 +1339,7 @@ template <typename _Tp>
 template <typename _Up,typename>
 stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::inverse() const {
 	const _Tp n=norm_sq();
-	if (n==0) {
-		throw std::domain_error("Quaternion has zero norm");
-	}
+	if (n==0) throw std::domain_error("Quaternion has zero norm");
 	return conj()/n;
 }
 
@@ -1394,9 +1347,7 @@ template <typename _Tp>
 template <typename _Up,typename>
 stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::unit() const {
 	const _Tp n=norm();
-	if (n==0) {
-		throw std::domain_error("Quaternion has zero norm");
-	}
+	if (n==0) throw std::domain_error("Quaternion has zero norm");
 	return *this/n;
 }
 
@@ -1446,9 +1397,7 @@ stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::exp() const noexcept 
 	const stdex::math::complex<_Tp> v(x_,y_);
 	const _Tp v_norm=v.abs();
 	const _Tp exp_w=std::exp(w_);
-	if (v_norm==0) {
-		return stdex::math::quaternion<_Tp>(exp_w,0,0,0);
-	}  
+	if (v_norm==0) return stdex::math::quaternion<_Tp>(exp_w,0,0,0);
 	const _Tp cos_v=std::cos(v_norm);
 	const _Tp sin_v=std::sin(v_norm);
 	const _Tp scale=exp_w*sin_v/v_norm;
@@ -1461,9 +1410,7 @@ stdex::math::quaternion<_Tp> stdex::math::quaternion<_Tp>::log() const noexcept 
 	const _Tp q_norm=this->norm();
 	const stdex::math::complex<_Tp> v(x_,y_);
 	const _Tp v_norm=v.abs();
-	if (q_norm==0 || v_norm==0) {
-		return stdex::math::quaternion<_Tp>(std::log(q_norm),0,0,0);
-	}
+	if (q_norm==0 || v_norm==0) return stdex::math::quaternion<_Tp>(std::log(q_norm),0,0,0);
 	const _Tp scale=std::acos(w_/q_norm)/v_norm;
 	return stdex::math::quaternion<_Tp>(std::log(q_norm),x_*scale,y_*scale,z_*scale);
 }
