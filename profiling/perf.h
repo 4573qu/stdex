@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/04
-//@Version 1.0.0.0
+//Last Modified At 2025/09/07
+//@Version 1.0.0.1
 #ifndef _STD4573_PROFILING_PERF_H_
 #define _STD4573_PROFILING_PERF_H_ 1
 
@@ -216,11 +216,11 @@ auto measure(_Func&& func,_Args&&... args) {
 	}
 }
 
+}
+
+}
+
 #define _STDEX_PERF_TIMER(unit) stdex::perf::scope_timer STDEX_PERF_TIMER_##__LINE__("",unit)
 #define _STDEX_NAMED_PERF_TIMER(name, unit) stdex::perf::scope_timer PERF_TIMER_##__LINE__(name,unit)
-
-}
-
-}
 
 #endif
