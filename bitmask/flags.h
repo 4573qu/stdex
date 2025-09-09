@@ -12,6 +12,13 @@
 #include <type_traits>
 #include <unordered_set>
 #include <vector>
+#include <utility>
+
+#if __cplusplus >= 202002L
+#define CONSTEXPR constexpr
+#else
+#define CONSTEXPR
+#endif
 
 namespace stdex {
 	
@@ -31,13 +38,28 @@ public:
 		value_=static_cast<std::underlying_type_t<_Tp>>(e);
 		return *this;
 	}
-	constexpr flags& operator <<=(_Tp e) noexcept {
+	virtual CONSTEXPR flags& operator <<=(_Tp e) noexcept {
 		value_|=static_cast<std::underlying_type_t<_Tp>>(e);
 		return *this;
 	}
-	constexpr flags operator <<(_Tp e) const noexcept {
-		return flags(*this)<<=e;
+	virtual CONSTEXPR flags operator <<(_Tp e) const noexcept {
+		auto result=*this;
+		result<<=e;
+		return result;
 	}
+	CONSTEXPR flags& operator <<=(flags<_Tp> value) noexcept {
+		value.for_each([&](_Tp e){
+			this->operator <<=(e);
+		});
+		return *this;
+	}
+	CONSTEXPR flags& operator <<(flags<_Tp> value) noexcept {
+		auto result=*this;
+		value.for_each([&](_Tp e){
+			result<<=(e);
+		});
+		return result;
+	} 
 	constexpr flags& operator >>=(_Tp e) noexcept {
 		value_&=~static_cast<std::underlying_type_t<_Tp>>(e);
 		return *this;
@@ -87,6 +109,12 @@ public:
 	exclusive_flags() {
 		exclusion_policy_=_DefaultPolicy;
 	}
+	template <relation_policy _OtherPolicy>
+	exclusive_flags(const exclusion<_Tp,_OtherPolicy>& other) {
+		*this=other;
+		exlucison_policy_=other.exclusion_policy_;
+		return *this;	
+	};
 	~exclusive_flags() {
 		std::set<flags<_Tp>*> exclusions;
 		for (auto& it:exclusions_) exclusions.insert(it.second);
@@ -94,6 +122,7 @@ public:
 	}
 	template <relation_policy _OtherPolicy>
 	exclusive_flags& operator =(const exclusive_flags<_Tp,_OtherPolicy>& other) {
+		if (this==&other) return *this;
 		flags<_Tp>::operator =(other);
 		for_each(clear_exclusion);
 		other.for_each(set_exclusion);
@@ -128,7 +157,7 @@ public:
 		if (exclusions_[e]->empty()) delete exclusions_[e];
 		exclusions_[e]=nullptr;
 	}
-	constexpr exclusive_flags& operator <<=(_Tp e) {
+	virtual CONSTEXPR exclusive_flags& operator <<=(_Tp e) override {
 		if (exclusion_policy_==RP_FORCE) {
 			if (exclusions_[e]) flags<_Tp>::operator >>=((_Tp)(*exclusions_[e]));
 		} else {
@@ -143,9 +172,6 @@ public:
 		}
 		flags<_Tp>::operator <<=(e);
 		return *this;
-	}
-	constexpr exclusive_flags operator <<(_Tp e) const {
-		return exclusive_flags(*this)<<=e;
 	}
 	const std::map<_Tp,flags<_Tp>*>& exclusions() const {
 		return exclusions_;
@@ -267,6 +293,20 @@ public:
 		forbidden_policy_=_DefaultForbiddenPolicy;
 		dependency_policy_=_DefaultDependencyPolicy;
 	}
+	template <relation_policy _OtherPolicy1,relation_policy _OtherPolicy2,relation_policy _OtherPolicy3>
+	advanced_flags(const advanced_flags<_Tp,_OtherPolicy1,_OtherPolicy2,_OtherPolicy3>& other) {
+		*this=other;
+		exlucison_policy_=other.exclusion_policy_;
+		forbidden_policy_=other.forbidden_policy_;
+		dependency_policy_=other.dependency_policy_;
+		return *this;	
+	};
+	template <relation_policy _OtherPolicy1,relation_policy _OtherPolicy2,relation_policy _OtherPolicy3>
+	advanced_flags& operator =(const advanced_flags<_Tp,_OtherPolicy1,_OtherPolicy2,_OtherPolicy3>& other) {
+		if (this==&other) return *this;
+		exclusion_flags<_Tp,_DefaultExclusionPolicy>::operator =(other);
+		return *this;
+	}
 	void set_forbidden_policy(relation_policy policy) {
 		forbidden_policy_=policy;
 	}
@@ -291,15 +331,12 @@ public:
 	void clear_forbidden(_Tp element) {
 		forbiddens_.erase(element);
 	}
-	advanced_flags& operator<<=(_Tp e) {
+	CONSTEXPR advanced_flags& operator<<=(_Tp e) override {
 		bool check=true;
 		if (check && !check_dependencies(e)) check=handle_dependency_failure(e);
 		if (check && !check_forbiddens(e)) check=handle_forbidden_failure(e);
 		if (check) exclusive_flags<_Tp,_DefaultExclusionPolicy>::operator<<=(e);
 		return *this;
-	}
-	advanced_flags operator<<(_Tp e) const {
-		return advanced_flags(*this)<<=e;
 	}
 	template <typename _Up=_Tp>
 	struct consistency_set {
@@ -394,6 +431,8 @@ public:
 }
 
 }
+
+#undef CONSTEXPR
 
 #define _STDEX_ENABLE_FLAGS_ENHANCED(EnumType) \
 template<> \
