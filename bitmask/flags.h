@@ -1,13 +1,17 @@
 //Last Modified At 2025/09/09
-//@Version 2.0.1.0
+//@Version 2.0.1.1
 #ifndef _STD4573_BITMASK_FLAGS_H_
 #define _STD4573_BITMASK_FLAGS_H_ 1
 
 #include <algorithm>
+#include <map>
+#include <queue>
 #include <set>
+#include <stack>
 #include <stdexcept>
 #include <type_traits>
-#include <map>
+#include <unordered_set>
+#include <vector>
 
 namespace stdex {
 	
@@ -148,6 +152,13 @@ public:
 	}
 };
 
+enum consistency_type {
+	CT_CYCLE,
+	CT_FORBIDDEN_WITH_DEPENDENCY,
+	CT_REVERSE_FORBIDDEN_WITH_DEPENDENCY,
+	CT_FORBIDDEN_SELF,
+};
+
 template <typename _Tp,relation_policy _DefaultExclusionPolicy=RP_REJECT,relation_policy _DefaultForbiddenPolicy=RP_REJECT,relation_policy _DefaultDependencyPolicy=RP_REJECT>
 class advanced_flags : public exclusive_flags<_Tp,_DefaultExclusionPolicy> {
 	std::map<_Tp,flags<_Tp>> forbiddens_;
@@ -191,7 +202,7 @@ private:
 	bool handle_forbidden_failure(_Tp e) {
 		if (forbidden_policy_==RP_EXCEPTION) throw std::invalid_argument("Forbidden conflict detected");
 		else if (forbidden_policy_==RP_FORCE) {
-			for (const auto& it:forbiddens_) {
+			for (auto& it:forbiddens_) {
 				if (this->contains(it.first) && it.second.contains(e)) flags<_Tp>::operator>>=(it.first);
 			}
 			if (forbiddens_.count(e)) flags<_Tp>::operator>>=((_Tp)forbiddens_[e]);
@@ -199,35 +210,58 @@ private:
 		}
 		return false;
 	}
-	bool check_dependency_cycle(_Tp start,flags<_Tp>& visited) const {
-		if (visited.contains(start)) return true; // 发现循环
-		visited<<=start;
-		if (dependencies_.count(start)) {
-			bool cycle_found=false;
-			dependencies_[start].for_each([&](_Tp e){
-				if (check_dependency_cycle(e,visited)) cycle_found=true;
-			});
-			if (cycle_found) return true;
-		}
-		visited>>=start;
-		return false;
-	}
-	bool check_mutual_with_dependency(flags<_Tp> group) const {
-		bool has_conflict=false;
-		group.for_each([&](_Tp lhs){
-			group.for_each([&](_Tp rhs){
-				if (lhs!=rhs) {
-					if (dependencies_.count(lhs) && dependencies_[lhs].contains(rhs)) has_conflict = true;
-				}
-			});
+    void tarjan(_Tp v,std::map<_Tp,flags<_Tp>>& graph,std::map<_Tp,int>& index,std::map<_Tp,int>& lowlink,flags<_Tp>& on_stack,std::stack<_Tp>& s,int& idx,std::vector<std::vector<_Tp>>& sccs) {
+    	index[v]=idx;
+    	lowlink[v]=idx++;
+    	s.push(v);
+    	on_stack<<=v;
+    	graph[v].for_each([&](_Tp e){
+    		if (!index.count(e)) {
+    			tarjan(e,graph,index,lowlink,on_stack,s,idx,sccs);
+    			lowlink[v]=std::min(lowlink[v],lowlink[e]);
+			} else if (on_stack.contains(e)) lowlink[v]=std::min(lowlink[v],index[e]);
 		});
-		return !has_conflict;
+		if (lowlink[v]==index[v]) {
+			std::vector<_Tp> scc;
+			_Tp w=(_Tp)-1;
+			while (w!=v && !s.empty()) {
+				w=s.top();
+				s.pop();
+				on_stack>>=w;
+				scc.push_back(w);
+			}
+			sccs.push_back(scc);
+		}
 	}
-	bool check_forbidden_with_dependency(_Tp e,flags<_Tp> forbidden) const {
-		if (dependencies_.count(e)) return !((_Tp)dependencies_[e] & (_Tp)forbidden);
-		return true;
+	std::unordered_set<_Tp> BFS(_Tp start,std::map<_Tp,flags<_Tp>>& graph,flags<_Tp>& deleted_nodes) {
+		std::unordered_set<_Tp> visited;
+		if (deleted_nodes.contains(start)) return visited;
+		std::queue<_Tp> q;
+		q.push(start);
+		visited.insert(start);
+		while (!q.empty()) {
+			_Tp temp=q.front();
+			q.pop();
+			if (graph.count(temp)) {
+				bool skip=false;
+				graph[temp].for_each([&](_Tp e){
+					if (deleted_nodes.contains(e)) skip=true;
+					if (!skip && !visited.count(e)) {
+						visited.insert(e);
+						q.push(e);
+					}
+				});
+			}
+		}
+		return visited;
 	}
-    
+	bool has_path(_Tp from,_Tp to,std::map<_Tp,flags<_Tp>>& graph,flags<_Tp> &deleted_nodes) {
+		if (from==to) return true;
+		if (deleted_nodes.contains(from) || deleted_nodes.contains(to)) return false;
+		auto result=BFS(from,graph,deleted_nodes);
+		return result.count(to);
+	}
+	
 public:
 	advanced_flags() {
 		forbidden_policy_=_DefaultForbiddenPolicy;
@@ -267,31 +301,86 @@ public:
 	advanced_flags operator<<(_Tp e) const {
 		return advanced_flags(*this)<<=e;
 	}
-	std::vector<flags<_Tp>> check_consistency() const {
-		std::vector<flags<_Tp>> inconsistent_groups;
-		for (const auto& it:dependencies_) {
-			flags<_Tp> visited;
-			if (check_dependency_cycle(it.first,visited)) inconsistent_groups.push_back(visited);
+	template <typename _Up=_Tp>
+	struct consistency_set {
+		static_assert(std::is_same_v<_Tp,_Up>,"the _Up of consistency must be match the _Tp of advanced_flags");
+		consistency_type type_;
+		std::vector<_Up> value_;
+		flags<_Up> extra_value_;
+	};
+	std::vector<consistency_set<_Tp>> check_consistency() {
+		std::vector<consistency_set<_Tp>> inconsistent_groups;
+		std::map<_Tp,flags<_Tp>> temp_dependencies;
+		for (auto& it:dependencies_) {
+			it.second.for_each([&temp_dependencies,&it](_Tp e){
+				temp_dependencies[e]<<=it.first;
+			});
 		}
-		for (const auto& it:exclusive_flags<_Tp,_DefaultExclusionPolicy>::exclusions_) {
-			if (it.second) {
-				if (!check_mutual_with_dependency(*it.second)) inconsistent_groups.push_back(*it.second);
+		std::set<std::pair<_Tp,_Tp>> temp_forbiddens;
+		for (auto& it:forbiddens_) {
+			it.second.for_each([&temp_forbiddens,&it](_Tp e){
+				temp_forbiddens.insert(std::make_pair(e,it.first));
+			});
+		}
+		std::map<_Tp,int> index;
+		std::map<_Tp,int> lowlink;
+		flags<_Tp> on_stack;
+		std::stack<_Tp> s;
+		int idx=0;
+		std::vector<std::vector<_Tp>> sccs;
+		for (auto& it:temp_dependencies) {
+			_Tp v=it.first;
+			if (!index.count(v)) tarjan(v,temp_dependencies,index,lowlink,on_stack,s,idx,sccs);
+		}
+		flags<_Tp> deleted_nodes;
+		for (auto& it:sccs) {
+			if (it.size()>1) {
+				consistency_set<_Tp> temp_result;
+				for (auto& jt:it) {
+					temp_result.value_.push_back(jt);
+					deleted_nodes<<=jt;
+				}
+				for (auto& jt:it) {
+					flags<_Tp> null_nodes;
+					std::unordered_set<_Tp> temp_successors=BFS(jt,temp_dependencies,null_nodes);
+					for (auto& kt:temp_successors) temp_result.extra_value_<<=kt;
+					for (auto& kt:temp_result.value_) temp_result.extra_value_>>=kt;
+				}
+				temp_result.type_=CT_CYCLE;
+				inconsistent_groups.push_back(temp_result);
 			}
 		}
-		for (const auto& it:forbiddens_) {
-			if (!check_forbidden_with_dependency(it.first,it.second)) inconsistent_groups.push_back(flags<_Tp>(it.first)<<((_Tp)it.second));
+		for (auto& it:temp_forbiddens) {
+			_Tp lhs=it.first;
+			_Tp rhs=it.second;
+			if (lhs==rhs) continue;
+			if (deleted_nodes.contains(lhs) || deleted_nodes.contains(rhs)) continue;
+			if (has_path(lhs,rhs,temp_dependencies,deleted_nodes)) {
+				consistency_set<_Tp> temp_result;
+				temp_result.type_=CT_FORBIDDEN_WITH_DEPENDENCY;
+				temp_result.value_.push_back(lhs);
+				temp_result.value_.push_back(rhs);
+				std::unordered_set<_Tp> succ=BFS(rhs,temp_dependencies,deleted_nodes);
+				for (auto& jt:succ) temp_result.extra_value_<<=jt;
+				inconsistent_groups.push_back(temp_result);
+			} else if (has_path(rhs,lhs,temp_dependencies,deleted_nodes)) {
+				consistency_set<_Tp> temp_result;
+				temp_result.type_=CT_REVERSE_FORBIDDEN_WITH_DEPENDENCY;
+				temp_result.value_.push_back(rhs);
+				temp_result.value_.push_back(lhs);
+				std::unordered_set<_Tp> succ=BFS(lhs,temp_dependencies,deleted_nodes);
+				for (auto& jt:succ) temp_result.extra_value_<<=jt;
+				inconsistent_groups.push_back(temp_result);
+			}
 		}
-		std::map<_Tp,int> duplicates;
-		for (const auto& it:inconsistent_groups) {
-			_Tp value=(_Tp)it;
-			duplicates[value]++;
+		for (auto& it:temp_forbiddens) {
+			if (it.first==it.second && !deleted_nodes.contains(it.first)) {
+				consistency_set<_Tp> temp_result;
+				temp_result.type_=CT_FORBIDDEN_SELF;
+				temp_result.value_.push_back(it.first);
+				inconsistent_groups.push_back(temp_result);
+			}
 		}
-		inconsistent_groups.erase(std::remove_if(inconsistent_groups.begin(),inconsistent_groups.end(),[&duplicates](const auto& e) {
-			if (duplicates[(_Tp)e]>1) {
-				duplicates[(_Tp)e]--;
-				return true;
-			} else return false;
-		}),inconsistent_groups.end());
 		return inconsistent_groups;
 	}
 	const std::map<_Tp,flags<_Tp>>& forbiddens() const {
