@@ -38,11 +38,11 @@ public:
 		value_=static_cast<std::underlying_type_t<_Tp>>(e);
 		return *this;
 	}
-	virtual CONSTEXPR flags& operator <<=(_Tp e) noexcept {
+	virtual CONSTEXPR flags& operator <<=(_Tp e) {
 		value_|=static_cast<std::underlying_type_t<_Tp>>(e);
 		return *this;
 	}
-	virtual CONSTEXPR flags operator <<(_Tp e) const noexcept {
+	virtual CONSTEXPR flags operator <<(_Tp e) const {
 		auto result=*this;
 		result<<=e;
 		return result;
@@ -110,10 +110,9 @@ public:
 		exclusion_policy_=_DefaultPolicy;
 	}
 	template <relation_policy _OtherPolicy>
-	exclusive_flags(const exclusion<_Tp,_OtherPolicy>& other) {
+	exclusive_flags(const exclusive_flags<_Tp,_OtherPolicy>& other) {
 		*this=other;
-		exlucison_policy_=other.exclusion_policy_;
-		return *this;	
+		exclusion_policy_=other.exclusion_policy_;	
 	};
 	~exclusive_flags() {
 		std::set<flags<_Tp>*> exclusions;
@@ -296,15 +295,14 @@ public:
 	template <relation_policy _OtherPolicy1,relation_policy _OtherPolicy2,relation_policy _OtherPolicy3>
 	advanced_flags(const advanced_flags<_Tp,_OtherPolicy1,_OtherPolicy2,_OtherPolicy3>& other) {
 		*this=other;
-		exlucison_policy_=other.exclusion_policy_;
+		exclusive_flags<_Tp,_DefaultExclusionPolicy>::exclusion_policy_=other.exclusion_policy_;
 		forbidden_policy_=other.forbidden_policy_;
-		dependency_policy_=other.dependency_policy_;
-		return *this;	
+		dependency_policy_=other.dependency_policy_;	
 	};
 	template <relation_policy _OtherPolicy1,relation_policy _OtherPolicy2,relation_policy _OtherPolicy3>
 	advanced_flags& operator =(const advanced_flags<_Tp,_OtherPolicy1,_OtherPolicy2,_OtherPolicy3>& other) {
 		if (this==&other) return *this;
-		exclusion_flags<_Tp,_DefaultExclusionPolicy>::operator =(other);
+		exclusive_flags<_Tp,_DefaultExclusionPolicy>::operator =(other);
 		return *this;
 	}
 	void set_forbidden_policy(relation_policy policy) {
