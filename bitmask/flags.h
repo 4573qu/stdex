@@ -1,5 +1,5 @@
 //Last Modified At 2025/09/09
-//@Version 2.0.1.1
+//@Version 2.0.2.0
 #ifndef _STD4573_BITMASK_FLAGS_H_
 #define _STD4573_BITMASK_FLAGS_H_ 1
 
@@ -192,33 +192,38 @@ class advanced_flags : public exclusive_flags<_Tp,_DefaultExclusionPolicy> {
 	relation_policy dependency_policy_;
 	
 private:
-	bool check_dependencies(_Tp e) const {
-		if (!dependencies_.count(e)) return true;
+	bool check_dependencies(_Tp value) const {
+		if (!dependencies_.count(value)) return true;
 		bool check=true;
-		dependencies_.at(e).for_each([this,&check](_Tp e){
+		dependencies_.at(value).for_each([this,&check](_Tp e){
 			check&=this->contains(e);
 		});
  		return check;
 	}
-	bool handle_dependency_failure(_Tp e) {
+	bool handle_dependency_failure(_Tp value) {
 		if (dependency_policy_==RP_EXCEPTION) throw std::invalid_argument("Dependency requirement not met");
 		else if (dependency_policy_==RP_FORCE) {
-			if (dependencies_.count(e)) {
-				dependencies_[e].for_each([this](_Tp e){
+			auto result=check_consistency();
+			for (auto& it:result) {
+				if (it.type_!=CT_CYCLE) continue;
+				if (std::find(it.value_.begin(),it.value_.end(),value)!=it.value_.end() || it.extra_value_.contains(value)) return false;
+			}
+			if (dependencies_.count(value)) {
+				dependencies_[value].for_each([this](_Tp e){
 					this->operator<<=(e);
 				});
-				if (check_dependencies(e)) return true;
+				if (check_dependencies(value)) return true;
 			}  
 		}
 		return false;
 	}
-	bool check_forbiddens(_Tp e) const {
+	bool check_forbiddens(_Tp value) const {
 		for (const auto& it:forbiddens_) {
-			if (this->contains(it.first) && it.second.contains(e)) return false;
+			if (this->contains(it.first) && it.second.contains(value)) return false;
 		}
 		bool check=true;
-		if (forbiddens_.count(e)) {
-			forbiddens_.at(e).for_each([this,&check](_Tp e){
+		if (forbiddens_.count(value)) {
+			forbiddens_.at(value).for_each([this,&check](_Tp e){
 				check&=!this->contains(e);
 			});
 		}
