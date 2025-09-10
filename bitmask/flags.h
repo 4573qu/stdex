@@ -17,9 +17,9 @@
 #include "../macros/cpp_version.h"//At Least 1.0
 
 #if __cplusplus >= _STDEX_CPP20_VERSION
-#define CONSTEXPR constexpr
+#define _STDEX_CONSTEXPR constexpr
 #else
-#define CONSTEXPR
+#define _STDEX_CONSTEXPR
 #endif
 
 namespace stdex {
@@ -40,22 +40,22 @@ public:
 		value_=static_cast<std::underlying_type_t<_Tp>>(e);
 		return *this;
 	}
-	virtual CONSTEXPR flags& operator <<=(_Tp e) {
+	virtual _STDEX_CONSTEXPR flags& operator <<=(_Tp e) {
 		value_|=static_cast<std::underlying_type_t<_Tp>>(e);
 		return *this;
 	}
-	virtual CONSTEXPR flags operator <<(_Tp e) const {
+	virtual _STDEX_CONSTEXPR flags operator <<(_Tp e) const {
 		auto result=*this;
 		result<<=e;
 		return result;
 	}
-	CONSTEXPR flags& operator <<=(flags<_Tp> value) noexcept {
+	_STDEX_CONSTEXPR flags& operator <<=(flags<_Tp> value) noexcept {
 		value.for_each([&](_Tp e){
 			this->operator <<=(e);
 		});
 		return *this;
 	}
-	CONSTEXPR flags& operator <<(flags<_Tp> value) noexcept {
+	_STDEX_CONSTEXPR flags& operator <<(flags<_Tp> value) noexcept {
 		auto result=*this;
 		value.for_each([&](_Tp e){
 			result<<=(e);
@@ -164,7 +164,7 @@ public:
 		if (exclusions_[e]->empty()) delete exclusions_[e];
 		exclusions_[e]=nullptr;
 	}
-	virtual CONSTEXPR exclusive_flags& operator <<=(_Tp e) override {
+	virtual _STDEX_CONSTEXPR exclusive_flags& operator <<=(_Tp e) override {
 		if (exclusion_policy_==RP_FORCE) {
 			if (exclusions_[e]) flags<_Tp>::operator >>=((_Tp)(*exclusions_[e]));
 		} else {
@@ -342,7 +342,7 @@ public:
 	void clear_forbidden(_Tp element) {
 		forbiddens_.erase(element);
 	}
-	CONSTEXPR advanced_flags& operator<<=(_Tp e) override {
+	_STDEX_CONSTEXPR advanced_flags& operator<<=(_Tp e) override {
 		bool check=true;
 		if (check && !check_dependencies(e)) check=handle_dependency_failure(e);
 		if (check && !check_forbiddens(e)) check=handle_forbidden_failure(e);
@@ -443,7 +443,7 @@ public:
 
 }
 
-#undef CONSTEXPR
+#undef _STDEX_CONSTEXPR
 
 #define _STDEX_ENABLE_FLAGS_ENHANCED(EnumType) \
 template<> \
