@@ -224,7 +224,10 @@ private:
 				dependencies_[value].for_each([this](_Tp e){
 					this->operator<<=(e);
 				});
-				if (check_dependencies(value)) return true;
+				if (check_dependencies(value)) {
+					exclusive_flags<_Tp,_DefaultExclusionPolicy>::operator <<=(value);
+					return true;
+				}
 			}  
 		}
 		return false;
@@ -241,13 +244,13 @@ private:
 		}
 		return check;
 	}
-	bool handle_forbidden_failure(_Tp e) {
+	bool handle_forbidden_failure(_Tp e,flags<_Tp>& result) {
 		if (forbidden_policy_==RP_EXCEPTION) throw std::invalid_argument("Forbidden conflict detected");
 		else if (forbidden_policy_==RP_FORCE) {
 			for (auto& it:forbiddens_) {
-				if (this->contains(it.first) && it.second.contains(e)) flags<_Tp>::operator>>=(it.first);
+				if (this->contains(it.first) && it.second.contains(e)) result<<=e;
 			}
-			if (forbiddens_.count(e)) flags<_Tp>::operator>>=((_Tp)forbiddens_[e]);
+			if (forbiddens_.count(e)) result<<=(_Tp)forbiddens_[e];
  			return true;
 		}
 		return false;
@@ -350,8 +353,14 @@ public:
 	_STDEX_CONSTEXPR advanced_flags& operator<<=(_Tp e) override {
 		bool check=true;
 		if (check && !check_dependencies(e)) check=handle_dependency_failure(e);
-		if (check && !check_forbiddens(e)) check=handle_forbidden_failure(e);
-		if (check) exclusive_flags<_Tp,_DefaultExclusionPolicy>::operator<<=(e);
+		flags<_Tp> result;
+		if (check && !check_forbiddens(e)) check=handle_forbidden_failure(e,result);
+		if (check) {
+			exclusive_flags<_Tp,_DefaultExclusionPolicy>::operator<<=(e);
+			result.for_each([this](_Tp e) {
+				this->operator >>=(e);
+			});
+		}
 		return *this;
 	}
 	template <typename _Up=_Tp>
