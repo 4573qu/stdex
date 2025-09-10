@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/09
-//@Version 2.0.2.0
+//Last Modified At 2025/09/10
+//@Version 2.0.2.1
 #ifndef _STD4573_BITMASK_FLAGS_H_
 #define _STD4573_BITMASK_FLAGS_H_ 1
 
@@ -14,7 +14,9 @@
 #include <vector>
 #include <utility>
 
-#if __cplusplus >= 202002L
+#include "../macros/cpp_version.h"//At Least 1.0
+
+#if __cplusplus >= _STDEX_CPP20_VERSION
 #define CONSTEXPR constexpr
 #else
 #define CONSTEXPR
@@ -118,6 +120,12 @@ public:
 		std::set<flags<_Tp>*> exclusions;
 		for (auto& it:exclusions_) exclusions.insert(it.second);
 		for (auto& it:exclusions) delete it;
+	}
+#ifndef _STDEX_IGNORE_BITMASK_FLAGS_WARNINGS
+	[[deprecated("Direct assignment bypasses ALL relation checks and cannot ensure the relations. If you are not sure what will happen, please use <<= instead")]]
+#endif
+	constexpr exclusive_flags& operator =(_Tp e) noexcept {
+		return flags::operator =(e);
 	}
 	template <relation_policy _OtherPolicy>
 	exclusive_flags& operator =(const exclusive_flags<_Tp,_OtherPolicy>& other) {

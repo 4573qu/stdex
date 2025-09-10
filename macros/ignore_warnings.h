@@ -1,0 +1,6 @@
+//Last Modified At 2025/09/10
+//@Version 1.0.0.0
+#ifndef _STDEX_IGNORE_WARNINGS
+#define _STDEX_IGNORE_WARNINGS
+#define _STDEX_IGNORE_BITMASK_FLAGS_WARNINGS
+#endif

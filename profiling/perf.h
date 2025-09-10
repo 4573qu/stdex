@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/07
-//@Version 1.0.0.1
+//Last Modified At 2025/09/10
+//@Version 1.0.0.2
 #ifndef _STD4573_PROFILING_PERF_H_
 #define _STD4573_PROFILING_PERF_H_ 1
 
@@ -12,7 +12,9 @@
 #include <string>
 #include <vector>
 
-#if __cplusplus >= 202002L
+#include "../macros/cpp_version.h"//At Least 1.0
+
+#if __cplusplus >= _STDEX_CPP20_VERSION
 #include <format>
 #include <source_location>
 #else
