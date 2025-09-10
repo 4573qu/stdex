@@ -1,5 +1,5 @@
 //Last Modified At 2025/09/10
-//@Version 2.0.2.1
+//@Version 2.0.2.2
 #ifndef _STD4573_BITMASK_FLAGS_H_
 #define _STD4573_BITMASK_FLAGS_H_ 1
 
@@ -125,7 +125,8 @@ public:
 	[[deprecated("Direct assignment bypasses ALL relation checks and cannot ensure the relations. If you are not sure what will happen, please use <<= instead")]]
 #endif
 	constexpr exclusive_flags& operator =(_Tp e) noexcept {
-		return flags::operator =(e);
+		flags<_Tp>::operator =(e);
+		return *this;
 	}
 	template <relation_policy _OtherPolicy>
 	exclusive_flags& operator =(const exclusive_flags<_Tp,_OtherPolicy>& other) {
@@ -182,6 +183,9 @@ public:
 	}
 	const std::map<_Tp,flags<_Tp>*>& exclusions() const {
 		return exclusions_;
+	}
+	const relation_policy& exclusion_policy() const {
+		return exclusion_policy_;
 	}
 };
 
@@ -291,6 +295,7 @@ private:
 				});
 			}
 		}
+		visited.erase(start);
 		return visited;
 	}
 	bool has_path(_Tp from,_Tp to,std::map<_Tp,flags<_Tp>>& graph,flags<_Tp> &deleted_nodes) {
@@ -436,6 +441,12 @@ public:
 	}
 	const std::map<_Tp,flags<_Tp>>& dependencies() const {
 		return dependencies_;
+	}
+	const relation_policy& forbidden_policy() const {
+		return forbidden_policy_;
+	}
+	const relation_policy& dependency_policy() const {
+		return dependency_policy_;
 	}
 };
 
