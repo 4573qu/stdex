@@ -1,7 +1,7 @@
-//Last Modified At 2025/09/10
-//@Version 2.0.2.2
-#ifndef _STD4573_BITMASK_FLAGS_H_
-#define _STD4573_BITMASK_FLAGS_H_ 1
+//Last Modified At 2025/09/11
+//@Version 2.0.2.3
+#ifndef _STD4573_BITWISE_FLAGS_H_
+#define _STD4573_BITWISE_FLAGS_H_ 1
 
 #include <algorithm>
 #include <map>
@@ -24,7 +24,7 @@
 
 namespace stdex {
 	
-namespace bitmask {
+namespace bitwise {
 
 template <typename _Tp>
 class flags {
@@ -121,7 +121,7 @@ public:
 		for (auto& it:exclusions_) exclusions.insert(it.second);
 		for (auto& it:exclusions) delete it;
 	}
-#ifndef _STDEX_IGNORE_BITMASK_FLAGS_WARNINGS
+#ifndef _STDEX_IGNORE_BITWISE_FLAGS_WARNINGS
 	[[deprecated("Direct assignment bypasses ALL relation checks and cannot ensure the relations. If you are not sure what will happen, please use <<= instead")]]
 #endif
 	constexpr exclusive_flags& operator =(_Tp e) noexcept {
@@ -467,12 +467,12 @@ public:
 
 #define _STDEX_ENABLE_FLAGS_ENHANCED(EnumType) \
 template<> \
-struct stdex::bitmask::flags<EnumType>::_flags_enhanced : std::true_type {}; \
-constexpr stdex::bitmask::flags<EnumType> operator <<(EnumType lhs,EnumType rhs) noexcept { \
-	return stdex::bitmask::flags<EnumType>(lhs)<<rhs; \
+struct stdex::bitwise::flags<EnumType>::_flags_enhanced : std::true_type {}; \
+constexpr stdex::bitwise::flags<EnumType> operator <<(EnumType lhs,EnumType rhs) noexcept { \
+	return stdex::bitwise::flags<EnumType>(lhs)<<rhs; \
 } \
-constexpr stdex::bitmask::flags<EnumType> operator >>(EnumType lhs,EnumType rhs) noexcept { \
-	return stdex::bitmask::flags<EnumType>(lhs)>>rhs; \
+constexpr stdex::bitwise::flags<EnumType> operator >>(EnumType lhs,EnumType rhs) noexcept { \
+	return stdex::bitwise::flags<EnumType>(lhs)>>rhs; \
 }
 
 #endif

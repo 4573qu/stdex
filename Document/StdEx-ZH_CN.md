@@ -16,7 +16,7 @@ StdEx库是一个包含文件模式的C++扩展库，本库使用非外部链接
 
 被标记为`[[deprecated]]`的函数会在给出处明确使用“**不建议的**”字样标注，请注意。
 
-## bitmask/flags.h(Version 2.0.2.1)
+## bitwise/flags.h(Version 2.0.2.1)
 
 ### 基本信息
 
@@ -30,9 +30,9 @@ flags.h旨在提供一个类型安全的位掩码标志管理的标志集功能�
 
 #### 使用方法
 
-单文件使用模式：`#include <bitmask/flags.h>`
+单文件使用模式：`#include <bitwise/flags.h>`
 
-项目使用模式：`#include <bitmask/flags.h>`
+项目使用模式：`#include <bitwise/flags.h>`
 
 #### 使用场景
 
@@ -64,7 +64,7 @@ flags.h旨在提供一个类型安全的位掩码标志管理的标志集功能�
 
 ##### 所属命名空间
 
-`stdex::bitmask`
+`stdex::bitwise`
 
 ##### 功能简述
 
@@ -113,7 +113,7 @@ flags.h旨在提供一个类型安全的位掩码标志管理的标志集功能�
 
 > [!WARNING]
 >
-> **<span style="color:red">请不要手动使用`struct stdex::bitmask::flags<EnumType>::_flags_enhanced : std::true_type {};`的方法，这将导致未定义行为。</span>**
+> **<span style="color:red">请不要手动使用`struct stdex::bitwise::flags<EnumType>::_flags_enhanced : std::true_type {};`的方法，这将导致未定义行为。</span>**
 
 | 方法                                                         | 说明                                                         | 复杂度 |
 | :----------------------------------------------------------- | :----------------------------------------------------------- | ------ |
@@ -135,7 +135,7 @@ enum class FilePermission : uint32_t {
 }
 
 struct file{`
-	stdex::bitmask::flags<FilePermisson> permission_;
+	stdex::bitwise::flags<FilePermisson> permission_;
 	//other members...
 	void add_permission(FilePermission permission) { permission_<<=permission; }
 	void set_admin_permission() { permission_=FilePermission::All; }
@@ -148,7 +148,7 @@ struct file{`
 }
 ```
 
-在上述代码中，我们创建了一个文件系统，其中`stdex::bitmask::flags<FilePermission>`用于管理文件权限。对于不同的权限，在`FilePermission`里给予了不同的取值，并提供了一个集合`FilePermission::All`来代表所有权限。
+在上述代码中，我们创建了一个文件系统，其中`stdex::bitwise::flags<FilePermission>`用于管理文件权限。对于不同的权限，在`FilePermission`里给予了不同的取值，并提供了一个集合`FilePermission::All`来代表所有权限。
 
 ###### 以字体设置为例（使用增强宏）
 
@@ -162,8 +162,8 @@ enum class FontStyle : uint32_t {
 }
 _STDEX_ENABLE_FLAGS_ENHANCED(FontStyle)
 int main() {
-    stdex::bitmask::flags<FontStyle> aHeadStyle=FontStyle::Bold<<FontStyle::Underline;
-    stdex::bitmask::flags<FontStyle> aCommentStyle=FontStyle::All>>FontStyle::Italic>>FontStyleBold;
+    stdex::bitwise::flags<FontStyle> aHeadStyle=FontStyle::Bold<<FontStyle::Underline;
+    stdex::bitwise::flags<FontStyle> aCommentStyle=FontStyle::All>>FontStyle::Italic>>FontStyleBold;
 }
 ```
 
@@ -173,7 +173,7 @@ int main() {
 
 ##### 所属命名空间
 
-`stdex::bitmask`
+`stdex::bitwise`
 
 ##### 功能简述
 
@@ -220,7 +220,7 @@ int main() {
 
 > [!WARNING]
 >
-> **<span style="color:red">除非你明确清楚使用operator =直接赋予某个\_Tp类型的值是不会经过互斥检查的，否则请不要使用标记为`[[deprecated]]`的operator =函数。如果你清楚上述行为，且需要使用operator =，你可以使用\_STDEX\_IGNORE\_BITMASK\_FLAGS\_WARNINGS宏或引入<macros/ignore_warnings.h>来避免抛出警告。</span>**
+> **<span style="color:red">除非你明确清楚使用operator =直接赋予某个\_Tp类型的值是不会经过互斥检查的，否则请不要使用标记为`[[deprecated]]`的operator =函数。如果你清楚上述行为，且需要使用operator =，你可以使用\_STDEX\_IGNORE\_BITWISE\_FLAGS\_WARNINGS宏或引入<macros/ignore_warnings.h>来避免抛出警告。</span>**
 
 ##### 使用样例
 
