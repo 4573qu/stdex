@@ -1,5 +1,5 @@
 //Last Modified At 2025/09/13
-//@Version 2.0.2.4
+//@Version 2.0.2.5
 #ifndef _STD4573_BITWISE_FLAGS_H_
 #define _STD4573_BITWISE_FLAGS_H_ 1
 
@@ -328,6 +328,8 @@ public:
 	advanced_flags& operator =(const advanced_flags<_Tp,_OtherPolicy1,_OtherPolicy2,_OtherPolicy3>& other) {
 		if (this==&other) return *this;
 		exclusive_flags<_Tp,_DefaultExclusionPolicy>::operator =(other);
+		forbiddens_=other.forbiddens_;
+		dependencies_=other.dependencies_;
 		return *this;
 	}
 	void set_forbidden_policy(relation_policy policy) {

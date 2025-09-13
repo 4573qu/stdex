@@ -6,21 +6,47 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "../macros/cpp_version.h"//At Least 1.0
+
+#ifndef _STDEX_CPP20_VERSION
+#define _STDEX_CPP20_VERSION 202002L
+#endif
+
+#if __cplusplus >= _STDEX_CPP20_VERSION
+#include <bits>
+#endif
+
 namespace stdex {
 
 namespace bitwise {
 
 namespace endianness {
-	constexpr uint32_t test_value=0x45732026;
+	constexpr uint32_t test_value=0x57DA7C17;//STD AT C17
 	constexpr uint8_t first_byte=static_cast<const uint8_t&>(test_value);
 }
 
 constexpr bool is_little_endian() noexcept {
-	return endianness::first_byte==0x26;
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	return true;
+#elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+	return false;
+#elif __cplusplus >= _STDEX_CPP20_VERSION
+	return std::endian::native==std::endian::little;
+#else
+	return endianness::first_byte==0x17;
+#endif
 }
 
 constexpr bool is_big_endian() noexcept {
-	return endianness::first_byte==0x45;
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+	return true;
+#elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	return false;
+#elif __cplusplus >= _STDEX_CPP20_VERSION
+	return std::endian::native==std::endian::big;
+#else
+	return endianness::first_byte==0x57;
+#endif
 }
 
 template <typename _Tp>
