@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/11
-//@Version 2.0.2.3
+//Last Modified At 2025/09/13
+//@Version 2.0.2.4
 #ifndef _STD4573_BITWISE_FLAGS_H_
 #define _STD4573_BITWISE_FLAGS_H_ 1
 
@@ -16,7 +16,11 @@
 
 #include "../macros/cpp_version.h"//At Least 1.0
 
-#if __cplusplus >= _STDEX_CPP20_VERSION
+#ifndef _STDEX_CPP20_VERSION
+#define _STDEX_CPP20_VERSION 202002L
+#endif
+
+#if __cplusplus>=_STDEX_CPP20_VERSION
 #define _STDEX_CONSTEXPR constexpr
 #else
 #define _STDEX_CONSTEXPR
