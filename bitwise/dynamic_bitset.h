@@ -1,9 +1,10 @@
-//Last Modified At 2025/09/13
-//@Version 1.0.0.0
+//Last Modified At 2025/09/14
+//@Version 1.0.0.1
 #ifndef _STD4573_BITWISE_DYNAMIC_BITSET_H_
 #define _STD4573_BITWISE_DYNAMIC_BITSET_H_ 1
 
 #include <algorithm>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -35,7 +36,7 @@ class dynamic_bitset {
 public:
 #define _STDEX_DYNAMIC_BITSET_BLOCK_POS blocks_[block_index(pos)]
 #define _STDEX_DYNAMIC_BITSET_BLOCK_VALUE (uint64_t(1)<<bit_index(pos))
-	static constexpr int bpblock_=sizeof(uint64_t)*8;//bits_per_block
+	static constexpr int bpblock_=sizeof(uint64_t)*CHAR_BIT;//bits_per_block
 
 	dynamic_bitset() : num_bits_(0) { }
 	explicit dynamic_bitset(std::size_t num_bits,bool value=false) : blocks_(blocks_needed(num_bits),value?~uint64_t(0):0) , num_bits_(num_bits) { }

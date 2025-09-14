@@ -1,8 +1,9 @@
-//Last Modified At 2025/09/13
-//@Version 1.0.0.0
+//Last Modified At 2025/09/14
+//@Version 1.0.0.1
 #ifndef _STD4573_BITWISE_BIT_ITERATOR_H_
 #define _STD4573_BITWISE_BIT_ITERATOR_H_ 1
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -20,7 +21,7 @@ class bit_iterator {
 	int index_;
 
 public:
-#define _STDEX_BIT_ITERATOR_SIZE (sizeof(_Tp)*8)
+#define _STDEX_BIT_ITERATOR_SIZE (sizeof(_Tp)*CHAR_BIT)
 	bit_iterator() noexcept : data_(nullptr) , index_(0) {}
 	bit_iterator(_Tp& data,int index_=0) noexcept : data_(&data) , index(index_) {
 		while (index_<0) {

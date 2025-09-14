@@ -3,6 +3,7 @@
 #ifndef _STD4573_BITWISE_BIT_FIELD_H_
 #define _STD4573_BITWISE_BIT_FIELD_H_ 1
 
+#include <climits>
 #include <cstdint>
 #include <type_traits>
 
@@ -45,6 +46,6 @@ public:
 
 #define _STDEX_BIT_BIND(raw,offset,bits,name) \
 stdex::bitwise::bit_field<std::remove_reference_t<decltype(raw)>,(offset),(bits)> name{raw}
-#define _STDEX_BIT_BIND_T(raw,offset,type,name) _STDEX_BIT_BIND(raw,offset,sizeof(type)*8,name)
+#define _STDEX_BIT_BIND_T(raw,offset,type,name) _STDEX_BIT_BIND(raw,offset,sizeof(type)*CHAR_BIT,name)
 
 #endif

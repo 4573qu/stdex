@@ -1,8 +1,9 @@
-//Last Modified At 2025/09/13
-//@Version 1.0.0.0
+//Last Modified At 2025/09/14
+//@Version 1.0.0.1
 #ifndef _STD4573_BITWISE_BITS_H_
 #define _STD4573_BITWISE_BITS_H_ 1
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
@@ -21,7 +22,7 @@ namespace stdex {
 
 namespace bitwise {
 
-#define _STDEX_BITS_SIZE (sizeof(_Tp)*8)
+#define _STDEX_BITS_SIZE (sizeof(_Tp)*CHAR_BIT)
 
 template <typename _Tp>
 constexpr _Tp reverse_bits(_Tp value) noexcept {
