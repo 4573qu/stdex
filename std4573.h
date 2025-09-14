@@ -1,5 +1,5 @@
 //#include <disjoint_set.h>
-#include "bitmask/flags.h"
+#include "bitwise/bitwise.h"
 #include "math/geometry/graphics.h"
 #include "math/geometry/trajectory.h"
 #include "math/math.h"
