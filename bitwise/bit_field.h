@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/13
-//@Version 1.0.0.0
+//Last Modified At 2025/09/14
+//@Version 1.0.0.1
 #ifndef _STD4573_BITWISE_BIT_FIELD_H_
 #define _STD4573_BITWISE_BIT_FIELD_H_ 1
 
@@ -42,5 +42,9 @@ public:
 }
 
 }
+
+#define _STDEX_BIT_BIND(raw,offset,bits,name) \
+stdex::bitwise::bit_field<std::remove_reference_t<decltype(raw)>,(offset),(bits)> name{raw}
+#define _STDEX_BIT_BIND_T(raw,offset,type,name) _STDEX_BIT_BIND(raw,offset,sizeof(type)*8,name)
 
 #endif
