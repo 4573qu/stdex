@@ -181,7 +181,7 @@ private:
 	}
 
 public:    
-    static std::map<std::string,double> run_benchmark(const std::function<void()>& func,int iterations=100,TIME_UNIT unit=TU_MILLISECONDS) {
+	static std::map<std::string,double> run_benchmark(const std::function<void()>& func,int iterations=100,TIME_UNIT unit=TU_MILLISECONDS) {
 		if (iterations<=0) throw std::invalid_argument("Iterations must be positive");
 		std::vector<double> times;
 		times.reserve(iterations);

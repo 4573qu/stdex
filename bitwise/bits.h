@@ -37,7 +37,7 @@ constexpr _Tp reverse_bits(_Tp value) noexcept {
 
 template <typename _Tp>
 constexpr int popcount(_Tp value) noexcept {
-#if __cplusplus >= _STDEX_CPP20_VERSION
+#if __cplusplus>=_STDEX_CPP20_VERSION
 	return std::popcount<_Tp>(value);
 #else
 	static_assert(std::is_unsigned_v<_Tp>,"_Tp must be an unsigned type.");
@@ -52,7 +52,7 @@ constexpr int popcount(_Tp value) noexcept {
 
 template <typename _Tp>
 constexpr _Tp rotate_left(_Tp value,int shift) noexcept {
-#if __cplusplus >= _STDEX_CPP20_VERSION
+#if __cplusplus>=_STDEX_CPP20_VERSION
 	return std::rotl<_Tp>(value,shift);
 #else
 	static_assert(std::is_unsigned_v<_Tp>,"_Tp must be an unsigned type.");
@@ -65,7 +65,7 @@ constexpr _Tp rotate_left(_Tp value,int shift) noexcept {
 
 template <typename _Tp>
 constexpr _Tp rotate_right(_Tp value,int shift) noexcept {
-#if __cplusplus >= _STDEX_CPP20_VERSION
+#if __cplusplus>=_STDEX_CPP20_VERSION
 	return std::rotr<_Tp>(value,shift);
 #else
 	static_assert(std::is_unsigned_v<_Tp>,"_Tp must be an unsigned type.");
@@ -90,7 +90,7 @@ constexpr _Tp extract_bit_range(_Tp value,int start,int count) noexcept {
 
 template <typename _Tp>
 constexpr _Tp bit_ceil(_Tp value) noexcept {
-#if __cplusplus >= _STDEX_CPP20_VERSION
+#if __cplusplus>=_STDEX_CPP20_VERSION
 	return std::bit_ceil<_Tp>(value);
 #else
 	static_assert(std::is_unsigned_v<_Tp>,"_Tp must be an unsigned type.");
@@ -103,7 +103,7 @@ constexpr _Tp bit_ceil(_Tp value) noexcept {
 
 template <typename _Tp>
 constexpr _Tp bit_floor(_Tp value) noexcept {
-#if __cplusplus >= _STDEX_CPP20_VERSION
+#if __cplusplus>=_STDEX_CPP20_VERSION
 	return std::bit_floor<_Tp>(value);
 #else
 	static_assert(std::is_unsigned_v<_Tp>,"_Tp must be an unsigned type.");
