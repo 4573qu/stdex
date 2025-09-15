@@ -1,6 +1,10 @@
 **StdEx** is an extension library for Std. It contains components that may be used across various technical domains.
 
-For detailed usage instructions, please refer to: [help](/Document/StdEx.md)
+For detailed usage instructions, please refer to: [help](/Documents/StdEx.md)
+
+For contributing a new module to STDEX, please refer to: [submitting](/Documents/StdEx_Submitting.md)
+
+//Submitting should contains 哪些模块会被接受 & 编码规范
 
 ---
 
