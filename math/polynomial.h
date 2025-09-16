@@ -1,12 +1,12 @@
-//Last Modified At 2025/07/13
+//Last Modified At 2025/09/16
 //@Version 1.0.0.0
-#ifndef _STD4573_MATH_POLYNOMIAL_H_
-#define _STD4573_MATH_POLYNOMIAL_H_ 1
+#ifndef _STDEX_MATH_POLYNOMIAL_H_
+#define _STDEX_MATH_POLYNOMIAL_H_ 1
 
 #include <map>
 #include <type_traits>
 
-#include "math.h"
+#include "base.h"//At Least 1.0.0.2
 #include "numeric.h"
 
 namespace stdex {

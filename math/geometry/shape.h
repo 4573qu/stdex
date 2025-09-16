@@ -1,8 +1,8 @@
-//Last Modified At 2024/08/28
-//@Version 1.0
-#ifndef _STD4573_MATH_GEOMETRY_SHAPE_H_
-#define _STD4573_MATH_GEOMETRY_SHAPE_H_ 1
-#include "../math.h"
+//Last Modified At 2025/09/16
+//@Version 1.0.0.0
+#ifndef _STDEX_MATH_GEOMETRY_SHAPE_H_
+#define _STDEX_MATH_GEOMETRY_SHAPE_H_ 1
+#include "../base.h"//At Least 1.0.0.2
 
 namespace std {
 	

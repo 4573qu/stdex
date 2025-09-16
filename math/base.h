@@ -1,8 +1,8 @@
-//Last Modified At 2025/06/01
-//@Version 1.0.0.1
-#ifndef _STD4573_MATH_MATH_H_
-#define _STD4573_MATH_MATH_H_ 1
-#include <math.h>
+//Last Modified At 2025/09/16
+//@Version 1.0.0.2
+#ifndef _STDEX_MATH_BASE_H_
+#define _STDEX_MATH_BASE_H_ 1
+#include <cmath>
 #include <string>
 
 namespace stdex {
@@ -30,7 +30,8 @@ std::string base_unit_trait<char>::to_string(char value) {
 	return std::string(1,value);
 }
 
-/*define specific base_unit_trait:
+/*
+Example of defining specific base_unit_trait:
 template <>
 struct base_unit_trait<YourSpecialType> {
 	static YourSpecialType value() { return YourSpecialType::base_value(); }

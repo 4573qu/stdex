@@ -1,13 +1,13 @@
-//Last Modified At 2025/07/09
-//@Version 1.2.0.1
-#ifndef _STD4573_MATH_MATRIX_H_
-#define _STD4573_MATH_MATRIX_H_ 1
+//Last Modified At 2025/09/16
+//@Version 1.2.1.1
+#ifndef _STDEX_MATH_MATRIX_H_
+#define _STDEX_MATH_MATRIX_H_ 1
 #define matrix_array matrix<int>
 
 #include <cstddef>
 #include <initializer_list>
 
-#include "math.h"
+#include base.h"//At Least 1.0.0.2
 
 namespace stdex {
 	

@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "math.h"
+#include "base.h"//At Least 1.0.0.2
 #include "polynomial.h"
 
 namespace stdex {

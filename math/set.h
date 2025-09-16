@@ -1,14 +1,14 @@
-//Last Modified At 2025/06/01
-//@Version 1.0.0.1
-#ifndef _STD4573_MATH_SET_H_
-#define _STD4573_MATH_SET_H_ 1
+//Last Modified At 2025/09/16
+//@Version 1.0.0.2
+#ifndef _STDEX_MATH_SET_H_
+#define _STDEX_MATH_SET_H_ 1
 #include <algorithm>
 #include <functional>
 #include <map>
 #include <stdexcept>
 #include <vector>
 
-#include "math.h"
+#include "base.h"//At Least 1.0.0.2
 
 namespace stdex {
 	

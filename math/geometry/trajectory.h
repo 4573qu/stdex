@@ -1,12 +1,13 @@
-//Last Modified At 2025/08/22
-//@Version 1.0.0.1
-#ifndef _STD4573_MATH_GEOMETRY_TRAJECTORY_H_
-#define _STD4573_MATH_GEOMETRY_TRAJECTORY_H_ 1
+//Last Modified At 2025/09/16
+//@Version 1.0.0.2
+#ifndef _STDEX_MATH_GEOMETRY_TRAJECTORY_H_
+#define _STDEX_MATH_GEOMETRY_TRAJECTORY_H_ 1
 #include <vector>
-#include "../math.h"
+
+#include "../base.h"
 #include "point.h"
 
-namespace std {
+namespace stdex {
 	
 namespace math {
 

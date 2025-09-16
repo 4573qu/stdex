@@ -1,6 +1,6 @@
-//Last Modified At 2024/08/28
-//@Version 1.0
-//@H_Version 1.0
+//Last Modified At 2025/09/16
+//@Version 1.0.0.0
+//@H_Version 1.0.0.0
 #include "point.h"
 template <typename _Tp>
 std::math::point2<_Tp>::point2() : x_(stdex::math::base_unit_trait<_Tp>::zero()) , y_(base_unit_trait<_Tp>::zero()) { }
