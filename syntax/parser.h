@@ -1,7 +1,7 @@
-//Last Modified At 2025/09/15
-//@Version 2.0.0.0
-#ifndef _STD4573_SYNTAX_PARSER_H_
-#define _STD4573_SYNTAX_PARSER_H_ 1
+//Last Modified At 2025/09/16
+//@Version 2.2.0.0
+#ifndef _STDEX_SYNTAX_PARSER_H_
+#define _STDEX_SYNTAX_PARSER_H_ 1
 
 #include <algorithm>
 #include <map>
@@ -94,8 +94,8 @@ public:
 		ET_UNKNOWN,
 	};
 	bool enabled_;
-	virtual void on_shift(int id,int state,_Tp word)=0;
-	virtual void on_reduction(int id,int state,int next,int sentence_id,int reduction_num)=0;
+	virtual int on_shift(int id,int state,_Tp word)=0;
+	virtual int on_reduction(int id,int state,int next,int sentence_id,int reduction_num)=0;
 	virtual void on_accept()=0;
 	virtual void on_error(error_type type,int state,_Tp word)=0;
 };
@@ -124,7 +124,7 @@ public:
 	parser(_Tp start,_Tp seperator,_Tp epsilon,_Tp eof,std::vector<unit_type> units) : start_(start) , seperator_(seperator) , epsilon_(epsilon) , eof_(eof) , units_(units) { }
 #if __cplusplus>=_STDEX_CPP17_VERISON
 	parser (std::initializer_list<std::variant<_Tp,std::vector<unit_type>,std::map<_Tp,bool>>> init_list) {
-		if (init_list.size()!=6) throw std::invalid_argument("The number of the initializer arguments for parser must be 6!");
+		if (init_list.size()<5 || init_list.size()>6) throw std::invalid_argument("The number of the initializer arguments for parser must be 5 or 6!");
 		auto it=init_list.begin();
 		if (std::holds_alternative<_Tp>(*it)) start_=std::get<_Tp>(*it++);
 		else throw std::invalid_argument(std::string("The first argument for parser must be _Tp(")+std::string(typeid(_Tp).name())+std::string(") to represent OP_START!"));
@@ -136,8 +136,10 @@ public:
 		else throw std::invalid_argument(std::string("The fourth argument for parser must be _Tp(")+std::string(typeid(_Tp).name())+std::string(") to represent OP_EOF(end sign)!"));
 		if (std::holds_alternative<std::vector<unit_type>>(*it)) units_=std::get<std::vector<unit_type>>(*it++);
 		else throw std::invalid_argument(std::string("The fifth argument for parser must be std:vector<unit_type>(")+std::string(typeid(std::vector<unit_type>).name())+std::string(") to give grammars!"));
-		if (std::holds_alternative<std::map<_Tp,bool>>(*it)) ptrs_=std::get<std::map<_Tp,bool>>(*it++);
-		else throw std::invalid_argument(std::string("The sixth argument for parser must be std::map<_Tp,bool>(")+std::string(typeid(std::map<_Tp,bool>).name())+std::string(") to give ptr\'s infos!"));
+		if (init_list.size()!=5) {
+			if (std::holds_alternative<std::map<_Tp,bool>>(*it)) ptrs_=std::get<std::map<_Tp,bool>>(*it++);
+			else throw std::invalid_argument(std::string("The sixth argument for parser must be std::map<_Tp,bool>(")+std::string(typeid(std::map<_Tp,bool>).name())+std::string(") to give ptr\'s infos!"));
+		}
 	}
 #endif
 
@@ -526,8 +528,10 @@ public:
 				case ST_SHIFT: {
 					parse_stack.push_back(current_symbol.next_.lr_ptr_->id_);
 					//nodes_stack.push_back(*current_word);
-					for (auto it:listeners) it->on_shift(current_id,current_symbol.next_.lr_ptr_->id_,current_word->op_);		
-					current_word=(current_id==nodes.size())?nullptr:&nodes[current_id++];
+					int skips=0;
+					for (auto it:listeners) skips=std::max(skips,it->on_shift(current_id,current_symbol.next_.lr_ptr_->id_,current_word->op_));
+					current_id+=skips;
+					current_word=(current_id>=nodes.size())?nullptr:&nodes[current_id++];
 					break;
 				}
 				case ST_REDUCTION: {
@@ -542,7 +546,10 @@ public:
 					/*for (int i=0;i<units_.size();i++) {
 						if (units_[i]==*(current_symbol.next_.unit_ptr_)) id=i;
 					}*/
-					for (auto it:listeners) it->on_reduction(current_id,current_state,lr_sheet_[std::make_pair(current_symbol.next_.unit_ptr_->left_op_,current_state)].next_.lr_ptr_->id_,id,reduction_num);//move_up?
+					int skips=0;
+					for (auto it:listeners) skips=std::max(skips,it->on_reduction(current_id,current_state,lr_sheet_[std::make_pair(current_symbol.next_.unit_ptr_->left_op_,current_state)].next_.lr_ptr_->id_,id,reduction_num));//move_up?
+					current_id+=skips;
+					if (skips) current_word=(current_id>=nodes.size())?nullptr:&nodes[current_id];
 					break;
 				}
 				case ST_ACCEPT: {
