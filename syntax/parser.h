@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/16
-//@Version 2.2.0.0
+//Last Modified At 2025/09/17
+//@Version 2.3.0.0
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
@@ -95,9 +95,9 @@ public:
 	};
 	bool enabled_;
 	virtual int on_shift(int id,int state,_Tp word)=0;
-	virtual int on_reduction(int id,int state,int next,int sentence_id,int reduction_num)=0;
+	virtual int on_reduction(int id,int state,int next,_SentenceEnum sentence_id,int reduction_num)=0;
 	virtual void on_accept()=0;
-	virtual void on_error(error_type type,int state,_Tp word)=0;
+	virtual bool on_error(error_type type,int state,_Tp word)=0;
 };
 
 template <typename _Tp,typename _SentenceEnum=int,typename _Info=void*>
@@ -549,7 +549,7 @@ public:
 					int skips=0;
 					for (auto it:listeners) skips=std::max(skips,it->on_reduction(current_id,current_state,lr_sheet_[std::make_pair(current_symbol.next_.unit_ptr_->left_op_,current_state)].next_.lr_ptr_->id_,id,reduction_num));//move_up?
 					current_id+=skips;
-					if (skips) current_word=(current_id>=nodes.size())?nullptr:&nodes[current_id];
+					if (skips) current_word=(current_id>nodes.size()||current_id<1)?nullptr:&nodes[current_id-1];
 					break;
 				}
 				case ST_ACCEPT: {
@@ -557,12 +557,19 @@ public:
 					return true;
 				}
 				case ST_ERROR: {
-					for (auto it:listeners) it->on_error(parser_listener<_Tp>::ET_ERROR,current_state,current_word->op_);
-					return false;
+					bool continue=true;
+					for (auto it:listeners) continue&=it->on_error(parser_listener<_Tp>::ET_ERROR,current_state,current_word->op_);
+					if (!continue || current_id>=nodes.size()) return false;
+					current_word=&nodes[current_id++];
+					break;
+					
 				}
 				default: {
-					for (auto it:listeners) it->on_error(parser_listener<_Tp>::ET_DEFAULT,current_state,current_word->op_);
-					return false;
+					bool continue=true;
+					for (auto it:listeners) continue&=it->on_error(parser_listener<_Tp>::ET_DEFAULT,current_state,current_word->op_);
+					if (!continue || current_id>=nodes.size()) return false;
+					current_word=&nodes[current_id++];
+					break;
 				}
 			}
 		}
