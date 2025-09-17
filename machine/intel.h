@@ -109,6 +109,7 @@ struct operand {
 	QWORD offset_;
 	QWORD length_;
 	BYTE rex_;//only when address_bits_==MB_64
+	bool reverse_rm_;
 
 private:
 	static const char* reg8_64_[16]={"AL","CL","DL","BL","SPL","BPL","SIL","DIL","R8B","R9B","R10B","R11B","R12B","R13B","R14B","R15B"};
@@ -138,6 +139,11 @@ private:
 		return result;
 	}
 public:
+	operand() {
+		value_=sib_=offset_=length_=0;
+		rex_=0;
+		reverse_rm_=false;
+	}
 	std::string to_intel_string() {
 		int length=4;
 		if (bits_==MB_8) length=1;
@@ -148,9 +154,10 @@ public:
 				return get_imm_string(value_,length);
 			}
 			case OT_REGISTER: {
-				BYTE value=value_&0xF;
+				BYTE value=value_&0x7;
+				if (bits_==MB_64) value=rex_w(rex_,true)<<3+value;
 				switch (bits_) {
-					case MB_8: return (bits_==MB_64)?reg8_64_[value]:reg8_32_[value];
+					case MB_8: return (bits_==MB_64 && rex_&F!=0)?reg8_64_[value]:reg8_32_[value];
 					case MB_16: return reg16_[value];
 					case MB_32: return reg32_[value];
 					case MB_64: return reg64_[value];
@@ -163,8 +170,8 @@ public:
 						BYTE reg=modrm_reg(value_);
 						BYTE rm=modrm_rm(value_);
 						if (bits_==MB_64) {
-							rm+=rex_b(rex_)<<3;
-							reg+=rex_r(rex_)<<3;
+							rm+=rex_b(rex_,true)<<3;
+							reg+=rex_r(rex_,true)<<3;
 						}
 						std::string dst,src;
 						dst=modrm16_[rm&7];
@@ -173,47 +180,61 @@ public:
 						if (mod==2) dst+="+"+get_imm_string(offset_,2);
 						if (mod==3) dst=get_reg_map()[rm];
 						src=get_reg_map()[reg];
-						return dst+","+src;
+						return reverse_rm_?(src+","+dst):(dst+","+src);
 					}
 					default: {
 						BYTE mod=modrm_mod(value_);
 						BYTE reg=modrm_reg(value_);
 						BYTE rm=modrm_rm(value_);
 						if (bits_==MB_64) {
-							rm+=rex_b(rex_)<<3;
-							reg+=rex_r(rex_)<<3;
+							rm+=rex_b(rex_,true)<<3;
+							reg+=rex_r(rex_,true)<<3;
 						}
-						std::string dst,src;
+						std::string dst,src,dst_extra;
 						dst=modrm32_[rm&7];
 						if (mod==0 && rm&7==5) {
 							if (address_bits_!=MB_64) dst=get_imm_string(offset_,4)
 							else dst="[RIP+"+get_imm_string(offset_,4)+"]";
 						}
-						if (mod==1) dst+="+"+get_imm_string(offset_,1);
-						if (mod==2) dst+="+"+get_imm_string(offset_,4);
+						if (mod==1) dst_extra="+"+get_imm_string(offset_,1);
+						if (mod==2) dst_extra="+"+get_imm_string(offset_,4);
+						dst+=dst_extra;
 						if (mod!=3 && rm&7==4) {
 							//SIB
+							std::string sib,sib_base,sib_index,sib_extra;
 							BYTE scale=modrm_mod(sib_);
 							BYTE index=modrm_reg(sib_);
 							BYTE base=modrm_rm(sib_);
+							if (bits_==MB_64) {
+								base+=rex_b(rex_,true)<<3;
+								index+=rex_x(rex_,true)<<3;
+							}
+							sib_base=base==5?"":get_reg_map()[base];
+							sib_index=index==4?"":get_reg_map()[index];
+							if (scale!=0 && sib_index!="") sib_index+="*"+std::to_string(1<<scale);
+							//sib_base+sib_index+dst_extra
+							if (sib_base=="" && sib_index=="") dst="["+(dst_extra==""?get_imm_string(0,1):dst_extra)+"]";
+							else if (sib_base=="") dst="["+sib_index+(dst_extra==""?"":("+"+dst_extra))+"]";
+							else if (sib_index=="") dst="["+sib_base+(dst_extra==""?"":("+"+dst_extra))+"]";
+							else dst="["+sib_base+"+"+sib_index+(dst_extra==""?"":("+"+dst_extra))+"]";
 						}
 						if (mod==3) dst=get_reg_map()[rm];
 						src=get_reg_map()[reg];
-						return dst+","+src;
+						return reverse_rm_?(src+","+dst):(dst+","+src);
 					}
 				}
 			}
 		}
 		return "";
 	}
-	void flip_operand_bits() {
+	/*void flip_operand_bits() {
 		if (bits_==MB_16) bits_=MB_32;
 		else if (bits_==MB_32) bits_=MB_16;
 	}
 	void flip_address_bits() {
 		if (address_bits_ == MB_16) bits_ = MB_32;
 		else if (address_bits_ == MB_32) bits_ = MB_16;
-	}
+	}*/
 };
 
 struct instruction {

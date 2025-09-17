@@ -86,6 +86,9 @@ private:
 			if (assembler_->get_cpu_type()==CT_MACHINE_X86_16) return false;
 			return (assembler_->get_cpu_type()==CT_MACHINE_X86_32)^has_67_prefix_;
 		}
+		bool check_instruction(bool with_size = true) {
+			return assembler_ && instruction_ && with_size ? (instruction_->operands_.size()) : true;
+		}
 		machine_bit get_operand_bits() {
 			if (!assembler_) return MB_32;
 			cpu_type type=assembler_->get_cpu_type();
@@ -158,6 +161,7 @@ private:
 		int read_imm64(int id=-1) {
 			//read_imm32 & signed extend
 			try_set_id(id,4,"Read imm64 out of range");
+			//if (check_instruction()) instruction_->operands_[instruction_->operands_.size()-1].rex_=current_rex_;
 			return read_imm32(id);
 		}
 		int read_imm(int id=-1) {
@@ -219,7 +223,7 @@ private:
 		int read_rm(int id=-1) {
 			try_set_id(id,1,"Read rm out of range");
 			int length=0;
-			if (assembler_ && instructions_) {
+			if (assembler_ && instruction_) {
 				operand temp;
 				temp.type_=OT_MODRM;
 				temp.bits_=get_operand_bits();
@@ -240,6 +244,20 @@ private:
 			}
 			return id+length-current_id_;
 		}
+		int read_rm_reverse(int id=-1) {
+			int result=read_rm(id);
+			if (assembler_ && instruction_ && instruction_->operands_.size()) instruction_->operands_[instruction_->operands_.size()-1].reverse_rm_=true;
+			return result;
+		}
+		int new_single_instruction(code_type type) {
+			new_instruction(type);
+			return 0;
+		}
+		int read_imm8_skip_0xA(code_type type,int id=-2) {
+			new_instruction(type);
+			int skip=read_imm8(id);
+			if (check_instruction() && instruction_->operands_[0].value_ == 0x0A) instruction_->operands_.clear();
+		}
 		int on_shift(int id,int state,token_type word) override {
 			if (is_prefix_) {
 				if (word==(token_type)0x66) has_66_prefix_=true;
@@ -249,6 +267,7 @@ private:
 			return 0;
 		}
 		int on_reduction(int id,int state,int next,line_type sentence_id,int reduction_num) override {
+			//map<LT_XXX_SENTENCE,CT_XXX>
 			current_id_=id;
 			current_length_=reduction_num;
 			switch (sentence_id) {
@@ -257,15 +276,34 @@ private:
 					reset_prefix();
 					break;
 				}
-				case LT_AAA_SENTENCE: {
-					new_instruction(CT_AAA);
-					break;
+				case LT_AAA_SENTENCE: return new_single_instruction(CT_AAA);
+				case LT_AAD_SENTENCE: return read_imm8_skip_0xA(CT_AAD);
+				case LT_AAM_SENTENCE: return read_imm8_skip_0xA(CT_AAM);
+				case LT_AAS_SENTENCE: return new_single_instruction(CT_AAS);
+				case LT_ADC_14_SENTENCE: {
+					new_instruction(CT_ADC);
+					if (check_instruction(false)) {
+						operand temp;
+						temp.type_=OT_REGISTER;
+						temp.value_=0;
+						temp.bits_=MB_8;
+						instructions_->operands_.push_back(temp);
+					}
+					return read_imm8(-2);
 				}
-				case LT_AAD_SENTENCE: {
-					new_instruction(CT_AAD);
-					int skip=read_imm8(-2);
-					if (instruction_ && instruction_->operands_.size() && instruction_->operands_[0].value_==0x0A) instruction_->operands_.clear();
-					return skip;
+				case LT_ADC_15_SENTENCE: 
+				case LT_ADC_15_64_SENTENCE: {
+					new_instruction(CT_ADC);
+					if (check_instruction(false)) {
+						operand temp;
+						temp.type_=OT_REGISTER;
+						temp.value_=0;
+						temp.bits_=get_operand_bits();
+						if (sentence_id==LT_ADC_15_SENTENCE && temp.bits_==MB_64) temp.bits_=MB_32;
+						if (sencence_id==LT_ADC_15_64_SENTENCE) temp.rex_=current_rex_;
+						instructions_->operands_.push_back(temp);
+					}
+					return read_imm(-2);
 				}
 			}
 			return 0;
@@ -274,7 +312,7 @@ private:
 		bool on_error(error_type type,int state,_Tp word) override { }
 	};
 #define _STDEX_ASSEMBLER_PARSER_UNIT syntax::single_parser_unit<token_type,line_type>
-	static syntax::parser<token_type,line_type> code_parser={
+	static syntax::parser<token_type,line_type> code_parser_={
 		TT_START,
 		TT_SEPERATOR,
 		TT_EPSILON,
@@ -567,19 +605,22 @@ private:
 			_STDEX_ASSMBLER_PARSER_UNIT(TT_66_SENTENCE,{TT_REX},LT_SPECIALIZE_REX_TO_SENTENCE_32),
 		}
 	};
-	static syntax::parser<token_type,line_type> code_parser64={
+	static syntax::parser<token_type,line_type> code_parser64_={
 		TT_START,
 		TT_SEPERATOR,
 		TT_EPSILON,
 		TT_EOF,
 		{}
 	};
+	static intel_assmbler_listener listener_;
 	static syntax::parser<token_type,line_type>& get_parser() {
 		static std::once_flag parser_flag;
 		std::call_once(parser_flag,[&](){
-			code_parser.generate_parser();
+			code_parser_.generate_parser();
+			code_parser_.listeners_.insert(&listsner_);
+			listener_.enabled_=true;
 		});
-		return code_parser;
+		return code_parser_;
 	}
 	static syntax::parser<token_type,line_type>& get_parser64() {
 		static std::once_flag parser_flag64;
@@ -596,14 +637,32 @@ private:
 				if (it->id==LT_SPECIALIZE_REX_TO_SENTENCE_32) it=code_parser64.units_.erase(it);
 				else it++;
 			}
-			code_parser64.units_.insert(code_parser64.units_.end(),units64.begin(),units64.end());
-			code_parser64.generate_parser();
+			code_parser64_.units_.insert(code_parser64.units_.end(),units64.begin(),units64.end());
+			code_parser64_.generate_parser();
+			code_parser64_.listeners_.insert(&listsner_);
+			listener_.enabled_=true;
 		});
-		return code_parser64;
+		return code_parser64_;
 	};
 
 public:
-	
+	std::vector<instruction> parse() {
+		switch (machine_bits_) {
+			case MB_32: {
+				instructions_.clear();
+				listener_.reset();
+				code_parser_.parse_with_listener(bytes_);
+				return instructions_;
+			}
+			case MB_64: {
+				instructions_.clear();
+				listener_.reset();
+				code_parser64_.parse_with_listener(bytes_);
+				return instructions_;
+			}
+		}
+		return {};
+	}
 #undef _STDEX_ASSEMBLER_PARSER_UNIT
 };
 
