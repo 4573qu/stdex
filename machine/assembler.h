@@ -309,7 +309,10 @@ private:
 			return 0;
 		}
 		void on_accept() override { }
-		bool on_error(error_type type,int state,_Tp word) override { }
+		bool on_error(error_type type,int state,_Tp word) override {
+			new_instruction(CT_ERROR);
+			return true;
+		}
 	};
 #define _STDEX_ASSEMBLER_PARSER_UNIT syntax::single_parser_unit<token_type,line_type>
 	static syntax::parser<token_type,line_type> code_parser_={
