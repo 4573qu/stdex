@@ -241,7 +241,25 @@ struct instruction {
 	code_type code_;
 	std::vector<operand> operands_;
 	std::size_t offset_;
-	//BYTE rex_;
+	static std::map<code_type,std::string> code_name_={
+#define _STDEX_INTEL_ASSEMBLER_CODE_TYPE(name) {CT_##name,#name},
+#include "intel_assembler.inc"
+#undef _STDEX_INTEL_ASSEMBLER_CODE_TYPE
+	};
+	std::string to_intel_string() {
+		std::string result=code_name_[code_];
+		/*if (operands_.size()>0) {
+			result+=" ";
+			for (std::size_t i=0;i<operands_.size();i++) {
+				result+=operands_[i].to_intel_string();
+				if (i!=operands_.size()-1) result+=",";
+			}
+		}*/
+		result+=" ";
+		for (int i=0;i<operands_.size();i++) result+=operands_[i].to_intel_string()+",";
+		result.pop_back();
+		return result;
+	}
 };
 
 }
