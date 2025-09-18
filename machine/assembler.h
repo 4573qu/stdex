@@ -3,6 +3,8 @@
 #ifndef _STDEX_MACHINE_ASSEMBLER_H_
 #define _STDEX_MACHINE_ASSEMBLER_H_ 1
 
+//http://shell-storm.org/online/Online-Assembler-and-Disassembler/?inst=mov+eax%2C1&arch=x86-64&as_format=hex#assembly
+
 #include <cstddef>
 #include <mutex>
 #include <stdexcept>
@@ -102,7 +104,10 @@ private:
 		machine_bits get_operand_bits() {
 			if (!assembler_) return MB_32;
 			cpu_type type=assembler_->get_cpu_type();
-			if (type==CT_MACHINE_X86_64 && intel::rex_w(current_rex_,true)) return MB_64;
+			if (type==CT_MACHINE_X86_64) {
+				if (intel::rex_w(current_rex_,true)) return MB_64;
+				if (has_66_prefix_) return MB_16;
+			}
 			if (type==CT_MACHINE_X86_16 || (type==CT_MACHINE_X86_32 && has_66_prefix_) || (type==CT_MACHINE_X86_32_16 && !has_66_prefix_)) return MB_16;
 			return MB_32;
 		}
@@ -312,11 +317,28 @@ private:
 						temp.type_=intel::OT_REGISTER;
 						temp.value_=0;
 						temp.bits_=get_operand_bits();
-						if (sentence_id==LT::LT_ADC15_SENTENCE && temp.bits_==MB_64) temp.bits_=MB_32;
-						if (sentence_id==LT::LT_ADC15_64_SENTENCE) temp.rex_=current_rex_;
+						//if (sentence_id==LT::LT_ADC15_SENTENCE && temp.bits_==MB_64) temp.bits_=MB_32;
+						if (sentence_id==LT::LT_ADC15_64_SENTENCE) temp.rex_=current_rex_&0xF8;//clear REX.RBX
+						//if (has_66_prefix_) temp.bits_=MB_16;
 						instruction_->operands_.push_back(temp);
 					}
 					return read_imm(-3);
+				}
+				case LT::LT_SPECIALIZE_REX: {
+					if (assembler_ && assembler_->get_cpu_type()==CT_MACHINE_X86_64) current_rex_=read_byte(current_id_-2);
+					break;
+				}
+				case LT::LT_SPECIALIZE_REX_TO_SENTENCE_32: {
+					BYTE value=read_byte(current_id_-2);
+					new_instruction(value&8?CT::CT_DEC:CT::CT_INC);
+					if (check_instruction(false)) {
+						intel::operand temp;
+						temp.type_=intel::OT_REGISTER;
+						temp.value_=read_byte(current_id_-2)&0x7;
+						temp.bits_=get_operand_bits();
+						instruction_->operands_.push_back(temp);
+					}
+					break;
 				}
 			}
 			return 0;
@@ -610,7 +632,7 @@ private:
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_BITS,{(TT)0xFD},LT::LT_SPECIALIZE_BITS),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_BITS,{(TT)0xFE},LT::LT_SPECIALIZE_BITS),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_BITS,{(TT)0xFF},LT::LT_SPECIALIZE_BITS),
-			//32 SPECIAL
+		//32 SPECIAL
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_66_SENTENCE,{TT::TT_REX},LT::LT_SPECIALIZE_REX_TO_SENTENCE_32),
 	};
 	static inline syntax::parser<TT,LT> code_parser_={
@@ -625,7 +647,7 @@ private:
 		TT::TT_SEPERATOR,
 		TT::TT_EPSILON,
 		TT::TT_EOF,
-		std::vector<syntax::parser_unit<TT,LT>>({}),
+		units,
 	};
 	static inline intel_assmbler_listener listener_;
 	static syntax::parser<TT,LT>& get_parser() {
@@ -640,10 +662,10 @@ private:
 	static syntax::parser<TT,LT>& get_parser64() {
 		static std::once_flag parser_flag64;
 		std::call_once(parser_flag64,[&](){
-			auto parser32=get_parser();
-			for (auto& it:parser32.units_) code_parser64_.units_.push_back(it);
+			//auto parser32=get_parser();
+			//for (auto& it:parser32.units_) code_parser64_.units_.push_back(it);
 			static std::vector<syntax::parser_unit<TT,LT>> units64={
-				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_66_SENTENCE,{TT::TT_REX,(TT)0x15,TT::TT_BITS},LT::LT_ADC15_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{TT::TT_REX,(TT)0x15,TT::TT_BITS},LT::LT_ADC15_64_SENTENCE),
 				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_80_SENTENCE,{TT::TT_REX,(TT)0x80,TT::TT_BITS,TT::TT_BITS},LT::LT_80_64_SENTENCE),
 				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_81_SENTENCE,{TT::TT_REX,(TT)0x81,TT::TT_BITS,TT::TT_BITS},LT::LT_81_64_SENTENCE),
 				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_83_SENTENCE,{TT::TT_REX,(TT)0x83,TT::TT_BITS,TT::TT_BITS},LT::LT_83_64_SENTENCE),

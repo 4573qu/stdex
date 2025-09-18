@@ -165,12 +165,13 @@ public:
 			}
 			case OT_REGISTER: {
 				BYTE value=value_&0x7;
-				if (bits_==MB_64) value=rex_w(rex_,true)<<3+value;
+				bool rex=!!(rex_&0x40) && bits_==MB_64;
+				if (bits_==MB_64) value=rex_r(rex_,true)<<3+value;
 				switch (bits_) {
-					case MB_8: return (bits_==MB_64 && rex_&0xF!=0)?reg8_64_[value]:reg8_32_[value];
-					case MB_16: return reg16_[value];
-					case MB_32: return reg32_[value];
-					case MB_64: return reg64_[value];
+					case MB_8: return rex?reg8_64_[value]:reg8_32_[value&7];
+					case MB_16: return reg16_[rex?value:(value&7)];
+					case MB_32: return reg32_[rex?value:(value&7)];
+					case MB_64: return reg64_[rex?value:(value&7)];
 				}
 			}
 			case OT_MODRM: {
