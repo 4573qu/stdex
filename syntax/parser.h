@@ -1,10 +1,11 @@
-//Last Modified At 2025/09/17
-//@Version 2.3.0.0
+//Last Modified At 2025/09/18
+//@Version 2.4.0.0
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
 #include <algorithm>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -21,10 +22,6 @@
 #include <initializer_list>
 #include <typeinfo>
 #include <variant>
-#endif
-
-#ifdef _STDEX_OUTPUT_PARSER
-#include <iostream>
 #endif
 
 namespace stdex {
@@ -44,14 +41,14 @@ struct parser_unit_base {
 	std::vector<_Tp> right_ops_;
 	std::vector<_Tp> first_set_;
 	_SentenceEnum id_;
-	bool operator ==(const parser_unit_base<_Tp>& other) const {
+	bool operator ==(const parser_unit_base<_Tp,_SentenceEnum>& other) const {
 		if (right_ops_.size()!=other.right_ops_.size()) return false;
 		for (int i=0;i<right_ops_.size();i++) {
 			if (right_ops_[i]!=other.right_ops_[i]) return false;
 		}
 		return left_op_==other.left_op_;
 	}
-	bool operator !=(const parser_unit_base<_Tp>& other) const {
+	bool operator !=(const parser_unit_base<_Tp,_SentenceEnum>& other) const {
 		return !((*this)==other);
 	}
 	std::string to_string() {
@@ -77,7 +74,7 @@ struct parser_unit : public parser_unit_base<_Tp,_SentenceEnum> {
 template <typename _Tp,typename _SentenceEnum=int,typename _Info=void*>
 parser_unit<_Tp,_SentenceEnum,_Info> single_parser_unit(_Tp left,std::initializer_list<_Tp> rights,_SentenceEnum id=(_SentenceEnum)0) {
 	if (!rights.size()) throw std::invalid_argument("Invalid size of rights");
-	parser_unit<_Tp,_Info> result;
+	parser_unit<_Tp,_SentenceEnum,_Info> result;
 	result.left_op_=left;
 	result.right_ops_=std::vector<_Tp>(rights);
 	result.id_=id;
@@ -97,7 +94,7 @@ public:
 	virtual int on_shift(int id,int state,_Tp word)=0;
 	virtual int on_reduction(int id,int state,int next,_SentenceEnum sentence_id,int reduction_num)=0;
 	virtual void on_accept()=0;
-	virtual bool on_error(error_type type,int state,_Tp word)=0;
+	virtual int on_error(error_type type,int state,_Tp word)=0;
 };
 
 template <typename _Tp,typename _SentenceEnum=int,typename _Info=void*>
@@ -170,8 +167,8 @@ private:
 	public:
 		sheet_type type_=ST_ERROR;
 		union node_info {
-			lr_node* lr_ptr_;
-			unit_type* unit_ptr_;
+			std::shared_ptr<lr_node>* lr_ptr_;
+			std::shared_ptr<unit_type>* unit_ptr_;
 		} next_;
 		sheet_node() {
 			next_.lr_ptr_=nullptr;
@@ -179,8 +176,8 @@ private:
 		}
 		~sheet_node() {
 			if (next_.lr_ptr_) {
-				if (type_==ST_REDUCTION) delete next_.unit_ptr_;
-				else if (type_!=ST_ERROR) delete next_.lr_ptr_;
+				if (type_==ST_REDUCTION || type_==ST_ERROR) delete next_.unit_ptr_;
+				else delete next_.lr_ptr_;
 			}
 		}
 	};
@@ -202,6 +199,7 @@ private:
 						for (int l=j;l<k-1;l++) temp_unit.right_ops_[l]=epsilon_;
 						temp_unit.right_ops_[k-1]=start_node->unit_list_[i].right_ops_[k];
 						temp_unit.right_ops_[k]=seperator_;
+						temp_unit.id_=start_node->unit_list_[i].id_;
 						curr_node->unit_list_.push_back(temp_unit);
 						if (k+1<start_node->unit_list_[i].right_ops_.size()) {
 							if (!_STDEX_PARSER_HAS_VALUE(wait_list,start_node->unit_list_[i].right_ops_[k+1])) wait_list.push_back(start_node->unit_list_[i].right_ops_[k+1]);
@@ -223,6 +221,7 @@ private:
 					}
 					temp_unit.right_ops_.push_back(seperator_);
 					for (k;k<units[j].right_ops_.size();k++) temp_unit.right_ops_.push_back(units[j].right_ops_[k]);
+					temp_unit.id_=units[j].id_;
 					curr_node->unit_list_.push_back(temp_unit);
 					if (!_STDEX_PARSER_HAS_VALUE_I(wait_list,temp_unit.right_ops_[1],i)) wait_list.push_back(temp_unit.right_ops_[1]);
 				}
@@ -267,6 +266,7 @@ private:
 					}
 					temp_unit.right_ops_.push_back(seperator_);
 					for (j;j<it.right_ops_.size();j++) temp_unit.right_ops_.push_back(it.right_ops_[j]);
+					temp_unit.id_=it.id_;
 					curr_node->unit_list_.push_back(temp_unit);
 					if (!_STDEX_PARSER_HAS_VALUE_I(wait_list,it.right_ops_[0],i)) wait_list.push_back(it.right_ops_[0]);
 				}
@@ -398,7 +398,7 @@ private:
 	void construct_table() {
 		for (auto it:lr_node_list_) {
 			for (auto jt:it->edges_) {
-				lr_sheet_[std::make_pair(jt.first,it->id_)].next_.lr_ptr_=jt.second;
+				lr_sheet_[std::make_pair(jt.first,it->id_)].next_.lr_ptr_=new std::shared_ptr<lr_node>(std::make_shared<lr_node>(*jt.second));
 				if (!ptrs_[jt.first]) lr_sheet_[std::make_pair(jt.first,it->id_)].type_=ST_SHIFT;
 			}
 		}
@@ -406,21 +406,25 @@ private:
 			int i=0;
 			for (auto jt:it->unit_list_) {
 				if (jt.right_ops_[jt.right_ops_.size()-1]==seperator_) {
-					unit_type* temp_unit=new unit_type;
-					temp_unit->left_op_=jt.left_op_;
+					unit_type temp_unit;
+					temp_unit.left_op_=jt.left_op_;
 					for (auto kt:jt.right_ops_) {
-						if (kt!=seperator_) temp_unit->right_ops_.push_back(kt);
+						if (kt!=seperator_) temp_unit.right_ops_.push_back(kt);
 					}
-					for (auto kt:follow_set_[jt.left_op_]) {
-						if (lr_sheet_[make_pair(kt,it->id_)].next_.lr_ptr_) {
-							if (ptrs_[kt]) throw std::logic_error("Conflict GOTO and REDUCTION at production "+std::to_string(i)+"("+jt.to_string()+") with GT("+std::to_string(it->id_)+","+std::to_string(kt)+")");
-							else {
-								if (lr_sheet_[make_pair(kt,it->id_)].type_==ST_SHIFT) throw std::logic_error("Conflict SHIFT and REDUCTION at production "+std::to_string(i)+"("+jt.to_string()+") with SHIFT("+std::to_string(it->id_)+","+std::to_string(kt)+")");
-								else throw std::logic_error("Conflict REDUCTION and REDUCTION at production "+std::to_string(i)+"("+jt.to_string()+") with REDUCTION("+std::to_string(it->id_)+","+std::to_string(kt)+")");
+					temp_unit.id_=jt.id_;
+					for (auto kt:ptrs_) {
+						_Tp current_ptr=kt.first;
+						if (std::find(follow_set_[jt.left_op_].begin(),follow_set_[jt.left_op_].end(),current_ptr)!=follow_set_[jt.left_op_].end()) {
+							if (lr_sheet_[std::make_pair(current_ptr,it->id_)].next_.lr_ptr_) {
+								if (ptrs_[current_ptr]) throw std::logic_error("Conflict GOTO and REDUCTION at production "+std::to_string(i)+"("+jt.to_string()+") with GT("+std::to_string(it->id_)+","+std::to_string(current_ptr)+")");
+								else {
+									if (lr_sheet_[std::make_pair(current_ptr,it->id_)].type_==ST_SHIFT) throw std::logic_error("Conflict SHIFT and REDUCTION at production "+std::to_string(i)+"("+jt.to_string()+") with SHIFT("+std::to_string(it->id_)+","+std::to_string(current_ptr)+")");
+									else throw std::logic_error("Conflict REDUCTION and REDUCTION at production "+std::to_string(i)+"("+jt.to_string()+") with REDUCTION("+std::to_string(it->id_)+","+std::to_string(current_ptr)+")");
+								}
 							}
+							lr_sheet_[std::make_pair(current_ptr,it->id_)].type_=ST_REDUCTION;
 						}
-						lr_sheet_[make_pair(kt,it->id_)].type_=ST_REDUCTION;
-						lr_sheet_[make_pair(kt,it->id_)].next_.unit_ptr_=temp_unit;
+						lr_sheet_[std::make_pair(current_ptr,it->id_)].next_.unit_ptr_=new std::shared_ptr<unit_type>(std::make_shared<unit_type>(temp_unit));
 					}
 				}
 				i++;
@@ -457,16 +461,16 @@ public:
 		generate_lr_nodes(node_amount);
 #ifdef _STDEX_OUTPUT_PARSER
 		for (auto it:lr_node_list_) {
-			std::cout<<it->id_<<":"<<endl;
-			std::cout<<"  units:"<<endl;
+			_STDEX_OUTPUT_PARSER<<it->id_<<":"<<std::endl;
+			_STDEX_OUTPUT_PARSER<<"  units:"<<std::endl;
 			for (auto jt:it->unit_list_) {
-				std::cout<<"    "<<jt.left_op_<<"->";
-				for (auto kt:jt.right_ops_) cout<<kt<<" ";
-				std::cout<<endl;
+				_STDEX_OUTPUT_PARSER<<"    "<<jt.left_op_<<"->";
+				for (auto kt:jt.right_ops_) _STDEX_OUTPUT_PARSER<<kt<<" ";
+				_STDEX_OUTPUT_PARSER<<std::endl;
 			}
-			std::cout<<"  edges:"<<endl;
-			for (auto jt:it->edges_) std::cout<<"    "<<jt.first<<"->"<<jt.second->id_<<endl;
-			std::cout<<endl;
+			_STDEX_OUTPUT_PARSER<<"  edges:"<<std::endl;
+			for (auto jt:it->edges_) _STDEX_OUTPUT_PARSER<<"    "<<jt.first<<"->"<<jt.second->id_<<std::endl;
+			_STDEX_OUTPUT_PARSER<<std::endl;
 		}
 #endif
 		first_set_.clear();
@@ -475,30 +479,30 @@ public:
 		for (auto& it:ptrs_) calculate_first(it.first);
 		calculate_follow();
 #ifdef _STDEX_OUTPUT_PARSER
-		std::cout<<"\n";
+		_STDEX_OUTPUT_PARSER<<"\n";
 		for (auto& it:ptrs_) {
-			std::cout<<it.first<<":\n  {";
+			_STDEX_OUTPUT_PARSER<<it.first<<":\n  {";
 			for (int i=0;i<follow_set_[it.first].size();i++) {
-				std::cout<<follow_set_[it.first][i];
-				if (i!=follow_set_[it.first].size()-1) cout<<",";
+				_STDEX_OUTPUT_PARSER<<follow_set_[it.first][i];
+				if (i!=follow_set_[it.first].size()-1) _STDEX_OUTPUT_PARSER<<",";
 			}
-			std::cout<<"}\n";
+			_STDEX_OUTPUT_PARSER<<"}\n";
 		}
 #endif
 		lr_sheet_.clear();
 		construct_table();
 #ifdef _STDEX_OUTPUT_PARSER
-		std::cout<<"\n";
+		_STDEX_OUTPUT_PARSER<<"\n";
 		for (auto& it:lr_sheet_) {
 			std::vector<std::string> get_type={"e","r","s","a"};
 			int id=-1;
-			if (it.second.type_==ST_SHIFT || (it.second.type_==ST_ERROR && it.second.next_.lr_ptr_)) id=it.second.next_.lr_ptr_->id_;
+			if (it.second.type_==ST_SHIFT || (it.second.type_==ST_ERROR && it.second.next_.lr_ptr_)) id=(*it.second.next_.lr_ptr_)->id_;
 			else if (it.second.type_==ST_REDUCTION) {
 				for (int i=0;i<units_.size();i++) {
-					if (units_[i]==*(it.second.next_.unit_ptr_)) id=i;
+					if (units_[i]==**it.second.next_.unit_ptr_) id=i;
 				}
 			}
-			std::cout<<it.first.second<<"-"<<it.first.first<<"->"<<get_type[(int)it.second.type_]<<id<<endl;
+			_STDEX_OUTPUT_PARSER<<it.first.second<<"-"<<it.first.first<<"->"<<get_type[(int)it.second.type_]<<id<<std::endl;
 		}
 #endif
 	}
@@ -510,9 +514,26 @@ public:
 		_St info_=nullptr;
 		std::vector<parse_node> children_;
 	};
+private:
+	template <typename _St=void*>
+	void on_reduction(sheet_node* current_symbol,std::vector<int>& parse_stack,int& current_state,std::vector<parser_listener<_Tp,_SentenceEnum>*>& listeners,int& current_id,std::vector<parse_node<_St>>& nodes,parse_node<_St>*& current_word) {
+		int reduction_num=0;
+		for (int i=0;i<(*current_symbol->next_.unit_ptr_)->right_ops_.size();i++) {
+			if ((*current_symbol->next_.unit_ptr_)->right_ops_[i]!=epsilon_) reduction_num++;
+		}
+		for (int i=0;i<reduction_num && !parse_stack.empty();i++) parse_stack.pop_back();
+		current_state=parse_stack.empty()?0:parse_stack.back();
+		parse_stack.push_back((*lr_sheet_[std::make_pair((*current_symbol->next_.unit_ptr_)->left_op_,current_state)].next_.lr_ptr_)->id_);
+		_SentenceEnum id=(*current_symbol->next_.unit_ptr_)->id_;
+		int skips=0;
+		for (auto it:listeners) skips=std::max(skips,it->on_reduction(current_id,current_state,(*lr_sheet_[std::make_pair((*current_symbol->next_.unit_ptr_)->left_op_,current_state)].next_.lr_ptr_)->id_,id,reduction_num));//move_up?
+		current_id+=skips;
+		if (skips) current_word=(current_id>nodes.size()||current_id<1)?nullptr:&nodes[current_id-1];
+	}
+public:
 	template <typename _St=void*>
 	bool parse_with_listener(std::vector<parse_node<_St>> nodes) {
-		std::vector<parser_listener<_Tp>*> listeners;
+		std::vector<parser_listener<_Tp,_SentenceEnum>*> listeners;
 		for (auto it:listeners_) {
 			if (it->enabled_) listeners.push_back(it);
 		}
@@ -523,33 +544,19 @@ public:
 		parse_node<_St>* current_word=&nodes[current_id++];
 		while (!parse_stack.empty()) {
 			int current_state=parse_stack.back();
-			sheet_node current_symbol=lr_sheet_[std::make_pair(current_word->op_,current_state)];
-			switch (current_symbol.type_) {
+			sheet_node* current_symbol=&lr_sheet_[std::make_pair(current_word->op_,current_state)];
+			switch (current_symbol->type_) {
 				case ST_SHIFT: {
-					parse_stack.push_back(current_symbol.next_.lr_ptr_->id_);
+					parse_stack.push_back((*current_symbol->next_.lr_ptr_)->id_);
 					//nodes_stack.push_back(*current_word);
 					int skips=0;
-					for (auto it:listeners) skips=std::max(skips,it->on_shift(current_id,current_symbol.next_.lr_ptr_->id_,current_word->op_));
+					for (auto it:listeners) skips=std::max(skips,it->on_shift(current_id,(*current_symbol->next_.lr_ptr_)->id_,current_word->op_));
 					current_id+=skips;
 					current_word=(current_id>=nodes.size())?nullptr:&nodes[current_id++];
 					break;
 				}
 				case ST_REDUCTION: {
-					int reduction_num=0;
-					for (int i=0;i<current_symbol.next_.unit_ptr_->right_ops_.size();i++) {
-						if (current_symbol.next_.unit_ptr_->right_ops_[i]!=epsilon_) reduction_num++;
-					}
-					for (int i=0;i<reduction_num && !parse_stack.empty();i++) parse_stack.pop_back();
-					current_state=parse_stack.empty()?0:parse_stack.back();
-					parse_stack.push_back(lr_sheet_[std::make_pair(current_symbol.next_.unit_ptr_->left_op_,current_state)].next_.lr_ptr_->id_);
-					int id=current_symbol.next_.unit_ptr_->id_;
-					/*for (int i=0;i<units_.size();i++) {
-						if (units_[i]==*(current_symbol.next_.unit_ptr_)) id=i;
-					}*/
-					int skips=0;
-					for (auto it:listeners) skips=std::max(skips,it->on_reduction(current_id,current_state,lr_sheet_[std::make_pair(current_symbol.next_.unit_ptr_->left_op_,current_state)].next_.lr_ptr_->id_,id,reduction_num));//move_up?
-					current_id+=skips;
-					if (skips) current_word=(current_id>nodes.size()||current_id<1)?nullptr:&nodes[current_id-1];
+					on_reduction(current_symbol,parse_stack,current_state,listeners,current_id,nodes,current_word);
 					break;
 				}
 				case ST_ACCEPT: {
@@ -557,23 +564,28 @@ public:
 					return true;
 				}
 				case ST_ERROR: {
-					bool continue=true;
-					for (auto it:listeners) continue&=it->on_error(parser_listener<_Tp>::ET_ERROR,current_state,current_word->op_);
-					if (!continue || current_id>=nodes.size()) return false;
-					current_word=&nodes[current_id++];
+					bool error_continue=true;
+					std::vector<parser_listener<_Tp,_SentenceEnum>*> temp_listener;
+					for (auto it:listeners) {
+						int result=it->on_error(parser_listener<_Tp,_SentenceEnum>::ET_ERROR,current_state,current_word->op_);
+						if (!(result&1)) error_continue=false;
+						if (result&2) temp_listener.push_back(it);
+					}
+					if (temp_listener.size()) on_reduction(current_symbol,parse_stack,current_state,temp_listener,current_id,nodes,current_word);
+					if (!error_continue || current_id>=nodes.size()) return false;
+					if (temp_listener.empty()) current_word=&nodes[current_id++];
 					break;
-					
 				}
 				default: {
-					bool continue=true;
-					for (auto it:listeners) continue&=it->on_error(parser_listener<_Tp>::ET_DEFAULT,current_state,current_word->op_);
-					if (!continue || current_id>=nodes.size()) return false;
+					bool error_continue=true;
+					for (auto it:listeners) error_continue&=it->on_error(parser_listener<_Tp,_SentenceEnum>::ET_DEFAULT,current_state,current_word->op_);
+					if (!error_continue || current_id>=nodes.size()) return false;
 					current_word=&nodes[current_id++];
 					break;
 				}
 			}
 		}
-		for (auto it:listeners) it->on_error(parser_listener<_Tp>::ET_UNKNOWN,0,(_Tp)-1);
+		for (auto it:listeners) it->on_error(parser_listener<_Tp,_SentenceEnum>::ET_UNKNOWN,0,(_Tp)-1);
 		return false;
 	}
 #undef _STDEX_PARSER_HAS_VALUE_I

@@ -1,4 +1,4 @@
-//Last Modified At 2025/09/17
+//Last Modified At 2025/09/18
 //@Version 1.0.0.0
 #ifndef _STDEX_MACHINE_INTEL_H_
 #define _STDEX_MACHINE_INTEL_H_ 1
@@ -17,11 +17,12 @@ enum code_type {
 #define _STDEX_INTEL_ASSEMBLER_CODE_TYPE(name) CT_##name,
 #include "intel_assembler.inc"
 #undef _STDEX_INTEL_ASSEMBLER_CODE_TYPE
-}
+};
 
 enum line_type {
 	LT_NONE,
 	LT_SENTENCE,
+	LT_SENTENCES,
 	LT_SPECIALIZE_SENTENCE,
 	LT_SPECIALIZE_66_SENTENCE,
 	LT_AAA_SENTENCE,
@@ -35,10 +36,17 @@ enum line_type {
 	LT_CLR66_SENTENCE,
 	LT_SUB80_SENTENCE,
 	LT_SUB81_SENTENCE,
+	LT_SUB83_SENTENCE,
 	LT_80_SENTENCE,
+	LT_80_64_SENTENCE,
 	LT_81_SENTENCE,
+	LT_81_64_SENTENCE,
+	LT_83_SENTENCE,
+	LT_83_64_SENTENCE,
 	LT_REX_TO_BITS,
 	LT_SPECIALIZE_BITS,
+	LT_SPECIALIZE_REX,
+	LT_SPECIALIZE_REX_TO_SENTENCE_32,
 };
 
 enum token_type {
@@ -48,6 +56,7 @@ enum token_type {
 	TT_EOF,
 
 	TT_SENTENCE=0x1000,
+	TT_SENTENCES,
 	TT_AAA_SENTENCE,
 	TT_AAD_SENTENCE,
 	TT_AAM_SENTENCE,
@@ -57,6 +66,7 @@ enum token_type {
 	TT_66_SENTENCE,
 	TT_80_SENTENCE,
 	TT_81_SENTENCE,
+	TT_83_SENTENCE,
 
 	TT_BITS=0x10000,
 	TT_REX,
@@ -112,16 +122,16 @@ struct operand {
 	bool reverse_rm_;
 
 private:
-	static const char* reg8_64_[16]={"AL","CL","DL","BL","SPL","BPL","SIL","DIL","R8B","R9B","R10B","R11B","R12B","R13B","R14B","R15B"};
-	static const char* reg8_32_[16]={"AL","CL","DL","BL","AH","CH","DH","BH","R8B","R9B","R10B","R11B","R12B","R13B","R14B","R15B"};
-	static const char* reg16_[16]={"AX","CX","DX","BX","SP","BP","SI","DI","R8W","R9W","R10W","R11W","R12W","R13W","R14W","R15W"};
-	static const char* reg32_[16]={"EAX","ECX","EDX","EBX","ESP","EBP","ESI","EDI","R8D","R9D","R10D","R11D","R12D","R13D","R14D","R15D"};
-	static const char* reg64_[16]={"RAX","RCX","RDX","RBX","RSP","RBP","RSI","RDI","R8","R9","R10","R11","R12","R13","R14","R15"};
-	static const char* modrm16_[8]={"[BX+SI]","[BX+DI]","[BP+SI]","[BP+DI]","[SI]","[DI]","[BP]","[BX]"};
-	static const char* modrm32_[8]={"[EAX]","[ECX]","[EDX]","[EBX]","[ESP]","[EBP]","[ESI]","[EDI]"};
-	static const char* mm_[8]={"MM0","MM1","MM2","MM3","MM4","MM5","MM6","MM7"};
-	static const char* xmm_[8]={"XMM0","XMM1","XMM2","XMM3","XMM4","XMM5","XMM6","XMM7"};
-	static const char** get_reg_map() {
+	static inline const char* reg8_64_[16]={"AL","CL","DL","BL","SPL","BPL","SIL","DIL","R8B","R9B","R10B","R11B","R12B","R13B","R14B","R15B"};
+	static inline const char* reg8_32_[16]={"AL","CL","DL","BL","AH","CH","DH","BH","R8B","R9B","R10B","R11B","R12B","R13B","R14B","R15B"};
+	static inline const char* reg16_[16]={"AX","CX","DX","BX","SP","BP","SI","DI","R8W","R9W","R10W","R11W","R12W","R13W","R14W","R15W"};
+	static inline const char* reg32_[16]={"EAX","ECX","EDX","EBX","ESP","EBP","ESI","EDI","R8D","R9D","R10D","R11D","R12D","R13D","R14D","R15D"};
+	static inline const char* reg64_[16]={"RAX","RCX","RDX","RBX","RSP","RBP","RSI","RDI","R8","R9","R10","R11","R12","R13","R14","R15"};
+	static inline const char* modrm16_[8]={"[BX+SI]","[BX+DI]","[BP+SI]","[BP+DI]","[SI]","[DI]","[BP]","[BX]"};
+	static inline const char* modrm32_[8]={"[EAX]","[ECX]","[EDX]","[EBX]","[ESP]","[EBP]","[ESI]","[EDI]"};
+	static inline const char* mm_[8]={"MM0","MM1","MM2","MM3","MM4","MM5","MM6","MM7"};
+	static inline const char* xmm_[8]={"XMM0","XMM1","XMM2","XMM3","XMM4","XMM5","XMM6","XMM7"};
+	const char** get_reg_map() {
 		switch (bits_) {
 			case MB_16: return reg16_;
 			case MB_32: return reg32_;
@@ -131,7 +141,7 @@ private:
 	}
 
 	std::string get_imm_string(QWORD value,int length) {
-		value&=((1ULL<<(length*8))-1);)
+		value&=((1ULL<<(length*8))-1);
 		char* temp=new char[18];
 		sprintf(temp,"0x%0*X",length,value);
 		std::string result=temp;
@@ -149,7 +159,7 @@ public:
 		if (bits_==MB_8) length=1;
 		if (bits_==MB_16) length=2;
 		else if (bits_==MB_64) length=8;
-		switch (operand_type) {
+		switch (type_) {
 			case OT_IMMEDIATE: {
 				return get_imm_string(value_,length);
 			}
@@ -157,7 +167,7 @@ public:
 				BYTE value=value_&0x7;
 				if (bits_==MB_64) value=rex_w(rex_,true)<<3+value;
 				switch (bits_) {
-					case MB_8: return (bits_==MB_64 && rex_&F!=0)?reg8_64_[value]:reg8_32_[value];
+					case MB_8: return (bits_==MB_64 && rex_&0xF!=0)?reg8_64_[value]:reg8_32_[value];
 					case MB_16: return reg16_[value];
 					case MB_32: return reg32_[value];
 					case MB_64: return reg64_[value];
@@ -175,7 +185,7 @@ public:
 						}
 						std::string dst,src;
 						dst=modrm16_[rm&7];
-						if (mod==0 && rm&7==6) dst=get_imm_string(offset_,2)
+						if (mod==0 && rm&7==6) dst=get_imm_string(offset_,2);
 						if (mod==1) dst+="+"+get_imm_string(offset_,1);
 						if (mod==2) dst+="+"+get_imm_string(offset_,2);
 						if (mod==3) dst=get_reg_map()[rm];
@@ -193,7 +203,7 @@ public:
 						std::string dst,src,dst_extra;
 						dst=modrm32_[rm&7];
 						if (mod==0 && rm&7==5) {
-							if (address_bits_!=MB_64) dst=get_imm_string(offset_,4)
+							if (address_bits_!=MB_64) dst=get_imm_string(offset_,4);
 							else dst="[RIP+"+get_imm_string(offset_,4)+"]";
 						}
 						if (mod==1) dst_extra="+"+get_imm_string(offset_,1);
@@ -241,7 +251,7 @@ struct instruction {
 	code_type code_;
 	std::vector<operand> operands_;
 	std::size_t offset_;
-	static std::map<code_type,std::string> code_name_={
+	static inline std::map<code_type,std::string> code_name_={
 #define _STDEX_INTEL_ASSEMBLER_CODE_TYPE(name) {CT_##name,#name},
 #include "intel_assembler.inc"
 #undef _STDEX_INTEL_ASSEMBLER_CODE_TYPE
