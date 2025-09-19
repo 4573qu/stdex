@@ -42,7 +42,7 @@ template <typename _Tp,typename _SentenceEnum=int>
 struct parser_unit_base {
 	_Tp left_op_;
 	std::vector<_Tp> right_ops_;
-	std::vector<_Tp> first_set_;
+	std::unordered_set<_Tp> first_set_;
 	_SentenceEnum id_;
 	bool operator ==(const parser_unit_base<_Tp,_SentenceEnum>& other) const {
 		if (right_ops_.size()!=other.right_ops_.size()) return false;
@@ -188,8 +188,8 @@ private:
 		}
 	};
 	std::unordered_set<lr_node*,lr_node_hash,lr_node_equal> lr_node_list_;
-	std::map<_Tp,std::vector<_Tp>> first_set_;
-	std::map<_Tp,std::vector<_Tp>> follow_set_;
+	std::map<_Tp,std::unordered_set<_Tp>> first_set_;
+	std::map<_Tp,std::unordered_set<_Tp>> follow_set_;
 	class sheet_node {
 	public:
 		sheet_type type_=ST_ERROR;
@@ -240,9 +240,9 @@ private:
 				}
 			}
 		}
+		auto seen_archived=wait_seen;
 		while (wait_list.size()) {
 			_Tp current=wait_list.front();
-			wait_list.pop();
 			auto it=units_by_lhs_.find(current);
 			if (it!=units_by_lhs_.end()) {
 				for (const unit_type* jt:it->second) {
@@ -265,7 +265,10 @@ private:
 					//if (!_STDEX_PARSER_HAS_VALUE_I(wait_list,temp_unit.right_ops_[1],i)) wait_list.push_back(temp_unit.right_ops_[1]);
 				}
 			}
+			wait_list.pop();
+			wait_seen.erase(current);
 		}
+		wait_seen=seen_archived;
 		auto [it,inserted]=lr_node_list_.insert(curr_node);
 		if (!inserted) {
 			delete curr_node;
@@ -285,12 +288,11 @@ private:
 		lr_node* curr_node=new lr_node(node_amount++);
 		lr_node_list_.insert(curr_node);
 		std::queue<_Tp> wait_list;
-		std::unordered_set<_Tp> wait_seen;
+		std::unordered_set<_Tp> wait_seen,seen_archived;
 		wait_list.push(start_);
 		wait_seen.insert(start_);
 		while (wait_list.size()) {
 			_Tp current=wait_list.front();
-			wait_list.pop();
 			auto it=units_by_lhs_.find(current);
 			if (it!=units_by_lhs_.end()) {
 				for (const unit_type* jt:it->second) {
@@ -309,11 +311,15 @@ private:
 					if (wait_seen.find(temp_unit.right_ops_[index])==wait_seen.end()) {
 						wait_list.push(temp_unit.right_ops_[index]);
 						wait_seen.insert(temp_unit.right_ops_[index]);
+						seen_archived.insert(temp_unit.right_ops_[index]);
 					}
 					//if (!_STDEX_PARSER_HAS_VALUE_I(wait_list,it.right_ops_[0],i)) wait_list.push_back(it.right_ops_[0]);
 				}
 			}
+			wait_list.pop();
+			wait_seen.erase(current);
 		}
+		wait_seen=seen_archived;
 		for (auto& it:wait_seen) {
 			lr_node* next=generate_nexts(it,curr_node,units_,node_amount);
 			curr_node->edges_[it]=next;
@@ -322,20 +328,32 @@ private:
 		return;// curr_node;	
 	}
 	void calculate_first(unit_type& unit) {
-		std::vector<_Tp> wait_list;
+		std::queue<_Tp> wait_list;
+		std::unordered_set<_Tp> wait_seen;
 		wait_list.push_back(unit.left_op_);
-		if (ptrs_[unit.right_ops_[0]]) wait_list.push_back(unit.right_ops_[0]);
-		else unit.first_set_.push_back(unit.right_ops_[0]);
-		for (int i=0;i<wait_list.size();i++) {
-			for (auto it:units_) {
-				if (it==unit) continue;
-				if (it.left_op_==wait_list[i]) {
-					if(!ptrs_[it.right_ops_[0]]) unit.first_set_.push_back(it.right_ops_[0]);
+		if (ptrs_[unit.right_ops_[0]]) {
+			wait_list.push(unit.right_ops_[0]);
+			wait_seen.insert(unit.right_ops_[0];
+		}
+		else unit.first_set_.insert(unit.right_ops_[0]);
+		while (wait_list.size()) {
+			_Tp current=wait_list.front();
+			auto it=units_by_lhs_.find(current);
+			if (it!=units_by_lhs_.end()) {
+				for (const unit_type* jt:it->second) {
+					if (*it==unit) continue;
+					if(!ptrs_[jt->right_ops_[0]]) unit.first_set_.push_back(jt->right_ops_[0]);
 					else {
-						if(!_STDEX_PARSER_HAS_VALUE_I(wait_list,it.right_ops_[0],i)) wait_list.push_back(it.right_ops_[0]);
+						//if(!_STDEX_PARSER_HAS_VALUE_I(wait_list,it.right_ops_[0],i)) wait_list.push_back(it.right_ops_[0]);
+						if (wait_seen.find(jt->right_ops_[0])==wait_seen.end()) {
+							wait_list.push(jt->right_ops_[0]);
+							wait_seen.insert(jt->right_ops_[0]);
+						}
 					}
 				}
 			}
+			wait_list.pop();
+			wait_seen.erase(current);
 		}
 	}
 	void calculate_first(_Tp op) {
@@ -344,24 +362,18 @@ private:
 			first_set_[op].push_back(op);
 			return;
 		}
-		for (auto it:units_) {
-			if (it.left_op_==op) {
-				for (auto jt:it.first_set_) {
-					if(!_STDEX_PARSER_HAS_VALUE(first_set_[op],jt)) first_set_[op].push_back(jt);
-				}
-			}
+		auto it=units_by_lhs_.find(current);
+		if (it!=units_by_lhs_.end()) {
+			for (const unit_type* jt:it->second) first_set_[op].insert(jt.first_set_.begin(),jt.first_set_.end());
 		}
 	}
 	bool calculate_follow(unit_type& unit) {
 		bool result=false;
 		if (ptrs_[unit.right_ops_[unit.right_ops_.size()-1]]) {
 			if (unit.right_ops_[unit.right_ops_.size()-1]!=unit.left_op_) {
-				for (auto it:follow_set_[unit.left_op_]) {
-					if (!_STDEX_PARSER_HAS_VALUE(follow_set_[unit.right_ops_[unit.right_ops_.size()-1]],it)) {
-						follow_set_[unit.right_ops_[unit.right_ops_.size()-1]].push_back(it);
-						result=true;
-					}
-				}
+				int size=follow_set_[unit.right_ops_[unit.right_ops_.size()-1]].size();
+				follow_set_[unit.right_ops_[unit.right_ops_.size()-1]].insert(follow_set_[unit.left_op_].begin(),follow_set_[unit.left_op_].end());
+				result=size!=follow_set_[unit.right_ops_[unit.right_ops_.size()-1]].size();
 			}
 		}
 		bool e_stand=true;
@@ -370,20 +382,15 @@ private:
 			if (ptrs_[unit.right_ops_[start_index]]) {
 				for (int i=start_index+1;i<=end_index;i++) {
 					for (auto it:first_set_[unit.right_ops_[i]]) {
-						if(!_STDEX_PARSER_HAS_VALUE(follow_set_[unit.right_ops_[start_index]],it) && it!=epsilon_) {
-							follow_set_[unit.right_ops_[start_index]].push_back(it);
-							result=true;
-						}
+						if (it!=epsilon_) result=follow_set_[unit.right_ops_[start_index]].push_back(it).second;
 					}
 				}
-				if (!_STDEX_PARSER_HAS_VALUE(first_set_[unit.right_ops_[start_index]],epsilon_)) end_index=start_index;
-				if (e_stand && !_STDEX_PARSER_HAS_VALUE(first_set_[unit.right_ops_[start_index+1]],epsilon_)) e_stand=false;
+				if (first_set_[unit.right_ops_[start_index]].find(epsilon_)==first_set_[unit.right_ops_[start_index]].end()) end_index=start_index;
+				if (e_stand && first_set_[unit.right_ops_[start_index+1]].find(epsilon_)==first_set_[unit.right_ops_[start_index+1]].end())) e_stand=false;
 				if (e_stand) {
-					for (auto it:follow_set_[unit.left_op_]) {
-						if (!_STDEX_PARSER_HAS_VALUE(follow_set_[unit.right_ops_[start_index]],it)) {
-							follow_set_[unit.right_ops_[start_index]].push_back(it);
-							result=true;
-						}
+					int size=follow_set_[unit.right_ops_[start_index]];
+					follow_set_[unit.right_ops_[start_index]].insert(follow_set_[unit.left_op_].begin(),follow_set_[unit.left_op_].end());
+					result=size!=follow_set_[unit.right_ops_[start_index]];
 					}
 				}
 			} else {
@@ -401,20 +408,28 @@ private:
 		//CONVERT QUEUE TO VECTOR(NO NEED REVERSE?)
 		auto start_unit=units_[start_unit_];
 		for (auto it:ptrs_) follow_set_[it.first].clear();
-		std::vector<_Tp> wait_ptr_list;
+		std::queue<_Tp> wait_ptr_list;
+		std::unordered_set<_Tp> wait_seen;
 		wait_ptr_list.clear();
 		for (auto it:start_unit.right_ops_) {
-			if (ptrs_[it]) wait_ptr_list.push_back(it);
+			if (ptrs_[it]) {
+				wait_ptr_list.push(it);
+				wait_seen.insert(it);
+			}
 		}
 		//WHEN USING THE ANOTHER METHOD,ONLY PUSH START TO WAIT_PTR_LIST
 		//BUT IF REVERSE IS NEEDED,THE CURRENT CODE IS NOT AVAILABLE
-		for (int i=0;i<wait_ptr_list.size();i++) {
+		for (wait_ptr_list.size()) {
+			_Tp current=wait_ptr_list.front();
 			for (auto& it:units_) {
 				if(!_STDEX_PARSER_HAS_VALUE(it.right_ops_,wait_ptr_list[i])) continue;
 				bool result=calculate_follow(it);
 				for (auto jt:it.right_ops_) {
 					if (ptrs_[jt] && jt!=wait_ptr_list[i]) {
-						if (!_STDEX_PARSER_HAS_VALUE(wait_ptr_list,jt) | result) wait_ptr_list.push_back(jt);
+						if (wait_seen.find(jt)==wait_seen.end() || result) {
+							wait_ptr_list.push(jt);
+							wait_seen.insert(jt);
+						}
 					}
 				}	
 			}
@@ -423,10 +438,14 @@ private:
 				bool result=calculate_follow(it);	
 				for (auto jt:it.right_ops_) {
 					if (ptrs_[jt] && jt!=wait_ptr_list[i]) {
-						if (!_STDEX_PARSER_HAS_VALUE(wait_ptr_list,jt) | result) wait_ptr_list.push_back(jt);
+						if (wait_seen.find(jt)==wait_seen.end() || result) {
+							wait_ptr_list.push(jt);
+							wait_seen.insert(jt);
+						}
 					}
 				}
 			}
+			wait_ptr_list.pop();
 		}
 		//for (auto i:wait_ptr_list) cout<<i<<" ";
 		//cout<<"\nEND FOLLOW\n";
