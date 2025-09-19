@@ -14,7 +14,7 @@
 
 #include "general.h"//At Least 1.0.0.1
 #include "intel.h"//At Least 1.0.0.0
-#include "../syntax/parser.h"//At Least 2.4
+#include "../syntax/parser.h"//At Least 2.4.2
 
 namespace stdex {
 
@@ -64,6 +64,7 @@ private:
 		BYTE current_rex_;
 		bool is_prefix_;
 		int code_amount_;
+		//bool failed_;
 	public:
 		void reset(intel_assembler* assembler=nullptr) {
 			assembler_=assembler;
@@ -79,6 +80,7 @@ private:
 			has_67_prefix_=false;
 			current_rex_=0;
 			is_prefix_=true;
+			//failed_=false;
 		}
 		std::vector<BYTE>& get_bytes() {
 			if (!assembler_) throw std::runtime_error("Assembler is invalid while getting bytes");
@@ -90,6 +92,7 @@ private:
 			instruction_=&assembler_->instructions_.back();
 			instruction_->code_=code;
 			instruction_->offset_=current_id_-current_length_-1-has_66_prefix_-has_67_prefix_;
+			instruction_->bits_=assembler_->program_bits_;
 		}
 		void try_set_id(int& id,int length,std::string message) {
 			if (id<0) id=current_id_+id+1;
@@ -286,6 +289,9 @@ private:
 			new_instruction(type);
 			return 0;
 		}
+		void reset_last_operand(intel::operand& op) {
+			instruction_->operands_[instruction_->operands_.size()-1]=op;
+		}
 		intptr_t read_imm8_skips(intel::code_type type,std::vector<QWORD> skips={0x0A},intptr_t id=-3) {
 			new_instruction(type);
 			intptr_t skip=read_imm8(id);
@@ -306,12 +312,32 @@ private:
 			}
 			return 0;
 		}
+		bool is_digits_64(LT line) {
+			return (line-LT::LT_ADD00_SENTENCE)&1;
+		}
+		bool is_digits_greater(LT line) {
+			return ((line-LT::LT_ADD00_SENTENCE)%12)/4==1;
+		}
+		CT get_digits_type(LT line) {
+			return digits_[(line-LT::LT_ADD00_SENTENCE)/12];
+		}
 		intptr_t on_reduction(uintptr_t id,int state,int next,LT sentence_id,int reduction_num) override {
 			intel::instruction* old_instruction=instruction_;
 			code_amount_-=reduction_num-1;
 			//map<LT_XXX_SENTENCE,CT_XXX>
 			current_id_=id;
 			current_length_=reduction_num;
+			/*if (code_amount_-1-has_66_prefix_-has_67_prefix_!=0) {
+				uintptr_t start=id-code_amount_-1+reduction_num;
+				for (uintptr_t i=0;i<id-1-start;i++) {
+					new_instruction(CT::CT_ERROR);
+					if (check_instruction(false)) instruction_->offset_=i+start;
+				}
+				code_amount_=//2;//1+1+has_66_prefix_+has_67_prefix_;
+				has_66_prefix_=false;
+				has_67_prefix_=false;
+				return 0;
+			}*/
 			try {
 				switch (sentence_id) {
 					case LT::LT_SUB66_SENTENCE:
@@ -323,8 +349,35 @@ private:
 					case LT::LT_AAD_SENTENCE: return read_imm8_skips(CT::CT_AAD,{0x0A});
 					case LT::LT_AAM_SENTENCE: return read_imm8_skips(CT::CT_AAM,{0x0A});
 					case LT::LT_AAS_SENTENCE: return new_single_instruction(CT::CT_AAS);
-					case LT::LT_ADC14_SENTENCE: {
-						new_instruction(CT::CT_ADC);
+					case LT::LT_ADD00_SENTENCE: case LT::LT_ADD00_64_SENTENCE: case LT::LT_ADD02_SENTENCE: case LT::LT_ADD02_64_SENTENCE:
+					case LT::LT_OR08_SENTENCE:  case LT::LT_OR08_64_SENTENCE:  case LT::LT_OR0A_SENTENCE:  case LT::LT_OR0A_64_SENTENCE:
+					case LT::LT_ADC10_SENTENCE: case LT::LT_ADC10_64_SENTENCE: case LT::LT_ADC12_SENTENCE: case LT::LT_ADC12_64_SENTENCE:
+					case LT::LT_AND20_SENTENCE: case LT::LT_AND20_64_SENTENCE: case LT::LT_AND22_SENTENCE: case LT::LT_AND22_64_SENTENCE: {
+						new_instruction(get_digits_type(sentence_id));
+						intel::operand temp;
+						int skip=read_rm_bits(temp,-3,MB_8);
+						if (is_digits_64(sentence_id)) temp.rex_=current_rex_;
+						if (is_digits_greater(sentence_id)) temp.reverse_rm_=true;
+						reset_last_operand(temp);
+						return reduction_skip(skip);
+					}
+					case LT::LT_ADD01_SENTENCE: case LT::LT_ADD01_64_SENTENCE: case LT::LT_ADD03_SENTENCE: case LT::LT_ADD03_64_SENTENCE:
+					case LT::LT_OR09_SENTENCE:  case LT::LT_OR09_64_SENTENCE:  case LT::LT_OR0B_SENTENCE:  case LT::LT_OR0B_64_SENTENCE:
+					case LT::LT_ADC11_SENTENCE: case LT::LT_ADC11_64_SENTENCE: case LT::LT_ADC13_SENTENCE: case LT::LT_ADC13_64_SENTENCE:
+					case LT::LT_AND21_SENTENCE: case LT::LT_AND21_64_SENTENCE: case LT::LT_AND23_SENTENCE: case LT::LT_AND23_64_SENTENCE: {
+						new_instruction(get_digits_type(sentence_id));
+						intel::operand temp;
+						int skip=read_rm_w(temp,-3);
+						if (is_digits_64(sentence_id)) temp.rex_=current_rex_;
+						if (is_digits_greater(sentence_id)) temp.reverse_rm_=true;
+						reset_last_operand(temp);
+						return reduction_skip(skip);
+					}
+					case LT::LT_ADD04_SENTENCE:
+					case LT::LT_OR0C_SENTENCE:
+					case LT::LT_ADC14_SENTENCE:
+					case LT::LT_AND24_SENTENCE: {
+						new_instruction(get_digits_type(sentence_id));
 						if (check_instruction(false)) {
 							intel::operand temp;
 							temp.type_=intel::OT_REGISTER;
@@ -334,20 +387,36 @@ private:
 						}
 						return reduction_skip(read_imm8(-3));
 					}
-					case LT::LT_ADC15_SENTENCE: 
-					case LT::LT_ADC15_64_SENTENCE: {
-						new_instruction(CT::CT_ADC);
+					case LT::LT_ADD05_SENTENCE: case LT::LT_ADD05_64_SENTENCE:
+					case LT::LT_OR0D_SENTENCE:  case LT::LT_OR0D_64_SENTENCE:
+					case LT::LT_ADC15_SENTENCE: case LT::LT_ADC15_64_SENTENCE:
+					case LT::LT_AND25_SENTENCE: case LT::LT_AND25_64_SENTENCE: {
+						new_instruction(get_digits_type(sentence_id));
 						if (check_instruction(false)) {
 							intel::operand temp;
 							temp.type_=intel::OT_REGISTER;
 							temp.value_=0;
 							temp.bits_=get_operand_bits_w();
 							//if (sentence_id==LT::LT_ADC15_SENTENCE && temp.bits_==MB_64) temp.bits_=MB_32;
-							if (sentence_id==LT::LT_ADC15_64_SENTENCE) temp.rex_=current_rex_&0xF8;//clear REX.RBX
+							if (is_digits_64(sentence_id)) temp.rex_=current_rex_&0xF8;//clear REX.RBX
 							//if (has_66_prefix_) temp.bits_=MB_16;
 							instruction_->operands_.push_back(temp);
 						}
-						return reduction_skip(read_imm_w(-3));
+						return reduction_skip(read_imm_w(-3));	
+					}
+					case LT::LT_BOUND62_SENTENCE: {
+						new_instruction(CT::CT_BOUND);
+						intel::operand temp;
+						int skip=read_rm(temp,-3);
+						temp.reverse_rm_=true;
+						temp.bound_=true;
+						reset_last_operand(temp);
+						return reduction_skip(skip);
+					}
+					case LT::LT_ARPL63_SENTENCE: {
+						new_instruction(CT::CT_ARPL);
+						intel::operand temp;
+						return reduction_skip(read_rm_bits(temp,-3,MB_16));
 					}
 					case LT::LT_80_SENTENCE:
 					case LT::LT_80_64_SENTENCE: {
@@ -368,8 +437,19 @@ private:
 					case LT::LT_81_64_SENTENCE:
 					case LT::LT_83_SENTENCE:
 					case LT::LT_83_64_SENTENCE: {
-						
-						break;
+						BYTE value=read_byte(current_id_-3);
+						BYTE digit=intel::modrm_reg(value);
+						int rm_skip=0;
+						new_instruction(digits_[digit]);
+						if (check_instruction(false)) {
+							intel::operand temp;
+							rm_skip=read_rm_w(temp,-4)+1;
+							temp.rm_no_reg_=true;
+							if (sentence_id==LT::LT_80_64_SENTENCE) temp.rex_=current_rex_;
+							reset_last_operand(temp);
+						}
+						if (sentence_id==LT::LT_83_SENTENCE || sentence_id==LT::LT_83_64_SENTENCE) return reduction_skip(read_imm8(current_id_+rm_skip-2));
+						return reduction_skip(read_imm_w(current_id_+rm_skip-2));
 					}
 					case LT::LT_SPECIALIZE_REX: {
 						if (assembler_ && assembler_->get_cpu_type()==CT_MACHINE_X86_64) current_rex_=read_byte(current_id_-2);
@@ -402,7 +482,7 @@ private:
 						assembler_->instructions_.pop_back();
 					}
 					intptr_t final_index=assembler_->bytes_.size();
-					intptr_t current_index=current_id_-1-reduction_num;
+					intptr_t current_index=current_id_-1-reduction_num-has_66_prefix_-has_67_prefix_;
 					for (intptr_t i=current_index;i<final_index;i++) {
 						new_instruction(CT::CT_ERROR);
 						if (check_instruction(false)) instruction_->offset_=i;
@@ -415,21 +495,29 @@ private:
 			return 0;
 		}
 		void on_accept() override { }
-		int on_error(syntax::parser_listener<TT,LT>::error_type type,int state,TT word) override {
+		int on_error(uintptr_t id,syntax::parser_listener<TT,LT>::error_type type,int state,TT word) override {
 			current_length_=1;
+			current_id_=id+1;
+			if (id==(uintptr_t)-1) return 0;
 			if (word==TT::TT_EOF) {
 				if (assembler_) {
-					uintptr_t start=std::min(0,(intptr_t)(assembler_->bytes_.size()-code_amount_));
-					for (int i=0;i<code_amount_;i++) {
+					uintptr_t start=std::max(0,(intptr_t)(id-1-code_amount_));
+					for (intptr_t i=0;i<(intptr_t)(assembler_->bytes_.size()-id+1+code_amount_);i++) {
 						new_instruction(CT::CT_ERROR);
 						if (check_instruction(false)) instruction_->offset_=i+start;
 					}
 				}
 				return 0;
 			}
-			if (code_amount_>0) return 3;
-			new_instruction(CT::CT_ERROR);
-			if (check_instruction(false)) instruction_->offset_+=2;
+			if (code_amount_-has_66_prefix_-has_67_prefix_>1) return 3;
+			for (int i=0;i<=has_66_prefix_+has_67_prefix_;i++) {
+				new_instruction(CT::CT_ERROR);
+				if (check_instruction(false)) instruction_->offset_+=i;
+			}
+			code_amount_=0;
+			has_66_prefix_=false;
+			has_67_prefix_=false;
+			//if (check_instruction(false)) instruction_->offset_+=2;
 			return 1;
 		}
 	};
@@ -449,14 +537,43 @@ private:
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AAM_SENTENCE,{(TT)0xD4,TT::TT_BITS},LT::LT_AAM_SENTENCE),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_66_SENTENCE,{TT::TT_AAS_SENTENCE},LT::LT_SPECIALIZE_SENTENCE),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AAS_SENTENCE,{(TT)0x3F},LT::LT_AAS_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_66_SENTENCE,{TT::TT_ADD_SENTENCE},LT::LT_SPECIALIZE_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADD_SENTENCE,{(TT)0x00,TT::TT_BITS},LT::LT_ADD00_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADD_SENTENCE,{(TT)0x01,TT::TT_BITS},LT::LT_ADD01_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADD_SENTENCE,{(TT)0x02,TT::TT_BITS},LT::LT_ADD02_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADD_SENTENCE,{(TT)0x03,TT::TT_BITS},LT::LT_ADD03_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADD_SENTENCE,{(TT)0x04,TT::TT_BITS},LT::LT_ADD04_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADD_SENTENCE,{(TT)0x05,TT::TT_BITS},LT::LT_ADD05_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_66_SENTENCE,{TT::TT_OR_SENTENCE},LT::LT_SPECIALIZE_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_OR_SENTENCE,{(TT)0x08,TT::TT_BITS},LT::LT_OR08_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_OR_SENTENCE,{(TT)0x09,TT::TT_BITS},LT::LT_OR09_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_OR_SENTENCE,{(TT)0x0A,TT::TT_BITS},LT::LT_OR0A_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_OR_SENTENCE,{(TT)0x0B,TT::TT_BITS},LT::LT_OR0B_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_OR_SENTENCE,{(TT)0x0C,TT::TT_BITS},LT::LT_OR0C_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_OR_SENTENCE,{(TT)0x0D,TT::TT_BITS},LT::LT_OR0D_SENTENCE),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_66_SENTENCE,{TT::TT_ADC_SENTENCE},LT::LT_SPECIALIZE_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{(TT)0x10,TT::TT_BITS},LT::LT_ADC10_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{(TT)0x11,TT::TT_BITS},LT::LT_ADC11_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{(TT)0x12,TT::TT_BITS},LT::LT_ADC12_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{(TT)0x13,TT::TT_BITS},LT::LT_ADC13_SENTENCE),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{(TT)0x14,TT::TT_BITS},LT::LT_ADC14_SENTENCE),
-		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{(TT)0x15,TT::TT_BITS},LT::LT_ADC15_SENTENCE),//2 or 4
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{(TT)0x15,TT::TT_BITS},LT::LT_ADC15_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_66_SENTENCE,{TT::TT_AND_SENTENCE},LT::LT_SPECIALIZE_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AND_SENTENCE,{(TT)0x20,TT::TT_BITS},LT::LT_AND20_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AND_SENTENCE,{(TT)0x21,TT::TT_BITS},LT::LT_AND21_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AND_SENTENCE,{(TT)0x22,TT::TT_BITS},LT::LT_AND22_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AND_SENTENCE,{(TT)0x23,TT::TT_BITS},LT::LT_AND23_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AND_SENTENCE,{(TT)0x24,TT::TT_BITS},LT::LT_AND24_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AND_SENTENCE,{(TT)0x25,TT::TT_BITS},LT::LT_AND25_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_66_SENTENCE,{TT::TT_BOUND_SENTENCE},LT::LT_SPECIALIZE_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_BOUND_SENTENCE,{(TT)0x62,TT::TT_BITS},LT::LT_BOUND62_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_66_SENTENCE,{TT::TT_ARPL_SENTENCE},LT::LT_SPECIALIZE_SENTENCE),
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ARPL_SENTENCE,{(TT)0x63,TT::TT_BITS},LT::LT_ARPL63_SENTENCE),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_66_SENTENCE,{TT::TT_80_SENTENCE},LT::LT_SUB80_SENTENCE),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_66_SENTENCE,{TT::TT_81_SENTENCE},LT::LT_SUB81_SENTENCE),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_66_SENTENCE,{TT::TT_83_SENTENCE},LT::LT_SUB83_SENTENCE),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_80_SENTENCE,{(TT)0x80,TT::TT_BITS,TT::TT_BITS},LT::LT_80_SENTENCE),
-		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_81_SENTENCE,{(TT)0x81,TT::TT_BITS,TT::TT_BITS},LT::LT_81_SENTENCE),//2 or 4
+		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_81_SENTENCE,{(TT)0x81,TT::TT_BITS,TT::TT_BITS},LT::LT_81_SENTENCE),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_83_SENTENCE,{(TT)0x83,TT::TT_BITS,TT::TT_BITS},LT::LT_83_SENTENCE),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_BITS,{TT::TT_REX},LT::LT_REX_TO_BITS),
 		_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_BITS,{(TT)0x00},LT::LT_SPECIALIZE_BITS),
@@ -748,13 +865,37 @@ private:
 			//auto parser32=get_parser();
 			//for (auto& it:parser32.units_) code_parser64_.units_.push_back(it);
 			static std::vector<syntax::parser_unit<TT,LT>> units64={
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADD_SENTENCE,{TT::TT_REX,(TT)0x00,TT::TT_BITS},LT::LT_ADD00_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADD_SENTENCE,{TT::TT_REX,(TT)0x01,TT::TT_BITS},LT::LT_ADD01_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADD_SENTENCE,{TT::TT_REX,(TT)0x02,TT::TT_BITS},LT::LT_ADD02_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADD_SENTENCE,{TT::TT_REX,(TT)0x03,TT::TT_BITS},LT::LT_ADD03_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADD_SENTENCE,{TT::TT_REX,(TT)0x05,TT::TT_BITS},LT::LT_ADD05_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_OR_SENTENCE,{TT::TT_REX,(TT)0x08,TT::TT_BITS},LT::LT_OR08_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_OR_SENTENCE,{TT::TT_REX,(TT)0x09,TT::TT_BITS},LT::LT_OR09_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_OR_SENTENCE,{TT::TT_REX,(TT)0x0A,TT::TT_BITS},LT::LT_OR0A_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_OR_SENTENCE,{TT::TT_REX,(TT)0x0B,TT::TT_BITS},LT::LT_OR0B_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_OR_SENTENCE,{TT::TT_REX,(TT)0x0D,TT::TT_BITS},LT::LT_OR0D_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{TT::TT_REX,(TT)0x10,TT::TT_BITS},LT::LT_ADC10_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{TT::TT_REX,(TT)0x11,TT::TT_BITS},LT::LT_ADC11_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{TT::TT_REX,(TT)0x12,TT::TT_BITS},LT::LT_ADC12_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{TT::TT_REX,(TT)0x13,TT::TT_BITS},LT::LT_ADC13_64_SENTENCE),
 				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_ADC_SENTENCE,{TT::TT_REX,(TT)0x15,TT::TT_BITS},LT::LT_ADC15_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AND_SENTENCE,{TT::TT_REX,(TT)0x20,TT::TT_BITS},LT::LT_AND20_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AND_SENTENCE,{TT::TT_REX,(TT)0x21,TT::TT_BITS},LT::LT_AND21_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AND_SENTENCE,{TT::TT_REX,(TT)0x22,TT::TT_BITS},LT::LT_AND22_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AND_SENTENCE,{TT::TT_REX,(TT)0x23,TT::TT_BITS},LT::LT_AND23_64_SENTENCE),
+				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_AND_SENTENCE,{TT::TT_REX,(TT)0x25,TT::TT_BITS},LT::LT_AND25_64_SENTENCE),
 				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_80_SENTENCE,{TT::TT_REX,(TT)0x80,TT::TT_BITS,TT::TT_BITS},LT::LT_80_64_SENTENCE),
 				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_81_SENTENCE,{TT::TT_REX,(TT)0x81,TT::TT_BITS,TT::TT_BITS},LT::LT_81_64_SENTENCE),
 				_STDEX_ASSEMBLER_PARSER_UNIT(TT::TT_83_SENTENCE,{TT::TT_REX,(TT)0x83,TT::TT_BITS,TT::TT_BITS},LT::LT_83_64_SENTENCE),
 			};
+			static std::vector<LT> units32ignored={
+				LT::LT_SPECIALIZE_REX_TO_SENTENCE_32,
+				LT::LT_BOUND62_SENTENCE,
+				LT::LT_ARPL63_SENTENCE,
+			};
 			for (std::vector<syntax::parser_unit<TT,LT>>::iterator it=code_parser64_.units_.begin();it!=code_parser64_.units_.end();) {
-				if (it->id_==LT::LT_SPECIALIZE_REX_TO_SENTENCE_32) it=code_parser64_.units_.erase(it);
+				if (std::find(units32ignored.begin(),units32ignored.end(),it->id_)!=units32ignored.end()) it=code_parser64_.units_.erase(it);
 				else it++;
 			}
 			code_parser64_.units_.insert(code_parser64_.units_.end(),units64.begin(),units64.end());
@@ -767,6 +908,7 @@ private:
 
 public:
 	void initialize(machine_bits bits,machine_bits program_bits) {
+		assert(program_bits<=bits && "program bits cannot be greater than machine bits.");
 		machine_bits_=bits;
 		program_bits_=program_bits;
 		switch (machine_bits_) {

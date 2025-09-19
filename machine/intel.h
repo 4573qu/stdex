@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <map>
 
 #include "general.h"//At Least 1.0.0.1
@@ -31,10 +32,37 @@ enum line_type {
 	LT_AAD_SENTENCE,
 	LT_AAM_SENTENCE,
 	LT_AAS_SENTENCE,
-	LT_ADC14_SENTENCE,
-	LT_ADC15_SENTENCE,
-	LT_ADC15_64_SENTENCE,
-	LT_SUB66_SENTENCE,
+	
+	LT_DIGITS_START=0xFF,
+	LT_ADD00_SENTENCE,LT_ADD00_64_SENTENCE,LT_ADD01_SENTENCE,LT_ADD01_64_SENTENCE,
+	LT_ADD02_SENTENCE,LT_ADD02_64_SENTENCE,LT_ADD03_SENTENCE,LT_ADD03_64_SENTENCE,
+	LT_ADD04_SENTENCE,LT_ADD04_64_SENTENCE,/*No Use*/LT_ADD05_SENTENCE,LT_ADD05_64_SENTENCE,
+	LT_OR08_SENTENCE, LT_OR08_64_SENTENCE, LT_OR09_SENTENCE, LT_OR09_64_SENTENCE,
+	LT_OR0A_SENTENCE, LT_OR0A_64_SENTENCE, LT_OR0B_SENTENCE, LT_OR0B_64_SENTENCE,
+	LT_OR0C_SENTENCE, LT_OR0C_64_SENTENCE, /*No Use*/LT_OR0D_SENTENCE, LT_OR0D_64_SENTENCE,
+	LT_ADC10_SENTENCE,LT_ADC10_64_SENTENCE,LT_ADC11_SENTENCE,LT_ADC11_64_SENTENCE,
+	LT_ADC12_SENTENCE,LT_ADC12_64_SENTENCE,LT_ADC13_SENTENCE,LT_ADC13_64_SENTENCE,
+	LT_ADC14_SENTENCE,LT_ADC14_64_SENTENCE,/*No Use*/LT_ADC15_SENTENCE,LT_ADC15_64_SENTENCE,
+	LT_SBB18_SENTENCE,LT_SBB18_64_SENTENCE,LT_SBB19_SENTENCE,LT_SBB19_64_SENTENCE,
+	LT_SBB1A_SENTENCE,LT_SBB1A_64_SENTENCE,LT_SBB1B_SENTENCE,LT_SBB1B_64_SENTENCE,
+	LT_SBB1C_SENTENCE,LT_SBB1C_64_SENTENCE,/*No Use*/LT_SBB1D_SENTENCE,LT_SBB1D_64_SENTENCE,
+	LT_AND20_SENTENCE,LT_AND20_64_SENTENCE,LT_AND21_SENTENCE,LT_AND21_64_SENTENCE,
+	LT_AND22_SENTENCE,LT_AND22_64_SENTENCE,LT_AND23_SENTENCE,LT_AND23_64_SENTENCE,
+	LT_AND24_SENTENCE,LT_AND24_64_SENTENCE,/*No Use*/LT_AND25_SENTENCE,LT_AND25_64_SENTENCE,
+	LT_SUB28_SENTENCE,LT_SUB28_64_SENTENCE,LT_SUB29_SENTENCE,LT_SUB29_64_SENTENCE,
+	LT_SUB2A_SENTENCE,LT_SUB2A_64_SENTENCE,LT_SUB2B_SENTENCE,LT_SUB2B_64_SENTENCE,
+	LT_SUB2C_SENTENCE,LT_SUB2C_64_SENTENCE,/*No Use*/LT_SUB2D_SENTENCE,LT_SUB2D_64_SENTENCE,
+	LT_XOR30_SENTENCE,LT_XOR30_64_SENTENCE,LT_XOR31_SENTENCE,LT_XOR31_64_SENTENCE,
+	LT_XOR32_SENTENCE,LT_XOR32_64_SENTENCE,LT_XOR33_SENTENCE,LT_XOR33_64_SENTENCE,
+	LT_XOR34_SENTENCE,LT_XOR34_64_SENTENCE,/*No Use*/LT_XOR35_SENTENCE,LT_XOR35_64_SENTENCE,
+	LT_CMP38_SENTENCE,LT_CMP38_64_SENTENCE,LT_CMP39_SENTENCE,LT_CMP39_64_SENTENCE,
+	LT_CMP3A_SENTENCE,LT_CMP3A_64_SENTENCE,LT_CMP3B_SENTENCE,LT_CMP3B_64_SENTENCE,
+	LT_CMP3C_SENTENCE,LT_CMP3C_64_SENTENCE,/*No Use*/LT_CMP3D_SENTENCE,LT_CMP3D_64_SENTENCE,
+	
+	LT_BOUND62_SENTENCE=0x200,
+	LT_ARPL63_SENTENCE,
+	
+	LT_SUB66_SENTENCE=0x1000,
 	LT_CLR66_SENTENCE,
 	LT_SUB80_SENTENCE,
 	LT_SUB81_SENTENCE,
@@ -63,8 +91,19 @@ enum token_type {
 	TT_AAD_SENTENCE,
 	TT_AAM_SENTENCE,
 	TT_AAS_SENTENCE,
+	
+	TT_ADD_SENTENCE,
+	TT_OR_SENTENCE,
 	TT_ADC_SENTENCE,
-	TT_ADC_66_SENTENCE,
+	TT_SBB_SENTENCE,
+	TT_AND_SENTENCE,
+	TT_SUB_SENTENCE,
+	TT_XOR_SENTENCE,
+	TT_CMP_SENTENCE,
+	
+	TT_BOUND_SENTENCE,
+	TT_ARPL_SENTENCE,
+
 	TT_66_SENTENCE,
 	TT_80_SENTENCE,
 	TT_81_SENTENCE,
@@ -127,6 +166,7 @@ struct operand {
 	BYTE rex_;//only when address_bits_==MB_64
 	bool reverse_rm_;
 	bool rm_no_reg_;
+	bool bound_;
 
 private:
 	static inline const char* reg8_64_[16]={"AL","CL","DL","BL","SPL","BPL","SIL","DIL","R8B","R9B","R10B","R11B","R12B","R13B","R14B","R15B"};
@@ -137,6 +177,7 @@ private:
 	static inline const char* modrm16_[8]={"[BX+SI]","[BX+DI]","[BP+SI]","[BP+DI]","[SI]","[DI]","[BP]","[BX]"};
 	static inline const char* mm_[8]={"MM0","MM1","MM2","MM3","MM4","MM5","MM6","MM7"};
 	static inline const char* xmm_[8]={"XMM0","XMM1","XMM2","XMM3","XMM4","XMM5","XMM6","XMM7"};
+	static inline const char* line_[4]={"byte ptr","word ptr","dword ptr","qword ptr"};
 	const char** get_reg_map() {
 		switch (bits_) {
 			case MB_8: return rex_all(rex_)?reg8_64_:reg8_32_;
@@ -163,7 +204,7 @@ public:
 		reverse_rm_=false;
 		rm_no_reg_=false;
 	}
-	std::string to_intel_string(bool upper_operand,bool upper_operator,bool omit_leading_zero) {
+	std::string to_intel_string(bool upper_operand,bool upper_operator,bool omit_leading_zero,machine_bits bits,std::size_t offset,bool with_full_length) {
 		int length=4;
 		if (bits_==MB_8) length=1;
 		if (bits_==MB_16) length=2;
@@ -234,7 +275,7 @@ public:
 						dst+=std::string(address_bits_==MB_32?reg32_[rm]:reg64_[rm])+"]";
 						if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
 						if (mod==0 && (rm&7)==5) {
-							if (!rex_all(rex_)) dst=get_imm_string(offset_,4,upper_operator,omit_leading_zero);
+							if (bits!=MB_64) dst=std::string("[")+std::string(get_imm_string(offset_,4,upper_operator,omit_leading_zero))+"]";
 							else {
 								dst=address_bits_==MB_64?"[RIP+":"[EIP+";
 								if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
@@ -271,6 +312,10 @@ public:
 							dst=get_reg_map()[rm];
 							if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
 						}
+						if (dst[0]=='[') {
+							machine_bits op_bits=(machine_bits)((int)bits_+bound_);
+							if (op_bits!=bits || with_full_length) dst=std::string(line_[op_bits-MB_8])+" "+dst;
+						}
 						src=get_reg_map()[reg];
 						if (!upper_operand) std::transform(src.begin(),src.end(),src.begin(),::tolower);
 						return rm_no_reg_?dst:(reverse_rm_?(src+","+dst):(dst+","+src));
@@ -294,12 +339,13 @@ struct instruction {
 	code_type code_;
 	std::vector<operand> operands_;
 	std::size_t offset_;
+	machine_bits bits_;
 	static inline std::map<code_type,std::string> code_name_={
 #define _STDEX_INTEL_ASSEMBLER_CODE_TYPE(name) {CT_##name,#name},
 #include "intel_assembler.inc"
 #undef _STDEX_INTEL_ASSEMBLER_CODE_TYPE
 	};
-	std::string to_intel_string(bool upper_operand=true,bool upper_operator=true,bool omit_leading_zero=true) {
+	std::string to_intel_string(bool upper_operand=true,bool upper_operator=true,bool omit_leading_zero=true,bool with_full_length=true) {
 		std::string result=code_name_[code_];
 		if (!upper_operand) std::transform(result.begin(),result.end(),result.begin(),::tolower);
 		/*if (operands_.size()>0) {
@@ -310,7 +356,7 @@ struct instruction {
 			}
 		}*/
 		result+=" ";
-		for (int i=0;i<operands_.size();i++) result+=operands_[i].to_intel_string(upper_operand,upper_operator,omit_leading_zero)+",";
+		for (int i=0;i<operands_.size();i++) result+=operands_[i].to_intel_string(upper_operand,upper_operator,omit_leading_zero,bits_,offset_,with_full_length)+",";
 		result.pop_back();
 		return result;
 	}

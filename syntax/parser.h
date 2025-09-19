@@ -1,5 +1,5 @@
 //Last Modified At 2025/09/19
-//@Version 2.4.1.0
+//@Version 2.4.2.0
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
@@ -94,7 +94,7 @@ public:
 	virtual int on_shift(uintptr_t id,int state,_Tp word)=0;
 	virtual int on_reduction(uintptr_t id,int state,int next,_SentenceEnum sentence_id,int reduction_num)=0;
 	virtual void on_accept()=0;
-	virtual int on_error(error_type type,int state,_Tp word)=0;
+	virtual int on_error(uintptr_t id,error_type type,int state,_Tp word)=0;
 };
 
 template <typename _Tp,typename _SentenceEnum=int,typename _Info=void*>
@@ -563,11 +563,12 @@ public:
 					for (auto it:listeners) it->on_accept();
 					return true;
 				}
-				case ST_ERROR: {
+				case ST_ERROR:
+				default: {
 					bool error_continue=true;
 					std::vector<parser_listener<_Tp,_SentenceEnum>*> temp_listener;
 					for (auto it:listeners) {
-						int result=it->on_error(parser_listener<_Tp,_SentenceEnum>::ET_ERROR,current_state,current_word->op_);
+						int result=it->on_error(current_id,current_symbol->type_==ST_ERROR?parser_listener<_Tp,_SentenceEnum>::ET_ERROR:parser_listener<_Tp,_SentenceEnum>::ET_DEFAULT,current_state,current_word->op_);
 						if (!(result&1)) error_continue=false;
 						if (result&2) temp_listener.push_back(it);
 					}
@@ -576,16 +577,9 @@ public:
 					if (temp_listener.empty()) current_word=&nodes[current_id++];
 					break;
 				}
-				default: {
-					bool error_continue=true;
-					for (auto it:listeners) error_continue&=it->on_error(parser_listener<_Tp,_SentenceEnum>::ET_DEFAULT,current_state,current_word->op_);
-					if (!error_continue || current_id>=nodes.size()) return false;
-					current_word=&nodes[current_id++];
-					break;
-				}
 			}
 		}
-		for (auto it:listeners) it->on_error(parser_listener<_Tp,_SentenceEnum>::ET_UNKNOWN,0,(_Tp)-1);
+		for (auto it:listeners) it->on_error((uintptr_t)-1,parser_listener<_Tp,_SentenceEnum>::ET_UNKNOWN,0,(_Tp)-1);
 		return false;
 	}
 #undef _STDEX_PARSER_HAS_VALUE_I
