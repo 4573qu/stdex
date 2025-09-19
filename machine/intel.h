@@ -1,8 +1,10 @@
-//Last Modified At 2025/09/18
+//Last Modified At 2025/09/19
 //@Version 1.0.0.0
 #ifndef _STDEX_MACHINE_INTEL_H_
 #define _STDEX_MACHINE_INTEL_H_ 1
 
+#include <algorithm>
+#include <cctype>
 #include <map>
 
 #include "general.h"//At Least 1.0.0.1
@@ -140,12 +142,13 @@ private:
 		return reg32_;
 	}
 
-	std::string get_imm_string(QWORD value,int length) {
+	std::string get_imm_string(QWORD value,int length,bool upper,bool omit_leading_zero) {
 		value&=((1ULL<<(length*8))-1);
 		char* temp=new char[18];
-		sprintf(temp,"0x%0*X",length,value);
+		sprintf(temp,"0x%0*X",omit_leading_zero?0:(length*2),value);
 		std::string result=temp;
 		delete[] temp;
+		if (!upper) std::transform(result.begin(),result.end(),result.begin(),::tolower);
 		return result;
 	}
 public:
@@ -154,25 +157,40 @@ public:
 		rex_=0;
 		reverse_rm_=false;
 	}
-	std::string to_intel_string() {
+	std::string to_intel_string(bool upper_operand,bool upper_operator,bool omit_leading_zero) {
 		int length=4;
 		if (bits_==MB_8) length=1;
 		if (bits_==MB_16) length=2;
 		else if (bits_==MB_64) length=8;
 		switch (type_) {
 			case OT_IMMEDIATE: {
-				return get_imm_string(value_,length);
+				return get_imm_string(value_,length,upper_operator,omit_leading_zero);
 			}
 			case OT_REGISTER: {
 				BYTE value=value_&0x7;
 				bool rex=!!(rex_&0x40) && bits_==MB_64;
 				if (bits_==MB_64) value=rex_r(rex_,true)<<3+value;
+				std::string result;
 				switch (bits_) {
-					case MB_8: return rex?reg8_64_[value]:reg8_32_[value&7];
-					case MB_16: return reg16_[rex?value:(value&7)];
-					case MB_32: return reg32_[rex?value:(value&7)];
-					case MB_64: return reg64_[rex?value:(value&7)];
+					case MB_8: {
+						result=rex?reg8_64_[value]:reg8_32_[value&7];
+						break;
+					}
+					case MB_16: {
+						result=reg16_[rex?value:(value&7)];
+						break;
+					}
+					case MB_32: {
+						result=reg32_[rex?value:(value&7)];
+						break;
+					}
+					case MB_64: {
+						result=reg64_[rex?value:(value&7)];
+						break;
+					}
 				}
+				if (!upper_operand) std::transform(result.begin(),result.end(),result.begin(),::tolower);
+				return result;
 			}
 			case OT_MODRM: {
 				switch (address_bits_) {
@@ -186,11 +204,16 @@ public:
 						}
 						std::string dst,src;
 						dst=modrm16_[rm&7];
-						if (mod==0 && rm&7==6) dst=get_imm_string(offset_,2);
-						if (mod==1) dst+="+"+get_imm_string(offset_,1);
-						if (mod==2) dst+="+"+get_imm_string(offset_,2);
-						if (mod==3) dst=get_reg_map()[rm];
+						if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
+						if (mod==0 && rm&7==6) dst=get_imm_string(offset_,2,upper_operator,omit_leading_zero);
+						if (mod==1) dst+="+"+get_imm_string(offset_,1,upper_operator,omit_leading_zero);
+						if (mod==2) dst+="+"+get_imm_string(offset_,2,upper_operator,omit_leading_zero);
+						if (mod==3) {
+							dst=get_reg_map()[rm];
+							if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
+						}
 						src=get_reg_map()[reg];
+						if (!upper_operand) std::transform(src.begin(),src.end(),src.begin(),::tolower);
 						return reverse_rm_?(src+","+dst):(dst+","+src);
 					}
 					default: {
@@ -203,12 +226,17 @@ public:
 						}
 						std::string dst,src,dst_extra;
 						dst=modrm32_[rm&7];
+						if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
 						if (mod==0 && rm&7==5) {
-							if (address_bits_!=MB_64) dst=get_imm_string(offset_,4);
-							else dst="[RIP+"+get_imm_string(offset_,4)+"]";
+							if (address_bits_!=MB_64) dst=get_imm_string(offset_,4,upper_operator,omit_leading_zero);
+							else {
+								dst="[RIP+";
+								if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
+								dst+=get_imm_string(offset_,4,upper_operator,omit_leading_zero)+"]";
+							}
 						}
-						if (mod==1) dst_extra="+"+get_imm_string(offset_,1);
-						if (mod==2) dst_extra="+"+get_imm_string(offset_,4);
+						if (mod==1) dst_extra="+"+get_imm_string(offset_,1,upper_operator,omit_leading_zero);
+						if (mod==2) dst_extra="+"+get_imm_string(offset_,4,upper_operator,omit_leading_zero);
 						dst+=dst_extra;
 						if (mod!=3 && rm&7==4) {
 							//SIB
@@ -222,15 +250,23 @@ public:
 							}
 							sib_base=base==5?"":get_reg_map()[base];
 							sib_index=index==4?"":get_reg_map()[index];
+							if (!upper_operand) {
+								std::transform(sib_base.begin(),sib_base.end(),sib_base.begin(),::tolower);
+								std::transform(sib_index.begin(),sib_index.end(),sib_index.begin(),::tolower);
+							}
 							if (scale!=0 && sib_index!="") sib_index+="*"+std::to_string(1<<scale);
 							//sib_base+sib_index+dst_extra
-							if (sib_base=="" && sib_index=="") dst="["+(dst_extra==""?get_imm_string(0,1):dst_extra)+"]";
+							if (sib_base=="" && sib_index=="") dst="["+(dst_extra==""?get_imm_string(0,1,upper_operator,omit_leading_zero):dst_extra)+"]";
 							else if (sib_base=="") dst="["+sib_index+(dst_extra==""?"":("+"+dst_extra))+"]";
 							else if (sib_index=="") dst="["+sib_base+(dst_extra==""?"":("+"+dst_extra))+"]";
 							else dst="["+sib_base+"+"+sib_index+(dst_extra==""?"":("+"+dst_extra))+"]";
 						}
-						if (mod==3) dst=get_reg_map()[rm];
+						if (mod==3) {
+							dst=get_reg_map()[rm];
+							if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
+						}
 						src=get_reg_map()[reg];
+						if (!upper_operand) std::transform(src.begin(),src.end(),src.begin(),::tolower);
 						return reverse_rm_?(src+","+dst):(dst+","+src);
 					}
 				}
@@ -257,8 +293,9 @@ struct instruction {
 #include "intel_assembler.inc"
 #undef _STDEX_INTEL_ASSEMBLER_CODE_TYPE
 	};
-	std::string to_intel_string() {
+	std::string to_intel_string(bool upper_operand=true,bool upper_operator=true,bool omit_leading_zero=true) {
 		std::string result=code_name_[code_];
+		if (!upper_operand) std::transform(result.begin(),result.end(),result.begin(),::tolower);
 		/*if (operands_.size()>0) {
 			result+=" ";
 			for (std::size_t i=0;i<operands_.size();i++) {
@@ -267,7 +304,7 @@ struct instruction {
 			}
 		}*/
 		result+=" ";
-		for (int i=0;i<operands_.size();i++) result+=operands_[i].to_intel_string()+",";
+		for (int i=0;i<operands_.size();i++) result+=operands_[i].to_intel_string(upper_operand,upper_operator,omit_leading_zero)+",";
 		result.pop_back();
 		return result;
 	}
