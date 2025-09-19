@@ -187,7 +187,6 @@ private:
 		}
 		return reg32_;
 	}
-
 	std::string get_imm_string(QWORD value,int length,bool upper,bool omit_leading_zero) {
 		value&=((1ULL<<(length*8))-1);
 		char* temp=new char[18];
@@ -196,6 +195,12 @@ private:
 		delete[] temp;
 		if (!upper) std::transform(result.begin(),result.end(),result.begin(),::tolower);
 		return result;
+	}
+	void add_length_sign(std::string& str,machine_bits bits,bool with_full_length) {
+		if (str[0]=='[') {
+			machine_bits op_bits=(machine_bits)((int)bits_+bound_);
+			if (op_bits!=bits || with_full_length) str=std::string(line_[op_bits-MB_8])+" "+str;
+		}
 	}
 public:
 	operand() {
@@ -259,6 +264,7 @@ public:
 							dst=get_reg_map()[rm];
 							if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
 						}
+						add_length_sign(dst,bits,with_full_length);
 						src=get_reg_map()[reg];
 						if (!upper_operand) std::transform(src.begin(),src.end(),src.begin(),::tolower);
 						return rm_no_reg_?dst:(reverse_rm_?(src+","+dst):(dst+","+src));
@@ -312,10 +318,7 @@ public:
 							dst=get_reg_map()[rm];
 							if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
 						}
-						if (dst[0]=='[') {
-							machine_bits op_bits=(machine_bits)((int)bits_+bound_);
-							if (op_bits!=bits || with_full_length) dst=std::string(line_[op_bits-MB_8])+" "+dst;
-						}
+						add_length_sign(dst,bits,with_full_length);
 						src=get_reg_map()[reg];
 						if (!upper_operand) std::transform(src.begin(),src.end(),src.begin(),::tolower);
 						return rm_no_reg_?dst:(reverse_rm_?(src+","+dst):(dst+","+src));

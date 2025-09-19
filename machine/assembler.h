@@ -324,6 +324,7 @@ private:
 		intptr_t on_reduction(uintptr_t id,int state,int next,LT sentence_id,int reduction_num) override {
 			intel::instruction* old_instruction=instruction_;
 			code_amount_-=reduction_num-1;
+			if (sentence_id==LT::LT_SENTENCES && reduction_num==1) code_amount_--;
 			//map<LT_XXX_SENTENCE,CT_XXX>
 			current_id_=id;
 			current_length_=reduction_num;
