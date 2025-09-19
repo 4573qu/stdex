@@ -34,6 +34,7 @@ class intel_assembler : public assembler {
 	using TT=intel::token_type;
 	using LT=intel::line_type;
 	using CT=intel::code_type;
+	static inline std::vector<CT> digits_={CT::CT_ADD,CT::CT_OR,CT::CT_ADC,CT::CT_SBB,CT::CT_AND,CT::CT_SUB,CT::CT_XOR,CT::CT_CMP};
 public:
 	std::vector<BYTE> bytes_;
 	std::vector<intel::instruction> instructions_;
@@ -88,7 +89,7 @@ private:
 			assembler_->instructions_.emplace_back();
 			instruction_=&assembler_->instructions_.back();
 			instruction_->code_=code;
-			instruction_->offset_=current_id_-current_length_-1;
+			instruction_->offset_=current_id_-current_length_-1-has_66_prefix_-has_67_prefix_;
 		}
 		void try_set_id(int& id,int length,std::string message) {
 			if (id<0) id=current_id_+id+1;
@@ -103,11 +104,21 @@ private:
 		bool check_instruction(bool with_size = true) {
 			return assembler_ && instruction_ && with_size ? (instruction_->operands_.size()) : true;
 		}
-		machine_bits get_operand_bits() {
+		machine_bits get_operand_bits_w() {
 			if (!assembler_) return MB_32;
 			cpu_type type=assembler_->get_cpu_type();
 			if (type==CT_MACHINE_X86_64) {
 				if (intel::rex_w(current_rex_,true)) return MB_64;
+				if (has_66_prefix_) return MB_16;
+			}
+			if (type==CT_MACHINE_X86_16 || (type==CT_MACHINE_X86_32 && has_66_prefix_) || (type==CT_MACHINE_X86_32_16 && !has_66_prefix_)) return MB_16;
+			return MB_32;
+		}
+		machine_bits get_operand_bits_wbrx() {
+			if (!assembler_) return MB_32;
+			cpu_type type=assembler_->get_cpu_type();
+			if (type==CT_MACHINE_X86_64) {
+				if (intel::rex_all(current_rex_)) return MB_64;
 				if (has_66_prefix_) return MB_16;
 			}
 			if (type==CT_MACHINE_X86_16 || (type==CT_MACHINE_X86_32 && has_66_prefix_) || (type==CT_MACHINE_X86_32_16 && !has_66_prefix_)) return MB_16;
@@ -181,8 +192,8 @@ private:
 			//if (check_instruction()) instruction_->operands_[instruction_->operands_.size()-1].rex_=current_rex_;
 			return read_imm32(id);
 		}
-		intptr_t read_imm(intptr_t id=-1) {
-			machine_bits bits=get_operand_bits();
+		intptr_t read_imm_w(intptr_t id=-1) {
+			machine_bits bits=get_operand_bits_w();
 			if (bits==MB_8) return read_imm8(id);
 			else if (bits==MB_16) return read_imm16(id);
 			else if (bits==MB_32) return read_imm32(id);
@@ -190,7 +201,7 @@ private:
 		}
 		int read_extra32(intptr_t id,intel::operand& modrm,bool sib=false) {
 			if (intel::modrm_mod(modrm.value_)==0) {
-				if (intel::modrm_reg(modrm.value_)==5) {
+				if (intel::modrm_rm(modrm.value_)==5) {
 					try_set_id(id,4,std::string("Read rm/")+(sib?std::string("sib/"):std::string(""))+std::string("disp32 out of range"));
 					modrm.offset_=read_dword(id);
 					return 4;
@@ -237,34 +248,39 @@ private:
 			}
 			return 0;
 		}
-		intptr_t read_rm(intptr_t id=-1) {
+		intptr_t read_rm_w(intel::operand& op,intptr_t id=-1) {
 			try_set_id(id,1,"Read rm out of range");
 			int length=0;
 			if (assembler_ && instruction_) {
-				intel::operand temp;
-				temp.type_=intel::OT_MODRM;
-				temp.bits_=get_operand_bits();
-				temp.value_=read_byte(id);
+				op.type_=intel::OT_MODRM;
+				op.bits_=get_operand_bits_w();
+				op.address_bits_=get_address_bits();
+				op.value_=read_byte(id);
 				int extra_offset=0;
-				BYTE mod=intel::modrm_mod(temp.value_);
-				if (!check_sib()) extra_offset=read_extra16(id+1,temp);
+				BYTE mod=intel::modrm_mod(op.value_);
+				if (!check_sib()) extra_offset=read_extra16(id+1,op);
 				else {
-					if (mod!=3 && intel::modrm_rm(temp.value_)==4) {
+					if (mod!=3 && intel::modrm_rm(op.value_)==4) {
 						try_set_id(id,2,"Read rm/sib out of range");
-						temp.sib_=read_byte(id+1);
-						extra_offset=1+read_extra32_sib(id+2,temp);
-					} else extra_offset=read_extra32(id+1,temp);
+						op.sib_=read_byte(id+1);
+						extra_offset=1+read_extra32_sib(id+2,op);
+					} else extra_offset=read_extra32(id+1,op);
 				}
-				set_operand_info(temp);
-				length=temp.length_=1+extra_offset;
-				instruction_->operands_.push_back(temp);
+				set_operand_info(op);
+				length=op.length_=1+extra_offset;
+				instruction_->operands_.push_back(op);
 			}
 			return id+length+1-current_id_;
 		}
-		intptr_t read_rm_reverse(intptr_t id=-1) {
-			int result=read_rm(id);
-			if (assembler_ && instruction_ && instruction_->operands_.size()) instruction_->operands_[instruction_->operands_.size()-1].reverse_rm_=true;
-			return result;
+		intptr_t read_rm_bits(intel::operand& op,intptr_t id=-1,machine_bits bits=MB_32) {
+			intptr_t skip=read_rm_w(op,id);
+			op.bits_=bits;
+			return skip;
+		}
+		intptr_t read_rm(intel::operand& op,intptr_t id=-1) {
+			intptr_t skip=read_rm_w(op,id);
+			op.bits_=get_operand_bits_wbrx();
+			return skip;
 		}
 		int new_single_instruction(intel::code_type type) {
 			new_instruction(type);
@@ -325,13 +341,35 @@ private:
 							intel::operand temp;
 							temp.type_=intel::OT_REGISTER;
 							temp.value_=0;
-							temp.bits_=get_operand_bits();
+							temp.bits_=get_operand_bits_w();
 							//if (sentence_id==LT::LT_ADC15_SENTENCE && temp.bits_==MB_64) temp.bits_=MB_32;
 							if (sentence_id==LT::LT_ADC15_64_SENTENCE) temp.rex_=current_rex_&0xF8;//clear REX.RBX
 							//if (has_66_prefix_) temp.bits_=MB_16;
 							instruction_->operands_.push_back(temp);
 						}
-						return reduction_skip(read_imm(-3));
+						return reduction_skip(read_imm_w(-3));
+					}
+					case LT::LT_80_SENTENCE:
+					case LT::LT_80_64_SENTENCE: {
+						BYTE value=read_byte(current_id_-3);
+						BYTE digit=intel::modrm_reg(value);
+						int rm_skip=0;
+						new_instruction(digits_[digit]);
+						if (check_instruction(false)) {
+							intel::operand temp;
+							rm_skip=read_rm_bits(temp,-4,MB_8)+1;
+							temp.rm_no_reg_=true;
+							if (sentence_id==LT::LT_80_64_SENTENCE) temp.rex_=current_rex_;
+							instruction_->operands_[instruction_->operands_.size()-1]=temp;
+						}
+						return reduction_skip(read_imm8(current_id_+rm_skip-2));
+					}
+					case LT::LT_81_SENTENCE:
+					case LT::LT_81_64_SENTENCE:
+					case LT::LT_83_SENTENCE:
+					case LT::LT_83_64_SENTENCE: {
+						
+						break;
 					}
 					case LT::LT_SPECIALIZE_REX: {
 						if (assembler_ && assembler_->get_cpu_type()==CT_MACHINE_X86_64) current_rex_=read_byte(current_id_-2);
@@ -339,12 +377,12 @@ private:
 					}
 					case LT::LT_SPECIALIZE_REX_TO_SENTENCE_32: {
 						BYTE value=read_byte(current_id_-2);
-						new_instruction(value&8?CT::CT_DEC:CT::CT_INC);
+						new_instruction((value&8)?CT::CT_DEC:CT::CT_INC);
 						if (check_instruction(false)) {
 							intel::operand temp;
 							temp.type_=intel::OT_REGISTER;
 							temp.value_=read_byte(current_id_-2)&0x7;
-							temp.bits_=get_operand_bits();
+							temp.bits_=get_operand_bits_w();
 							instruction_->operands_.push_back(temp);
 						}
 						break;

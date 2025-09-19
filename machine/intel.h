@@ -74,24 +74,28 @@ enum token_type {
 	TT_REX,
 };
 
-bool rex_w(BYTE rex,bool strict=false) {
+bool rex_w(BYTE rex,bool strict=true) {
 	if (strict && (rex>>4)!=4) return false;
 	return (rex>>3)&1;
 }
 
-bool rex_r(BYTE rex,bool strict=false) {
+bool rex_r(BYTE rex,bool strict=true) {
 	if (strict && (rex>>4)!=4) return false;
 	return (rex>>2)&1;
 }
 
-bool rex_x(BYTE rex,bool strict=false) {
+bool rex_x(BYTE rex,bool strict=true) {
 	if (strict && (rex>>4)!=4) return false;
 	return (rex>>1)&1;
 }
 
-bool rex_b(BYTE rex,bool strict=false) {
+bool rex_b(BYTE rex,bool strict=true) {
 	if (strict && (rex>>4)!=4) return false;
 	return rex&1;
+}
+
+bool rex_all(BYTE rex) {
+	return rex&0x40;
 }
 
 BYTE modrm_mod(BYTE modrm) {
@@ -122,6 +126,7 @@ struct operand {
 	QWORD length_;
 	BYTE rex_;//only when address_bits_==MB_64
 	bool reverse_rm_;
+	bool rm_no_reg_;
 
 private:
 	static inline const char* reg8_64_[16]={"AL","CL","DL","BL","SPL","BPL","SIL","DIL","R8B","R9B","R10B","R11B","R12B","R13B","R14B","R15B"};
@@ -130,14 +135,14 @@ private:
 	static inline const char* reg32_[16]={"EAX","ECX","EDX","EBX","ESP","EBP","ESI","EDI","R8D","R9D","R10D","R11D","R12D","R13D","R14D","R15D"};
 	static inline const char* reg64_[16]={"RAX","RCX","RDX","RBX","RSP","RBP","RSI","RDI","R8","R9","R10","R11","R12","R13","R14","R15"};
 	static inline const char* modrm16_[8]={"[BX+SI]","[BX+DI]","[BP+SI]","[BP+DI]","[SI]","[DI]","[BP]","[BX]"};
-	static inline const char* modrm32_[8]={"[EAX]","[ECX]","[EDX]","[EBX]","[ESP]","[EBP]","[ESI]","[EDI]"};
 	static inline const char* mm_[8]={"MM0","MM1","MM2","MM3","MM4","MM5","MM6","MM7"};
 	static inline const char* xmm_[8]={"XMM0","XMM1","XMM2","XMM3","XMM4","XMM5","XMM6","XMM7"};
 	const char** get_reg_map() {
 		switch (bits_) {
+			case MB_8: return rex_all(rex_)?reg8_64_:reg8_32_;
 			case MB_16: return reg16_;
 			case MB_32: return reg32_;
-			case MB_64: rex_w(rex_)?reg64_:reg32_;
+			case MB_64: return rex_w(rex_)?reg64_:reg32_;
 		}
 		return reg32_;
 	}
@@ -156,6 +161,7 @@ public:
 		value_=sib_=offset_=length_=0;
 		rex_=0;
 		reverse_rm_=false;
+		rm_no_reg_=false;
 	}
 	std::string to_intel_string(bool upper_operand,bool upper_operator,bool omit_leading_zero) {
 		int length=4;
@@ -168,8 +174,8 @@ public:
 			}
 			case OT_REGISTER: {
 				BYTE value=value_&0x7;
-				bool rex=!!(rex_&0x40) && bits_==MB_64;
-				if (bits_==MB_64) value=rex_r(rex_,true)<<3+value;
+				bool rex=rex_all(rex_);// && bits_==MB_64;
+				/*if (bits_==MB_64)*/ value=rex_r(rex_)<<3+value;
 				std::string result;
 				switch (bits_) {
 					case MB_8: {
@@ -198,10 +204,10 @@ public:
 						BYTE mod=modrm_mod(value_);
 						BYTE reg=modrm_reg(value_);
 						BYTE rm=modrm_rm(value_);
-						if (bits_==MB_64) {
-							rm+=rex_b(rex_,true)<<3;
-							reg+=rex_r(rex_,true)<<3;
-						}
+						//if (bits_==MB_64) {
+						rm+=rex_b(rex_)<<3;
+						reg+=rex_r(rex_)<<3;
+						//}
 						std::string dst,src;
 						dst=modrm16_[rm&7];
 						if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
@@ -214,23 +220,23 @@ public:
 						}
 						src=get_reg_map()[reg];
 						if (!upper_operand) std::transform(src.begin(),src.end(),src.begin(),::tolower);
-						return reverse_rm_?(src+","+dst):(dst+","+src);
+						return rm_no_reg_?dst:(reverse_rm_?(src+","+dst):(dst+","+src));
 					}
 					default: {
 						BYTE mod=modrm_mod(value_);
 						BYTE reg=modrm_reg(value_);
 						BYTE rm=modrm_rm(value_);
-						if (bits_==MB_64) {
-							rm+=rex_b(rex_,true)<<3;
-							reg+=rex_r(rex_,true)<<3;
-						}
-						std::string dst,src,dst_extra;
-						dst=modrm32_[rm&7];
+						//if (bits_==MB_64) {
+						rm+=rex_b(rex_)<<3;
+						reg+=rex_r(rex_)<<3;
+						//}
+						std::string dst="[",src,dst_extra;
+						dst+=std::string(address_bits_==MB_32?reg32_[rm]:reg64_[rm])+"]";
 						if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
-						if (mod==0 && rm&7==5) {
-							if (address_bits_!=MB_64) dst=get_imm_string(offset_,4,upper_operator,omit_leading_zero);
+						if (mod==0 && (rm&7)==5) {
+							if (!rex_all(rex_)) dst=get_imm_string(offset_,4,upper_operator,omit_leading_zero);
 							else {
-								dst="[RIP+";
+								dst=address_bits_==MB_64?"[RIP+":"[EIP+";
 								if (!upper_operand) std::transform(dst.begin(),dst.end(),dst.begin(),::tolower);
 								dst+=get_imm_string(offset_,4,upper_operator,omit_leading_zero)+"]";
 							}
@@ -238,16 +244,16 @@ public:
 						if (mod==1) dst_extra="+"+get_imm_string(offset_,1,upper_operator,omit_leading_zero);
 						if (mod==2) dst_extra="+"+get_imm_string(offset_,4,upper_operator,omit_leading_zero);
 						dst+=dst_extra;
-						if (mod!=3 && rm&7==4) {
+						if (mod!=3 && (rm&7)==4) {
 							//SIB
 							std::string sib,sib_base,sib_index,sib_extra;
 							BYTE scale=modrm_mod(sib_);
 							BYTE index=modrm_reg(sib_);
 							BYTE base=modrm_rm(sib_);
-							if (bits_==MB_64) {
-								base+=rex_b(rex_,true)<<3;
-								index+=rex_x(rex_,true)<<3;
-							}
+							//if (bits_==MB_64) {
+							base+=rex_b(rex_)<<3;
+							index+=rex_x(rex_)<<3;
+							//}
 							sib_base=base==5?"":get_reg_map()[base];
 							sib_index=index==4?"":get_reg_map()[index];
 							if (!upper_operand) {
@@ -267,7 +273,7 @@ public:
 						}
 						src=get_reg_map()[reg];
 						if (!upper_operand) std::transform(src.begin(),src.end(),src.begin(),::tolower);
-						return reverse_rm_?(src+","+dst):(dst+","+src);
+						return rm_no_reg_?dst:(reverse_rm_?(src+","+dst):(dst+","+src));
 					}
 				}
 			}
