@@ -1,5 +1,5 @@
 //Last Modified At 2025/09/20
-//@Version 3.1.0.0
+//@Version 3.1.0.1
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
@@ -527,7 +527,7 @@ private:
 		if (skips) current_word=((intptr_t)current_id>nodes.size()||(intptr_t)current_id<1)?nullptr:&nodes[current_id-1];
 	}
 public:
-	bool parse_with_listener(std::vector<parse_node> nodes) {
+	bool parse_with_listener(std::vector<parse_node>& nodes) {
 		std::vector<parser_listener<_Tp,_SentenceEnum>*> listeners;
 		for (auto it:listeners_) {
 			if (it->enabled_) listeners.push_back(it);
@@ -582,7 +582,7 @@ public:
 		auto write_int=[&](auto v){
 			os.write(reinterpret_cast<const char*>(&v),4);
 		};
-	    std::size_t n=p.units_.size();
+		std::size_t n=p.units_.size();
 		write_int(n);
 		for (const auto& it:p.units_) {
 			write_int(it.left_op_);
@@ -604,8 +604,8 @@ public:
 					write_int(nextid);
 				} else if (sn.type_==ST_REDUCTION || sn.type_==ST_ERROR) {
 					int uid=(*sn.next_.unit_ptr_)->id_;
-	            	write_int(uid);
-	        	}
+					write_int(uid);
+				}
 			} else write_int(false);
 		}
 		if (!os) os.setstate(std::ios::failbit);
@@ -614,43 +614,41 @@ public:
 	
 	friend std::istream& operator >>(std::istream& is,parser& p) {
 		auto read_int=[&](auto& v){
-			is.read(reinterpret_cast<char*>(&v),4);
+			if (is) is.read(reinterpret_cast<char*>(&v),4);
 			if (!is) is.setstate(std::ios::failbit);
 		};
 		std::size_t n;
 		read_int(n);
-		if (!is) return is;
 		p.units_.clear();
 		for (std::size_t i=0;i<n;i++) {
 			unit_type u;
 			read_int(u.left_op_);
-			if (!is) return is;
 			std::size_t size;
 			read_int(size);
-			if (!is) return is;
 			u.right_ops_.resize(size);
 			for (std::size_t j=0;j<size;j++) {
 				read_int(u.right_ops_[j]);
-				if (!is) return is;
 			}
 			read_int(u.id_);
-			if (!is) return is;
 			p.units_.push_back(u);
 		}
 		std::size_t m;
 		read_int(m);
-		if (!is) return is;
 		p.lr_sheet_.clear();
 		for (std::size_t i=0;i<m;i++) {
-	        _Tp sym; int state; int type;
-	        read_int(sym); read_int(state); read_int(type);
-	        sheet_node sn;
-	        sn.type_=(sheet_type)type;
-	        bool has_ptr;
+			_Tp sym;
+			int state;
+			int type;
+			read_int(sym);
+			read_int(state);
+			read_int(type);
+			sheet_node sn;
+			sn.type_=(sheet_type)type;
+			bool has_ptr;
 			read_int(has_ptr);
 			if (!is) return is;
 			if (has_ptr) {
-			    if (sn.type_==ST_SHIFT) {
+				if (sn.type_==ST_SHIFT) {
 					int nextid;
 					read_int(nextid);
 					if (!is) return is;
