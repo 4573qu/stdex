@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/13
-//@Version 2.0.2.5
+//Last Modified At 2025/09/20
+//@Version 2.0.2.6
 #ifndef _STD4573_BITWISE_FLAGS_H_
 #define _STD4573_BITWISE_FLAGS_H_ 1
 
@@ -259,15 +259,15 @@ private:
 		}
 		return false;
 	}
-    void tarjan(_Tp v,std::map<_Tp,flags<_Tp>>& graph,std::map<_Tp,int>& index,std::map<_Tp,int>& lowlink,flags<_Tp>& on_stack,std::stack<_Tp>& s,int& idx,std::vector<std::vector<_Tp>>& sccs) {
-    	index[v]=idx;
-    	lowlink[v]=idx++;
-    	s.push(v);
-    	on_stack<<=v;
-    	graph[v].for_each([&](_Tp e){
-    		if (!index.count(e)) {
-    			tarjan(e,graph,index,lowlink,on_stack,s,idx,sccs);
-    			lowlink[v]=std::min(lowlink[v],lowlink[e]);
+	void tarjan(_Tp v,std::map<_Tp,flags<_Tp>>& graph,std::map<_Tp,int>& index,std::map<_Tp,int>& lowlink,flags<_Tp>& on_stack,std::stack<_Tp>& s,int& idx,std::vector<std::vector<_Tp>>& sccs) {
+		index[v]=idx;
+		lowlink[v]=idx++;
+		s.push(v);
+		on_stack<<=v;
+  		graph[v].for_each([&](_Tp e){
+			if (!index.count(e)) {
+				tarjan(e,graph,index,lowlink,on_stack,s,idx,sccs);
+				lowlink[v]=std::min(lowlink[v],lowlink[e]);
 			} else if (on_stack.contains(e)) lowlink[v]=std::min(lowlink[v],index[e]);
 		});
 		if (lowlink[v]==index[v]) {

@@ -1,23 +1,18 @@
-//Last Modified At 2025/09/20
-//@Version 3.0.0.0
+//Last Modified At 2025/09/19
+//@Version 2.4.2.0
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
 #include <algorithm>
-#include <cstddef>
-#include <functional>
 #include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "../macros/cpp_version.h"//At Least 1.0
-#include "../structure/graph_algorithm.h"//At Least 1.0
 
 #ifndef _STDEX_CPP17_VERSION
 #define _STDEX_CPP17_VERSION 201703L
@@ -44,7 +39,7 @@ template <typename _Tp,typename _SentenceEnum=int>
 struct parser_unit_base {
 	_Tp left_op_;
 	std::vector<_Tp> right_ops_;
-	std::unordered_set<_Tp> first_set_;
+	std::vector<_Tp> first_set_;
 	_SentenceEnum id_;
 	bool operator ==(const parser_unit_base<_Tp,_SentenceEnum>& other) const {
 		if (right_ops_.size()!=other.right_ops_.size()) return false;
@@ -83,7 +78,6 @@ parser_unit<_Tp,_SentenceEnum,_Info> single_parser_unit(_Tp left,std::initialize
 	result.left_op_=left;
 	result.right_ops_=std::vector<_Tp>(rights);
 	result.id_=id;
-	result.information_=(_Info)nullptr;
 	return result;
 }
 #endif
@@ -110,7 +104,6 @@ class parser {
 	using unit_type=parser_unit<_Tp,_SentenceEnum,_Info>;
 public:
 	std::vector<unit_type> units_;
-	std::map<_Tp,std::vector<const unit_type*>> units_by_lhs_;
 	std::map<_Tp,bool> ptrs_;
 	_Tp start_;
 	_Tp seperator_;
@@ -126,8 +119,8 @@ public:
 	}
 	parser(_Tp start,_Tp seperator,_Tp epsilon,_Tp eof) : start_(start) , seperator_(seperator) , epsilon_(epsilon) , eof_(eof) { }
 	parser(_Tp start,_Tp seperator,_Tp epsilon,_Tp eof,std::vector<unit_type> units) : start_(start) , seperator_(seperator) , epsilon_(epsilon) , eof_(eof) , units_(units) { }
-#if __cplusplus>=_STDEX_CPP17_VERSION
-	parser(std::initializer_list<std::variant<_Tp,std::vector<unit_type>,std::map<_Tp,bool>>> init_list) {
+#if __cplusplus>=_STDEX_CPP17_VERISON
+	parser (std::initializer_list<std::variant<_Tp,std::vector<unit_type>,std::map<_Tp,bool>>> init_list) {
 		if (init_list.size()<5 || init_list.size()>6) throw std::invalid_argument("The number of the initializer arguments for parser must be 5 or 6!");
 		auto it=init_list.begin();
 		if (std::holds_alternative<_Tp>(*it)) start_=std::get<_Tp>(*it++);
@@ -146,9 +139,6 @@ public:
 		}
 	}
 #endif
-	~parser() {
-		for (auto* it:lr_node_list_) delete it;
-	}
 
 private:
 	class lr_node {
@@ -156,18 +146,8 @@ private:
 		uintptr_t id_;
 		std::vector<unit_type> unit_list_;
 		std::map<_Tp,lr_node*> edges_;
-		std::string signature_;
 		lr_node(uintptr_t id) : id_(id) {}
-	
-		void compute_signature() {
-			std::ostringstream oss;
-			for (const auto& it:unit_list_) {
-				oss<<it.left_op_<<":";
-				for (auto jt:it.right_ops_) oss<<jt<<",";
-				oss<<"|";
-			}
-			signature_=oss.str();
-		}
+		
 		bool operator ==(const lr_node& other) const {
 			if (unit_list_.size()!=other.unit_list_.size()) return false;
 			for (uintptr_t i=0;i<unit_list_.size();i++) {
@@ -180,33 +160,9 @@ private:
 			return !((*this)==other);
 		}
 	};
-	struct lr_node_hash {
-		std::size_t operator ()(lr_node* node) const {
-			//if (node->signature_=="") node->compute_signature();
-			//return std::hash<std::string>{}(node->signature_);
-			std::size_t h=0;
-			static uintptr_t magic=0x9E3779B9;
-			for (const auto& it:node->unit_list_) {
-				h^=std::hash<_Tp>{}(it.left_op_)+magic+(h<<6)+(h>>2);
-				for (const auto& jt:it.right_ops_) h^=std::hash<_Tp>{}(jt)+magic+(h<<6)+(h>>2);
-				h^=std::hash<_SentenceEnum>{}(it.id_)+magic+(h<<6)+(h>>2);
-				h^=std::hash<_Info>{}(it.information_)+magic+(h<<6)+(h>>2);
-			}
-			return h;
-		}
-	};
-	struct lr_node_equal {
-		bool operator ()(lr_node* lhs,lr_node* rhs) const {
-			if (lhs==rhs) return true;
-			//if (lhs->signature_=="") lhs->compute_signature();
-			//if (rhs->signature_=="") rhs->compute_signature();
-			//if (lhs->signature_!=rhs->signature_) return false;
-			return *lhs==*rhs;
-		}
-	};
-	std::unordered_set<lr_node*,lr_node_hash,lr_node_equal> lr_node_list_;
-	std::map<_Tp,std::unordered_set<_Tp>> first_set_;
-	std::map<_Tp,std::unordered_set<_Tp>> follow_set_;
+	std::vector<lr_node*> lr_node_list_;
+	std::map<_Tp,std::vector<_Tp>> first_set_;
+	std::map<_Tp,std::vector<_Tp>> follow_set_;
 	class sheet_node {
 	public:
 		sheet_type type_=ST_ERROR;
@@ -230,8 +186,7 @@ private:
 private:
 	lr_node* generate_nexts(_Tp start,lr_node* start_node,std::vector<parser_unit<_Tp,_SentenceEnum,_Info>> units,uintptr_t& node_amount) {
 		lr_node* curr_node=new lr_node(node_amount++);
-		std::queue<_Tp> wait_list;
-		std::unordered_set<_Tp> wait_seen;
+		std::vector<_Tp> wait_list;
 		for (uintptr_t i=0;i<start_node->unit_list_.size();i++) {
 			for (int j=0;j<start_node->unit_list_[i].right_ops_.size()-1;j++) {
 				if (start_node->unit_list_[i].right_ops_[j]==seperator_) {
@@ -247,138 +202,130 @@ private:
 						temp_unit.id_=start_node->unit_list_[i].id_;
 						curr_node->unit_list_.push_back(temp_unit);
 						if (k+1<start_node->unit_list_[i].right_ops_.size()) {
-							if (wait_seen.find(start_node->unit_list_[i].right_ops_[k+1])==wait_seen.end()) {
-								wait_list.push(start_node->unit_list_[i].right_ops_[k+1]);
-								wait_seen.insert(start_node->unit_list_[i].right_ops_[k+1]);
-							}
+							if (!_STDEX_PARSER_HAS_VALUE(wait_list,start_node->unit_list_[i].right_ops_[k+1])) wait_list.push_back(start_node->unit_list_[i].right_ops_[k+1]);
 						}
 						break;
 					}
 				}
 			}
 		}
-		while (wait_list.size()) {
-			_Tp current=wait_list.front();
-			auto it=units_by_lhs_.find(current);
-			if (it!=units_by_lhs_.end()) {
-				for (const unit_type* jt:it->second) {
+		for (int i=0;i<wait_list.size();i++) {
+			for (uintptr_t j=0;j<units.size();j++) {
+				if (wait_list[i]==units[j].left_op_) {
 					unit_type temp_unit;
-					temp_unit.left_op_=jt->left_op_;
-					int i=0,index;
-					while (i<jt->right_ops_.size() && jt->right_ops_[i]==epsilon_) {
+					temp_unit.left_op_=units[j].left_op_;
+					int k=0;
+					while (k<units[j].right_ops_.size() && units[j].right_ops_[k]==epsilon_) {
 						temp_unit.right_ops_.push_back(epsilon_);
-						i++;
+						k++;
 					}
 					temp_unit.right_ops_.push_back(seperator_);
-					index=i+1;
-					for (i;i<jt->right_ops_.size();i++) temp_unit.right_ops_.push_back(jt->right_ops_[i]);
-					temp_unit.id_=jt->id_;
+					for (k;k<units[j].right_ops_.size();k++) temp_unit.right_ops_.push_back(units[j].right_ops_[k]);
+					temp_unit.id_=units[j].id_;
 					curr_node->unit_list_.push_back(temp_unit);
-					if (index<temp_unit.right_ops_.size() && wait_seen.find(temp_unit.right_ops_[index])==wait_seen.end()) {
-						wait_list.push(temp_unit.right_ops_[index]);
-						wait_seen.insert(temp_unit.right_ops_[index]);
-					}
-					//if (!_STDEX_PARSER_HAS_VALUE_I(wait_list,temp_unit.right_ops_[1],i)) wait_list.push_back(temp_unit.right_ops_[1]);
+					if (!_STDEX_PARSER_HAS_VALUE_I(wait_list,temp_unit.right_ops_[1],i)) wait_list.push_back(temp_unit.right_ops_[1]);
 				}
 			}
-			wait_list.pop();
 		}
-		auto [it,inserted]=lr_node_list_.insert(curr_node);
-		if (!inserted) {
-			delete curr_node;
-			node_amount--;
-			return *it;
+		for (auto i:lr_node_list_) {
+			if (*i==*curr_node) {
+				node_amount--;
+				return i;
+			}
 		}
+		lr_node_list_.push_back(curr_node);
 		curr_node->edges_.clear();
-		if (wait_seen.empty()) return curr_node;
-		for (auto& it:wait_seen) {
-			lr_node* next=generate_nexts(it,curr_node,units,node_amount);
-			curr_node->edges_[it]=next;
-			lr_node_list_.insert(next);
+		if (wait_list.empty()) return curr_node;
+		while (!wait_list.empty()) {
+			lr_node* next=generate_nexts(wait_list.front(),curr_node,units,node_amount);
+			if (!_STDEX_PARSER_HAS_VALUE(lr_node_list_,next)) {
+				curr_node->edges_[wait_list.front()]=next;
+				wait_list.erase(wait_list.begin());
+				lr_node_list_.push_back(next);
+			} else {
+				curr_node->edges_[wait_list.front()]=next;
+				wait_list.erase(wait_list.begin());
+			}
 		}
 		return curr_node;
 	}	
 	void generate_lr_nodes(uintptr_t& node_amount) {
 		lr_node* curr_node=new lr_node(node_amount++);
-		lr_node_list_.insert(curr_node);
-		std::queue<_Tp> wait_list;
-		std::unordered_set<_Tp> wait_seen;
-		wait_list.push(start_);
-		wait_seen.insert(start_);
-		while (wait_list.size()) {
-			_Tp current=wait_list.front();
-			auto it=units_by_lhs_.find(current);
-			if (it!=units_by_lhs_.end()) {
-				for (const unit_type* jt:it->second) {
+		lr_node_list_.push_back(curr_node);
+		std::vector<_Tp> wait_list;
+		wait_list.push_back(start_);
+		for (int i=0;i<wait_list.size();i++) {
+			for (auto it:units_) {
+				if (wait_list[i]==it.left_op_) {
 					unit_type temp_unit;
-					temp_unit.left_op_=jt->left_op_;
-					int i=0,index;
-					while (i<jt->right_ops_.size() && jt->right_ops_[i]==epsilon_) {
+					temp_unit.left_op_=it.left_op_;
+					int j=0;
+					while (j<it.right_ops_.size() && it.right_ops_[j]==epsilon_) {
 						temp_unit.right_ops_.push_back(epsilon_);
-						i++;
+						j++;
 					}
 					temp_unit.right_ops_.push_back(seperator_);
-					index=i+1;
-					for (i;i<jt->right_ops_.size();i++) temp_unit.right_ops_.push_back(jt->right_ops_[i]);
-					temp_unit.id_=jt->id_;
+					for (j;j<it.right_ops_.size();j++) temp_unit.right_ops_.push_back(it.right_ops_[j]);
+					temp_unit.id_=it.id_;
 					curr_node->unit_list_.push_back(temp_unit);
-					if (index<temp_unit.right_ops_.size() && wait_seen.find(temp_unit.right_ops_[index])==wait_seen.end()) {
-						wait_list.push(temp_unit.right_ops_[index]);
-						wait_seen.insert(temp_unit.right_ops_[index]);
-					}
-					//if (!_STDEX_PARSER_HAS_VALUE_I(wait_list,it.right_ops_[0],i)) wait_list.push_back(it.right_ops_[0]);
+					if (!_STDEX_PARSER_HAS_VALUE_I(wait_list,it.right_ops_[0],i)) wait_list.push_back(it.right_ops_[0]);
 				}
 			}
-			wait_list.pop();
 		}
-		for (auto& it:wait_seen) {
-			lr_node* next=generate_nexts(it,curr_node,units_,node_amount);
-			curr_node->edges_[it]=next;
-			lr_node_list_.insert(next);
+		while (!wait_list.empty()) {
+			lr_node* next=generate_nexts(wait_list.front(),curr_node,units_,node_amount);
+			if (!_STDEX_PARSER_HAS_VALUE(lr_node_list_,next)) {
+				curr_node->edges_[wait_list.front()]=next;
+				wait_list.erase(wait_list.begin());
+				lr_node_list_.push_back(next);
+			} else {
+				curr_node->edges_[wait_list.front()]=next;
+				wait_list.erase(wait_list.begin());
+			}
 		}
 		return;// curr_node;	
 	}
-	void calculate_first() {
-		std::unordered_map<_Tp,std::unordered_set<_Tp>> ptr_set,nptr_set;//ptr is feizhong
-		for (auto& it:units_) {
-			int i=0;
-			bool skip=false;
-			int length=it.right_ops_.size();
-			while (i<length && !skip) {
-				if (it.right_ops_[i]==epsilon_) nptr_set[it.left_op_].insert(epsilon_);
-				else {
-					skip=true;
-					if (ptrs_[it.right_ops_[i]]) ptr_set[it.left_op_].insert(it.right_ops_[i]);
-					else nptr_set[it.left_op_].insert(it.right_ops_[i]);
+	void calculate_first(unit_type& unit) {
+		std::vector<_Tp> wait_list;
+		wait_list.push_back(unit.left_op_);
+		if (ptrs_[unit.right_ops_[0]]) wait_list.push_back(unit.right_ops_[0]);
+		else unit.first_set_.push_back(unit.right_ops_[0]);
+		for (int i=0;i<wait_list.size();i++) {
+			for (auto it:units_) {
+				if (it==unit) continue;
+				if (it.left_op_==wait_list[i]) {
+					if(!ptrs_[it.right_ops_[0]]) unit.first_set_.push_back(it.right_ops_[0]);
+					else {
+						if(!_STDEX_PARSER_HAS_VALUE_I(wait_list,it.right_ops_[0],i)) wait_list.push_back(it.right_ops_[0]);
+					}
 				}
-				i++;	
 			}
 		}
-		//auto result=kosaraju_plus<_Tp>(ptr_set);
-		//std::unordered_map<std::unordered_set<_Tp>*,std::unordered_set<_Tp>> first_sets;
-		/*for (auto& it:result) {
-			reverse(it.begin(),it.end());
-			for (int i=0;i<it.size();i++) {
-				if (i!=0) first_sets[&it[i]].insert(first_sets[&it[i-1]].begin(),first_sets[&it[i-1]].end());
-				for (auto& jt:it[i]) first_sets[&it[i]].insert(nptr_set[jt].begin(),nptr_set[jt].end());
-			}
-		}*/
-		auto first_sets=inverse_topology_closure<_Tp>(ptr_set,[&](_Tp node) -> std::unordered_set<_Tp>&{
-			return nptr_set[node];
-		});
-		for (auto& it:first_sets) first_set_[it.first]=it.second;
-		for (auto& it:ptrs_) {
-			if (!it.second) first_set_[it.first].insert(it.first);	
+	}
+	void calculate_first(_Tp op) {
+		first_set_[op].clear();
+		if (!ptrs_[op]) {
+			first_set_[op].push_back(op);
+			return;
 		}
-		return;
+		for (auto it:units_) {
+			if (it.left_op_==op) {
+				for (auto jt:it.first_set_) {
+					if(!_STDEX_PARSER_HAS_VALUE(first_set_[op],jt)) first_set_[op].push_back(jt);
+				}
+			}
+		}
 	}
 	bool calculate_follow(unit_type& unit) {
 		bool result=false;
 		if (ptrs_[unit.right_ops_[unit.right_ops_.size()-1]]) {
 			if (unit.right_ops_[unit.right_ops_.size()-1]!=unit.left_op_) {
-				int size=follow_set_[unit.right_ops_[unit.right_ops_.size()-1]].size();
-				follow_set_[unit.right_ops_[unit.right_ops_.size()-1]].insert(follow_set_[unit.left_op_].begin(),follow_set_[unit.left_op_].end());
-				result=size!=follow_set_[unit.right_ops_[unit.right_ops_.size()-1]].size();
+				for (auto it:follow_set_[unit.left_op_]) {
+					if (!_STDEX_PARSER_HAS_VALUE(follow_set_[unit.right_ops_[unit.right_ops_.size()-1]],it)) {
+						follow_set_[unit.right_ops_[unit.right_ops_.size()-1]].push_back(it);
+						result=true;
+					}
+				}
 			}
 		}
 		bool e_stand=true;
@@ -387,15 +334,21 @@ private:
 			if (ptrs_[unit.right_ops_[start_index]]) {
 				for (int i=start_index+1;i<=end_index;i++) {
 					for (auto it:first_set_[unit.right_ops_[i]]) {
-						if (it!=epsilon_) result=follow_set_[unit.right_ops_[start_index]].insert(it).second;
+						if(!_STDEX_PARSER_HAS_VALUE(follow_set_[unit.right_ops_[start_index]],it) && it!=epsilon_) {
+							follow_set_[unit.right_ops_[start_index]].push_back(it);
+							result=true;
+						}
 					}
 				}
-				if (first_set_[unit.right_ops_[start_index]].find(epsilon_)==first_set_[unit.right_ops_[start_index]].end()) end_index=start_index;
-				if (e_stand && first_set_[unit.right_ops_[start_index+1]].find(epsilon_)==first_set_[unit.right_ops_[start_index+1]].end()) e_stand=false;
+				if (!_STDEX_PARSER_HAS_VALUE(first_set_[unit.right_ops_[start_index]],epsilon_)) end_index=start_index;
+				if (e_stand && !_STDEX_PARSER_HAS_VALUE(first_set_[unit.right_ops_[start_index+1]],epsilon_)) e_stand=false;
 				if (e_stand) {
-					int size=follow_set_[unit.right_ops_[start_index]].size();
-					follow_set_[unit.right_ops_[start_index]].insert(follow_set_[unit.left_op_].begin(),follow_set_[unit.left_op_].end());
-					result=size!=follow_set_[unit.right_ops_[start_index]].size();
+					for (auto it:follow_set_[unit.left_op_]) {
+						if (!_STDEX_PARSER_HAS_VALUE(follow_set_[unit.right_ops_[start_index]],it)) {
+							follow_set_[unit.right_ops_[start_index]].push_back(it);
+							result=true;
+						}
+					}
 				}
 			} else {
 				end_index=start_index;
@@ -412,43 +365,32 @@ private:
 		//CONVERT QUEUE TO VECTOR(NO NEED REVERSE?)
 		auto start_unit=units_[start_unit_];
 		for (auto it:ptrs_) follow_set_[it.first].clear();
-		std::queue<_Tp> wait_ptr_list;
-		std::unordered_set<_Tp> wait_seen;
+		std::vector<_Tp> wait_ptr_list;
+		wait_ptr_list.clear();
 		for (auto it:start_unit.right_ops_) {
-			if (ptrs_[it]) {
-				wait_ptr_list.push(it);
-				wait_seen.insert(it);
-			}
+			if (ptrs_[it]) wait_ptr_list.push_back(it);
 		}
 		//WHEN USING THE ANOTHER METHOD,ONLY PUSH START TO WAIT_PTR_LIST
 		//BUT IF REVERSE IS NEEDED,THE CURRENT CODE IS NOT AVAILABLE
-		while (wait_ptr_list.size()) {
-			_Tp current=wait_ptr_list.front();
+		for (int i=0;i<wait_ptr_list.size();i++) {
 			for (auto& it:units_) {
-				if (!_STDEX_PARSER_HAS_VALUE(it.right_ops_,current)) continue;
+				if(!_STDEX_PARSER_HAS_VALUE(it.right_ops_,wait_ptr_list[i])) continue;
 				bool result=calculate_follow(it);
 				for (auto jt:it.right_ops_) {
-					if (ptrs_[jt] && jt!=current) {
-						if (wait_seen.find(jt)==wait_seen.end() || result) {
-							wait_ptr_list.push(jt);
-							wait_seen.insert(jt);
-						}
+					if (ptrs_[jt] && jt!=wait_ptr_list[i]) {
+						if (!_STDEX_PARSER_HAS_VALUE(wait_ptr_list,jt) | result) wait_ptr_list.push_back(jt);
 					}
 				}	
 			}
 			for (auto& it:units_) {
-				if (it.left_op_!=current) continue;
+				if (it.left_op_!=wait_ptr_list[i]) continue;
 				bool result=calculate_follow(it);	
 				for (auto jt:it.right_ops_) {
-					if (ptrs_[jt] && jt!=current) {
-						if (wait_seen.find(jt)==wait_seen.end() || result) {
-							wait_ptr_list.push(jt);
-							wait_seen.insert(jt);
-						}
+					if (ptrs_[jt] && jt!=wait_ptr_list[i]) {
+						if (!_STDEX_PARSER_HAS_VALUE(wait_ptr_list,jt) | result) wait_ptr_list.push_back(jt);
 					}
 				}
 			}
-			wait_ptr_list.pop();
 		}
 		//for (auto i:wait_ptr_list) cout<<i<<" ";
 		//cout<<"\nEND FOLLOW\n";
@@ -472,7 +414,7 @@ private:
 					temp_unit.id_=jt.id_;
 					for (auto kt:ptrs_) {
 						_Tp current_ptr=kt.first;
-						if (follow_set_[jt.left_op_].find(current_ptr)!=follow_set_[jt.left_op_].end()) {
+						if (std::find(follow_set_[jt.left_op_].begin(),follow_set_[jt.left_op_].end(),current_ptr)!=follow_set_[jt.left_op_].end()) {
 							if (lr_sheet_[std::make_pair(current_ptr,it->id_)].next_.lr_ptr_) {
 								if (ptrs_[current_ptr]) throw std::logic_error("Conflict GOTO and REDUCTION at production "+std::to_string(i)+"("+jt.to_string()+") with GT("+std::to_string(it->id_)+","+std::to_string(current_ptr)+")");
 								else {
@@ -515,18 +457,10 @@ public:
 				for (auto jt:it.right_ops_) ptrs_[jt]|=false;
 			}
 		}
-		units_by_lhs_.clear();
-		for (const auto& it:units_) units_by_lhs_[it.left_op_].push_back(&it);
-		for (auto* it:lr_node_list_) delete it;
 		lr_node_list_.clear();
 		generate_lr_nodes(node_amount);
 #ifdef _STDEX_OUTPUT_PARSER
-		auto lr_sort=[](lr_node* lhs,lr_node* rhs) {
-			return lhs->id_<rhs->id_;
-		};
-		std::set<lr_node*,decltype(lr_sort)> lr_output(lr_sort);
-		for (auto it:lr_node_list_) lr_output.insert(it);
-		for (auto it:lr_output) {
+		for (auto it:lr_node_list_) {
 			_STDEX_OUTPUT_PARSER<<it->id_<<":"<<std::endl;
 			_STDEX_OUTPUT_PARSER<<"  units:"<<std::endl;
 			for (auto jt:it->unit_list_) {
@@ -540,25 +474,28 @@ public:
 		}
 #endif
 		first_set_.clear();
-		calculate_first();
 		follow_set_.clear();
+		for (auto& it:units_) calculate_first(it);
+		for (auto& it:ptrs_) calculate_first(it.first);
 		calculate_follow();
 #ifdef _STDEX_OUTPUT_PARSER
-		_STDEX_OUTPUT_PARSER<<"\nfirsts:\n\n";
+		_STDEX_OUTPUT_PARSER<<"\n\nfirsts:\n";
 		for (auto& it:ptrs_) {
 			_STDEX_OUTPUT_PARSER<<it.first<<":\n  {";
-			std::string temp_first;
-			for (auto& jt:first_set_[it.first]) temp_first+=std::to_string((int)jt)+",";
-			if (temp_first.size()) temp_first.pop_back();
-			_STDEX_OUTPUT_PARSER<<temp_first<<"}\n";
+			for (int i=0;i<first_set_[it.first].size();i++) {
+				_STDEX_OUTPUT_PARSER<<first_set_[it.first][i];
+				if (i!=first_set_[it.first].size()-1) _STDEX_OUTPUT_PARSER<<",";
+			}
+			_STDEX_OUTPUT_PARSER<<"}\n";
 		}
-		_STDEX_OUTPUT_PARSER<<"\nfollows:\n\n";
+		_STDEX_OUTPUT_PARSER<<"\n\nfollows:\n";
 		for (auto& it:ptrs_) {
 			_STDEX_OUTPUT_PARSER<<it.first<<":\n  {";
-			std::string temp_follow;
-			for (auto& jt:follow_set_[it.first]) temp_follow+=std::to_string((int)jt)+",";
-			if (temp_follow.size()) temp_follow.pop_back();
-			_STDEX_OUTPUT_PARSER<<temp_follow<<"}\n";
+			for (int i=0;i<follow_set_[it.first].size();i++) {
+				_STDEX_OUTPUT_PARSER<<follow_set_[it.first][i];
+				if (i!=follow_set_[it.first].size()-1) _STDEX_OUTPUT_PARSER<<",";
+			}
+			_STDEX_OUTPUT_PARSER<<"}\n";
 		}
 #endif
 		lr_sheet_.clear();
