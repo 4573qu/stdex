@@ -1,5 +1,5 @@
 //Last Modified At 2025/09/20
-//@Version 3.0.0.0
+//@Version 3.1.0.0
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
@@ -41,49 +41,52 @@ enum sheet_type {
 };
 
 template <typename _Tp,typename _SentenceEnum=int>
-struct parser_unit_base {
+struct parser_unit {
 	_Tp left_op_;
 	std::vector<_Tp> right_ops_;
 	std::unordered_set<_Tp> first_set_;
 	_SentenceEnum id_;
-	bool operator ==(const parser_unit_base<_Tp,_SentenceEnum>& other) const {
+	int dot_;
+	parser_unit() {
+		dot_=-1;
+	}
+	parser_unit(const parser_unit& other) {
+		left_op_=other.left_op_;
+		right_ops_=other.right_ops_;
+		id_=other.id_;
+		dot_=other.dot_;
+	}
+	bool operator ==(const parser_unit<_Tp,_SentenceEnum>& other) const {
 		if (right_ops_.size()!=other.right_ops_.size()) return false;
 		for (int i=0;i<right_ops_.size();i++) {
 			if (right_ops_[i]!=other.right_ops_[i]) return false;
 		}
+		if (dot_!=other.dot_) return false;
 		return left_op_==other.left_op_;
 	}
-	bool operator !=(const parser_unit_base<_Tp,_SentenceEnum>& other) const {
+	bool operator !=(const parser_unit<_Tp,_SentenceEnum>& other) const {
 		return !((*this)==other);
 	}
 	std::string to_string() {
 		std::string result=std::to_string(id_)+":"+std::to_string(left_op_)+"->";
-		for (int i=0;i<right_ops_.size()-1;i++) result+=std::to_string(right_ops_[i])+" ";
-		if (right_ops_.empty()) return result;
-		return result+std::to_string(right_ops_[right_ops_.size()-1]);
-	}
-};
-
-template <typename _Tp,typename _SentenceEnum=int,typename _Info=void*>
-struct parser_unit : public parser_unit_base<_Tp,_SentenceEnum> {
-	_Info information_=nullptr;
-	bool operator ==(const parser_unit<_Tp,_SentenceEnum,_Info>& other) const {
-		return parser_unit_base<_Tp,_SentenceEnum>::operator ==(other) && information_==other.information_;
-	}
-	bool operator !=(const parser_unit<_Tp,_SentenceEnum,_Info>& other) const {
-		return !((*this)==other);
+		for (int i=0;i<right_ops_.size();i++) {
+			if (i==dot_) result+="· ";
+			result+=std::to_string(right_ops_[i])+((i==right_ops_.size()-1)?"":" ");
+		}
+		if (dot_==right_ops_.size()) result+="·";
+		return result;
 	}
 };
 
 #if __cplusplus>=_STDEX_CPP17_VERSION
-template <typename _Tp,typename _SentenceEnum=int,typename _Info=void*>
-parser_unit<_Tp,_SentenceEnum,_Info> single_parser_unit(_Tp left,std::initializer_list<_Tp> rights,_SentenceEnum id=(_SentenceEnum)0) {
+template <typename _Tp,typename _SentenceEnum=int>
+parser_unit<_Tp,_SentenceEnum> single_parser_unit(_Tp left,std::initializer_list<_Tp> rights,_SentenceEnum id=(_SentenceEnum)0) {
 	if (!rights.size()) throw std::invalid_argument("Invalid size of rights");
-	parser_unit<_Tp,_SentenceEnum,_Info> result;
+	parser_unit<_Tp,_SentenceEnum> result;
 	result.left_op_=left;
 	result.right_ops_=std::vector<_Tp>(rights);
 	result.id_=id;
-	result.information_=(_Info)nullptr;
+	result.dot_=-1;
 	return result;
 }
 #endif
@@ -103,11 +106,11 @@ public:
 	virtual int on_error(uintptr_t id,error_type type,int state,_Tp word)=0;
 };
 
-template <typename _Tp,typename _SentenceEnum=int,typename _Info=void*>
+template <typename _Tp,typename _SentenceEnum=int>
 class parser {
 #define _STDEX_PARSER_HAS_VALUE(array,value) (std::find(array.begin(),array.end(),value)!=array.end())
 #define _STDEX_PARSER_HAS_VALUE_I(array,value,i) (std::find(array.begin()+i,array.end(),value)!=array.end())
-	using unit_type=parser_unit<_Tp,_SentenceEnum,_Info>;
+	using unit_type=parser_unit<_Tp,_SentenceEnum>;
 public:
 	std::vector<unit_type> units_;
 	std::map<_Tp,std::vector<const unit_type*>> units_by_lhs_;
@@ -155,19 +158,9 @@ private:
 	public:
 		uintptr_t id_;
 		std::vector<unit_type> unit_list_;
-		std::map<_Tp,lr_node*> edges_;
-		std::string signature_;
+		std::unordered_map<_Tp,lr_node*> edges_;
 		lr_node(uintptr_t id) : id_(id) {}
-	
-		void compute_signature() {
-			std::ostringstream oss;
-			for (const auto& it:unit_list_) {
-				oss<<it.left_op_<<":";
-				for (auto jt:it.right_ops_) oss<<jt<<",";
-				oss<<"|";
-			}
-			signature_=oss.str();
-		}
+
 		bool operator ==(const lr_node& other) const {
 			if (unit_list_.size()!=other.unit_list_.size()) return false;
 			for (uintptr_t i=0;i<unit_list_.size();i++) {
@@ -182,15 +175,12 @@ private:
 	};
 	struct lr_node_hash {
 		std::size_t operator ()(lr_node* node) const {
-			//if (node->signature_=="") node->compute_signature();
-			//return std::hash<std::string>{}(node->signature_);
 			std::size_t h=0;
 			static uintptr_t magic=0x9E3779B9;
 			for (const auto& it:node->unit_list_) {
 				h^=std::hash<_Tp>{}(it.left_op_)+magic+(h<<6)+(h>>2);
 				for (const auto& jt:it.right_ops_) h^=std::hash<_Tp>{}(jt)+magic+(h<<6)+(h>>2);
 				h^=std::hash<_SentenceEnum>{}(it.id_)+magic+(h<<6)+(h>>2);
-				h^=std::hash<_Info>{}(it.information_)+magic+(h<<6)+(h>>2);
 			}
 			return h;
 		}
@@ -198,15 +188,13 @@ private:
 	struct lr_node_equal {
 		bool operator ()(lr_node* lhs,lr_node* rhs) const {
 			if (lhs==rhs) return true;
-			//if (lhs->signature_=="") lhs->compute_signature();
-			//if (rhs->signature_=="") rhs->compute_signature();
-			//if (lhs->signature_!=rhs->signature_) return false;
 			return *lhs==*rhs;
 		}
 	};
 	std::unordered_set<lr_node*,lr_node_hash,lr_node_equal> lr_node_list_;
 	std::map<_Tp,std::unordered_set<_Tp>> first_set_;
 	std::map<_Tp,std::unordered_set<_Tp>> follow_set_;
+	std::unordered_map<_Tp,std::unordered_set<std::shared_ptr<unit_type>>> closures_;
 	class sheet_node {
 	public:
 		sheet_type type_=ST_ERROR;
@@ -228,115 +216,48 @@ private:
 	std::map<std::pair<_Tp,uintptr_t>,sheet_node> lr_sheet_;
 
 private:
-	lr_node* generate_nexts(_Tp start,lr_node* start_node,std::vector<parser_unit<_Tp,_SentenceEnum,_Info>> units,uintptr_t& node_amount) {
+	void calculate_closures(_Tp op) {
+		if (!ptrs_[op]) return;
+		if (closures_[op].size()) return;
+		auto it=units_by_lhs_.find(op);
+		if (it!=units_by_lhs_.end()) {
+			std::unordered_set<_Tp> rights;
+			for (auto& jt:it->second) {
+				auto insert_result=closures_[op].insert(std::make_shared<unit_type>(*jt));
+				int i=0;
+				while (i<jt->right_ops_.size() && jt->right_ops_[i]==epsilon_) i++;
+				if (i<jt->right_ops_.size()) rights.insert(jt->right_ops_[i]);
+				if (insert_result.second) (*insert_result.first)->dot_=i;
+				//std::vector<_Tp> sep={seperator_};
+				//p->right_ops_.insert(p->right_ops_.begin()+i,sep.begin(),sep.end());
+			}
+			for (auto& jt:rights) {
+				calculate_closures(jt);
+				closures_[op].insert(closures_[jt].begin(),closures_[jt].end());
+			}
+		}
+	}
+	lr_node* generate_lr_node(std::vector<unit_type> starts,uintptr_t& node_amount) {
 		lr_node* curr_node=new lr_node(node_amount++);
-		std::queue<_Tp> wait_list;
-		std::unordered_set<_Tp> wait_seen;
-		for (uintptr_t i=0;i<start_node->unit_list_.size();i++) {
-			for (int j=0;j<start_node->unit_list_[i].right_ops_.size()-1;j++) {
-				if (start_node->unit_list_[i].right_ops_[j]==seperator_) {
-					int k=j+1;
-					while (k<start_node->unit_list_[i].right_ops_.size() && start_node->unit_list_[i].right_ops_[k]==epsilon_) k++;
-					if (k<start_node->unit_list_[i].right_ops_.size() && start_node->unit_list_[i].right_ops_[k]==start) {
-						unit_type temp_unit;
-						temp_unit.left_op_=start_node->unit_list_[i].left_op_;
-						for (auto it:start_node->unit_list_[i].right_ops_) temp_unit.right_ops_.push_back(it);
-						for (int l=j;l<k-1;l++) temp_unit.right_ops_[l]=epsilon_;
-						temp_unit.right_ops_[k-1]=start_node->unit_list_[i].right_ops_[k];
-						temp_unit.right_ops_[k]=seperator_;
-						temp_unit.id_=start_node->unit_list_[i].id_;
-						curr_node->unit_list_.push_back(temp_unit);
-						if (k+1<start_node->unit_list_[i].right_ops_.size()) {
-							if (wait_seen.find(start_node->unit_list_[i].right_ops_[k+1])==wait_seen.end()) {
-								wait_list.push(start_node->unit_list_[i].right_ops_[k+1]);
-								wait_seen.insert(start_node->unit_list_[i].right_ops_[k+1]);
-							}
-						}
-						break;
-					}
-				}
-			}
+		std::unordered_set<std::shared_ptr<unit_type>> temp_set;
+		curr_node->unit_list_=starts;
+		for (auto& it:curr_node->unit_list_) {
+			it.dot_++;
+			if (it.dot_<it.right_ops_.size()) temp_set.insert(closures_[it.right_ops_[it.dot_]].begin(),closures_[it.right_ops_[it.dot_]].end());
 		}
-		while (wait_list.size()) {
-			_Tp current=wait_list.front();
-			auto it=units_by_lhs_.find(current);
-			if (it!=units_by_lhs_.end()) {
-				for (const unit_type* jt:it->second) {
-					unit_type temp_unit;
-					temp_unit.left_op_=jt->left_op_;
-					int i=0,index;
-					while (i<jt->right_ops_.size() && jt->right_ops_[i]==epsilon_) {
-						temp_unit.right_ops_.push_back(epsilon_);
-						i++;
-					}
-					temp_unit.right_ops_.push_back(seperator_);
-					index=i+1;
-					for (i;i<jt->right_ops_.size();i++) temp_unit.right_ops_.push_back(jt->right_ops_[i]);
-					temp_unit.id_=jt->id_;
-					curr_node->unit_list_.push_back(temp_unit);
-					if (index<temp_unit.right_ops_.size() && wait_seen.find(temp_unit.right_ops_[index])==wait_seen.end()) {
-						wait_list.push(temp_unit.right_ops_[index]);
-						wait_seen.insert(temp_unit.right_ops_[index]);
-					}
-					//if (!_STDEX_PARSER_HAS_VALUE_I(wait_list,temp_unit.right_ops_[1],i)) wait_list.push_back(temp_unit.right_ops_[1]);
-				}
-			}
-			wait_list.pop();
-		}
+		for (auto& it:temp_set) curr_node->unit_list_.push_back(*it);
 		auto [it,inserted]=lr_node_list_.insert(curr_node);
 		if (!inserted) {
 			delete curr_node;
 			node_amount--;
 			return *it;
 		}
-		curr_node->edges_.clear();
-		if (wait_seen.empty()) return curr_node;
-		for (auto& it:wait_seen) {
-			lr_node* next=generate_nexts(it,curr_node,units,node_amount);
-			curr_node->edges_[it]=next;
-			lr_node_list_.insert(next);
+		std::unordered_map<_Tp,std::vector<unit_type>> temp_map;
+		for (auto& it:curr_node->unit_list_) {
+			if (it.dot_<it.right_ops_.size()) temp_map[it.right_ops_[it.dot_]].push_back(it);
 		}
+		for (auto& it:temp_map) curr_node->edges_[it.first]=generate_lr_node(it.second,node_amount);
 		return curr_node;
-	}	
-	void generate_lr_nodes(uintptr_t& node_amount) {
-		lr_node* curr_node=new lr_node(node_amount++);
-		lr_node_list_.insert(curr_node);
-		std::queue<_Tp> wait_list;
-		std::unordered_set<_Tp> wait_seen;
-		wait_list.push(start_);
-		wait_seen.insert(start_);
-		while (wait_list.size()) {
-			_Tp current=wait_list.front();
-			auto it=units_by_lhs_.find(current);
-			if (it!=units_by_lhs_.end()) {
-				for (const unit_type* jt:it->second) {
-					unit_type temp_unit;
-					temp_unit.left_op_=jt->left_op_;
-					int i=0,index;
-					while (i<jt->right_ops_.size() && jt->right_ops_[i]==epsilon_) {
-						temp_unit.right_ops_.push_back(epsilon_);
-						i++;
-					}
-					temp_unit.right_ops_.push_back(seperator_);
-					index=i+1;
-					for (i;i<jt->right_ops_.size();i++) temp_unit.right_ops_.push_back(jt->right_ops_[i]);
-					temp_unit.id_=jt->id_;
-					curr_node->unit_list_.push_back(temp_unit);
-					if (index<temp_unit.right_ops_.size() && wait_seen.find(temp_unit.right_ops_[index])==wait_seen.end()) {
-						wait_list.push(temp_unit.right_ops_[index]);
-						wait_seen.insert(temp_unit.right_ops_[index]);
-					}
-					//if (!_STDEX_PARSER_HAS_VALUE_I(wait_list,it.right_ops_[0],i)) wait_list.push_back(it.right_ops_[0]);
-				}
-			}
-			wait_list.pop();
-		}
-		for (auto& it:wait_seen) {
-			lr_node* next=generate_nexts(it,curr_node,units_,node_amount);
-			curr_node->edges_[it]=next;
-			lr_node_list_.insert(next);
-		}
-		return;// curr_node;	
 	}
 	void calculate_first() {
 		std::unordered_map<_Tp,std::unordered_set<_Tp>> ptr_set,nptr_set;//ptr is feizhong
@@ -463,12 +384,11 @@ private:
 		for (auto it:lr_node_list_) {
 			uintptr_t i=0;
 			for (auto jt:it->unit_list_) {
-				if (jt.right_ops_[jt.right_ops_.size()-1]==seperator_) {
+				if (jt.right_ops_.size()==jt.dot_) {
 					unit_type temp_unit;
 					temp_unit.left_op_=jt.left_op_;
-					for (auto kt:jt.right_ops_) {
-						if (kt!=seperator_) temp_unit.right_ops_.push_back(kt);
-					}
+					for (auto kt:jt.right_ops_) temp_unit.right_ops_.push_back(kt);
+					temp_unit.dot_=-1;
 					temp_unit.id_=jt.id_;
 					for (auto kt:ptrs_) {
 						_Tp current_ptr=kt.first;
@@ -490,9 +410,8 @@ private:
 			if (it->unit_list_.size()==1) {
 				unit_type* temp_unit=new unit_type;
 				temp_unit->left_op_=it->unit_list_[0].left_op_;
-				for (auto jt:it->unit_list_[0].right_ops_) {
-					if (jt!=seperator_) temp_unit->right_ops_.push_back(jt);
-				}
+				for (auto jt:it->unit_list_[0].right_ops_) temp_unit->right_ops_.push_back(jt);
+				temp_unit->dot_=-1;
 				if ((*temp_unit)==(units_[start_unit_])) {
 					for (auto jt:lr_node_list_) {
 						for (auto kt:jt->edges_) {
@@ -517,9 +436,17 @@ public:
 		}
 		units_by_lhs_.clear();
 		for (const auto& it:units_) units_by_lhs_[it.left_op_].push_back(&it);
+		closures_.clear();
+		for (auto& it:ptrs_) {
+			if (it.second) calculate_closures(it.first);
+		}
 		for (auto* it:lr_node_list_) delete it;
 		lr_node_list_.clear();
-		generate_lr_nodes(node_amount);
+		auto it=units_by_lhs_.find(start_);
+		if (it==units_by_lhs_.end()) return;
+		std::vector<unit_type> start_units;
+		for (auto jt:it->second) start_units.push_back(*jt);
+		generate_lr_node(start_units,node_amount);
 #ifdef _STDEX_OUTPUT_PARSER
 		auto lr_sort=[](lr_node* lhs,lr_node* rhs) {
 			return lhs->id_<rhs->id_;
@@ -579,16 +506,13 @@ public:
 #endif
 	}
 public:
-	template <typename _St=void*>
 	class parse_node {
 	public:
 		_Tp op_;
-		_St info_=nullptr;
 		std::vector<parse_node> children_;
 	};
 private:
-	template <typename _St=void*>
-	void on_reduction(sheet_node* current_symbol,std::vector<uintptr_t>& parse_stack,uintptr_t& current_state,std::vector<parser_listener<_Tp,_SentenceEnum>*>& listeners,uintptr_t& current_id,std::vector<parse_node<_St>>& nodes,parse_node<_St>*& current_word) {
+	void on_reduction(sheet_node* current_symbol,std::vector<uintptr_t>& parse_stack,uintptr_t& current_state,std::vector<parser_listener<_Tp,_SentenceEnum>*>& listeners,uintptr_t& current_id,std::vector<parse_node>& nodes,parse_node*& current_word) {
 		int reduction_num=0;
 		for (int i=0;i<(*current_symbol->next_.unit_ptr_)->right_ops_.size();i++) {
 			if ((*current_symbol->next_.unit_ptr_)->right_ops_[i]!=epsilon_) reduction_num++;
@@ -603,17 +527,16 @@ private:
 		if (skips) current_word=((intptr_t)current_id>nodes.size()||(intptr_t)current_id<1)?nullptr:&nodes[current_id-1];
 	}
 public:
-	template <typename _St=void*>
-	bool parse_with_listener(std::vector<parse_node<_St>> nodes) {
+	bool parse_with_listener(std::vector<parse_node> nodes) {
 		std::vector<parser_listener<_Tp,_SentenceEnum>*> listeners;
 		for (auto it:listeners_) {
 			if (it->enabled_) listeners.push_back(it);
 		}
 		std::vector<uintptr_t> parse_stack;
-		std::vector<parse_node<_St>> nodes_stack;
+		std::vector<parse_node> nodes_stack;
 		parse_stack.push_back(0);
 		uintptr_t current_id=0;
-		parse_node<_St>* current_word=&nodes[current_id++];
+		parse_node* current_word=&nodes[current_id++];
 		while (!parse_stack.empty()) {
 			uintptr_t current_state=parse_stack.back();
 			sheet_node* current_symbol=&lr_sheet_[std::make_pair(current_word->op_,current_state)];
@@ -653,6 +576,95 @@ public:
 		}
 		for (auto it:listeners) it->on_error((uintptr_t)-1,parser_listener<_Tp,_SentenceEnum>::ET_UNKNOWN,0,(_Tp)-1);
 		return false;
+	}
+	
+	friend std::ostream& operator <<(std::ostream& os,const parser& p) {
+		auto write_int=[&](auto v){
+			os.write(reinterpret_cast<const char*>(&v),4);
+		};
+	    std::size_t n=p.units_.size();
+		write_int(n);
+		for (const auto& it:p.units_) {
+			write_int(it.left_op_);
+			std::size_t size=it.right_ops_.size();
+			write_int(size);
+			for (auto jt:it.right_ops_) write_int(jt);
+			write_int(it.id_);
+		}
+		std::size_t m=p.lr_sheet_.size();
+		write_int(m);
+		for (const auto& [key,sn]:p.lr_sheet_) {
+			write_int(key.first);
+			write_int(key.second);
+			write_int(sn.type_);
+			if (sn.next_.lr_ptr_) {
+				write_int(true);
+				if (sn.type_==ST_SHIFT) {
+					int nextid=(*sn.next_.lr_ptr_)->id_;
+					write_int(nextid);
+				} else if (sn.type_==ST_REDUCTION || sn.type_==ST_ERROR) {
+					int uid=(*sn.next_.unit_ptr_)->id_;
+	            	write_int(uid);
+	        	}
+			} else write_int(false);
+		}
+		if (!os) os.setstate(std::ios::failbit);
+		return os;
+	}
+	
+	friend std::istream& operator >>(std::istream& is,parser& p) {
+		auto read_int=[&](auto& v){
+			is.read(reinterpret_cast<char*>(&v),4);
+			if (!is) is.setstate(std::ios::failbit);
+		};
+		std::size_t n;
+		read_int(n);
+		if (!is) return is;
+		p.units_.clear();
+		for (std::size_t i=0;i<n;i++) {
+			unit_type u;
+			read_int(u.left_op_);
+			if (!is) return is;
+			std::size_t size;
+			read_int(size);
+			if (!is) return is;
+			u.right_ops_.resize(size);
+			for (std::size_t j=0;j<size;j++) {
+				read_int(u.right_ops_[j]);
+				if (!is) return is;
+			}
+			read_int(u.id_);
+			if (!is) return is;
+			p.units_.push_back(u);
+		}
+		std::size_t m;
+		read_int(m);
+		if (!is) return is;
+		p.lr_sheet_.clear();
+		for (std::size_t i=0;i<m;i++) {
+	        _Tp sym; int state; int type;
+	        read_int(sym); read_int(state); read_int(type);
+	        sheet_node sn;
+	        sn.type_=(sheet_type)type;
+	        bool has_ptr;
+			read_int(has_ptr);
+			if (!is) return is;
+			if (has_ptr) {
+			    if (sn.type_==ST_SHIFT) {
+					int nextid;
+					read_int(nextid);
+					if (!is) return is;
+					sn.next_.lr_ptr_=new std::shared_ptr<lr_node>(std::make_shared<lr_node>(nextid));
+				} else if (sn.type_==ST_REDUCTION || sn.type_==ST_ERROR) {
+					int uid;
+					read_int(uid);
+					if (!is) return is;
+					sn.next_.unit_ptr_=new std::shared_ptr<unit_type>(std::make_shared<unit_type>(p.units_[uid]));
+				}	
+			}
+			p.lr_sheet_[{sym,state}]=std::move(sn);
+		}
+		return is;
 	}
 #undef _STDEX_PARSER_HAS_VALUE_I
 #undef _STDEX_PARSER_HAS_VALUE

@@ -1,4 +1,4 @@
-//Last Modified At 2025/09/19
+//Last Modified At 2025/09/20
 //@Version 1.0.0.0
 #ifndef _STDEX_MACHINE_ASSEMBLER_H_
 #define _STDEX_MACHINE_ASSEMBLER_H_ 1
@@ -14,7 +14,7 @@
 
 #include "general.h"//At Least 1.0.0.1
 #include "intel.h"//At Least 1.0.0.0
-#include "../syntax/parser.h"//At Least 2.4.2
+#include "../syntax/parser.h"//At Least 3.1
 
 namespace stdex {
 
@@ -925,9 +925,9 @@ public:
 	}
 	std::vector<intel::instruction> parse() {
 		//while catch error
-		std::vector<syntax::parser<TT,LT>::parse_node<>> lines;
-		for (auto& it:bytes_) lines.push_back(syntax::parser<TT,LT>::parse_node<>({(TT)it,nullptr,{}}));
-		lines.push_back(syntax::parser<TT,LT>::parse_node<>({TT::TT_EOF,nullptr,{}}));
+		std::vector<syntax::parser<TT,LT>::parse_node> lines;
+		for (auto& it:bytes_) lines.push_back(syntax::parser<TT,LT>::parse_node({(TT)it,{}}));
+		lines.push_back(syntax::parser<TT,LT>::parse_node({TT::TT_EOF,{}}));
 		switch (machine_bits_) {
 			case MB_32: {
 				instructions_.clear();
