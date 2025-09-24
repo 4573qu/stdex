@@ -223,6 +223,6 @@ auto measure(_Func&& func,_Args&&... args) {
 }
 
 #define _STDEX_PERF_TIMER(unit) stdex::perf::scope_timer STDEX_PERF_TIMER_##__LINE__("",unit)
-#define _STDEX_NAMED_PERF_TIMER(name, unit) stdex::perf::scope_timer PERF_TIMER_##__LINE__(name,unit)
+#define _STDEX_NAMED_PERF_TIMER(name,unit) stdex::perf::scope_timer PERF_TIMER_##__LINE__(name,unit)
 
 #endif

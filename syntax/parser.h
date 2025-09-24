@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/20
-//@Version 3.1.0.1
+//Last Modified At 2025/09/24
+//@Version 3.2.0.0
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
@@ -8,6 +8,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <queue>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -44,7 +45,6 @@ template <typename _Tp,typename _SentenceEnum=int>
 struct parser_unit {
 	_Tp left_op_;
 	std::vector<_Tp> right_ops_;
-	std::unordered_set<_Tp> first_set_;
 	_SentenceEnum id_;
 	int dot_;
 	parser_unit() {
@@ -110,6 +110,7 @@ template <typename _Tp,typename _SentenceEnum=int>
 class parser {
 #define _STDEX_PARSER_HAS_VALUE(array,value) (std::find(array.begin(),array.end(),value)!=array.end())
 #define _STDEX_PARSER_HAS_VALUE_I(array,value,i) (std::find(array.begin()+i,array.end(),value)!=array.end())
+protected:
 	using unit_type=parser_unit<_Tp,_SentenceEnum>;
 public:
 	std::vector<unit_type> units_;
@@ -119,7 +120,6 @@ public:
 	_Tp seperator_;
 	_Tp epsilon_;
 	_Tp eof_;
-	uintptr_t start_unit_;
 	std::vector<parser_listener<_Tp,_SentenceEnum>*> listeners_;
 	parser() {
 		start_=(_Tp)-1;
@@ -153,7 +153,7 @@ public:
 		for (auto* it:lr_node_list_) delete it;
 	}
 
-private:
+protected:
 	class lr_node {
 	public:
 		uintptr_t id_;
@@ -236,6 +236,20 @@ private:
 				closures_[op].insert(closures_[jt].begin(),closures_[jt].end());
 			}
 		}
+	}
+protected:
+	virtual void generate_initialize() {
+		units_by_lhs_.clear();
+		for (const auto& it:units_) units_by_lhs_[it.left_op_].push_back(&it);
+		closures_.clear();
+		for (auto& it:ptrs_) {
+			if (it.second) calculate_closures(it.first);
+		}
+		for (auto* it:lr_node_list_) delete it;
+		lr_node_list_.clear();
+		first_set_.clear();
+		follow_set_.clear();
+		lr_sheet_.clear();
 	}
 	lr_node* generate_lr_node(std::vector<unit_type> starts,uintptr_t& node_amount) {
 		lr_node* curr_node=new lr_node(node_amount++);
@@ -331,14 +345,22 @@ private:
 		//FROM START_ UNIT,INSERT EVERY RIGHT_OP TO QUEUE
 		//AND EXPAND EVERY UNIT WHERE CURRENT_OP IS ON LEFT
 		//CONVERT QUEUE TO VECTOR(NO NEED REVERSE?)
-		auto start_unit=units_[start_unit_];
+		auto it=units_by_lhs_.find(start_);
+		std::vector<unit_type*> start_units;
+		if (it!=units_by_lhs_.end()) {
+			for (auto& jt:it->second) {
+				if (jt->right_ops_.size() && jt->right_ops_[jt->right_ops_.size()-1]==eof_) start_units.push_back(const_cast<unit_type*>(jt));
+			}
+		}
 		for (auto it:ptrs_) follow_set_[it.first].clear();
 		std::queue<_Tp> wait_ptr_list;
 		std::unordered_set<_Tp> wait_seen;
-		for (auto it:start_unit.right_ops_) {
-			if (ptrs_[it]) {
-				wait_ptr_list.push(it);
-				wait_seen.insert(it);
+		for (auto it:start_units) {
+			for (auto jt:it->right_ops_) {
+				if (ptrs_[jt]) {
+					wait_ptr_list.push(jt);
+					wait_seen.insert(jt);
+				}
 			}
 		}
 		//WHEN USING THE ANOTHER METHOD,ONLY PUSH START TO WAIT_PTR_LIST
@@ -374,14 +396,21 @@ private:
 		//for (auto i:wait_ptr_list) cout<<i<<" ";
 		//cout<<"\nEND FOLLOW\n";
 	}
-	void construct_table() {
-		for (auto it:lr_node_list_) {
+	virtual void construct_table() {
+		auto it=units_by_lhs_.find(start_);
+		std::vector<unit_type*> start_units;
+		if (it!=units_by_lhs_.end()) {
+			for (auto& jt:it->second) {
+				if (jt->right_ops_.size() && jt->right_ops_[jt->right_ops_.size()-1]==eof_) start_units.push_back(const_cast<unit_type*>(jt));
+			}
+		}
+		for (auto& it:lr_node_list_) {
 			for (auto jt:it->edges_) {
 				lr_sheet_[std::make_pair(jt.first,it->id_)].next_.lr_ptr_=new std::shared_ptr<lr_node>(std::make_shared<lr_node>(*jt.second));
 				if (!ptrs_[jt.first]) lr_sheet_[std::make_pair(jt.first,it->id_)].type_=ST_SHIFT;
 			}
 		}
-		for (auto it:lr_node_list_) {
+		for (auto& it:lr_node_list_) {
 			uintptr_t i=0;
 			for (auto jt:it->unit_list_) {
 				if (jt.right_ops_.size()==jt.dot_) {
@@ -393,7 +422,7 @@ private:
 					for (auto kt:ptrs_) {
 						_Tp current_ptr=kt.first;
 						if (follow_set_[jt.left_op_].find(current_ptr)!=follow_set_[jt.left_op_].end()) {
-							if (lr_sheet_[std::make_pair(current_ptr,it->id_)].next_.lr_ptr_) {
+							if (lr_sheet_[std::make_pair(current_ptr,it->id_)].next_.lr_ptr_ && lr_sheet_[std::make_pair(current_ptr,it->id_)].type_!=ST_ERROR) {
 								if (ptrs_[current_ptr]) throw std::logic_error("Conflict GOTO and REDUCTION at production "+std::to_string(i)+"("+jt.to_string()+") with GT("+std::to_string(it->id_)+","+std::to_string(current_ptr)+")");
 								else {
 									if (lr_sheet_[std::make_pair(current_ptr,it->id_)].type_==ST_SHIFT) throw std::logic_error("Conflict SHIFT and REDUCTION at production "+std::to_string(i)+"("+jt.to_string()+") with SHIFT("+std::to_string(it->id_)+","+std::to_string(current_ptr)+")");
@@ -402,20 +431,22 @@ private:
 							}
 							lr_sheet_[std::make_pair(current_ptr,it->id_)].type_=ST_REDUCTION;
 						}
-						lr_sheet_[std::make_pair(current_ptr,it->id_)].next_.unit_ptr_=new std::shared_ptr<unit_type>(std::make_shared<unit_type>(temp_unit));
+						if (!lr_sheet_[std::make_pair(current_ptr,it->id_)].next_.unit_ptr_) lr_sheet_[std::make_pair(current_ptr,it->id_)].next_.unit_ptr_=new std::shared_ptr<unit_type>(std::make_shared<unit_type>(temp_unit));
 					}
 				}
 				i++;
 			}
-			if (it->unit_list_.size()==1) {
+			if (it->unit_list_.size()==1 && it->unit_list_[0].right_ops_.size() && it->unit_list_[0].right_ops_[it->unit_list_[0].right_ops_.size()-1]==eof_) {
 				unit_type* temp_unit=new unit_type;
 				temp_unit->left_op_=it->unit_list_[0].left_op_;
 				for (auto jt:it->unit_list_[0].right_ops_) temp_unit->right_ops_.push_back(jt);
 				temp_unit->dot_=-1;
-				if ((*temp_unit)==(units_[start_unit_])) {
-					for (auto jt:lr_node_list_) {
-						for (auto kt:jt->edges_) {
-							if (kt.second->id_==it->id_) lr_sheet_[std::make_pair(eof_,jt->id_)].type_=ST_ACCEPT;
+				for (auto& jt:start_units) {
+					if (*temp_unit==*jt) {
+						for (auto& kt:lr_node_list_) {
+							for (auto& lt:kt->edges_) {
+								if (lt.second->id_==it->id_) lr_sheet_[std::make_pair(eof_,kt->id_)].type_=ST_ACCEPT;
+							}
 						}
 					}
 				}
@@ -423,9 +454,10 @@ private:
 		}
 	}
 public:
-	void generate_parser(bool auto_ptr=true) {
+	virtual void generate_parser(bool auto_ptr=true) {
 		//examine ptr include seperator/start/units
 		//ExamineStartSentence();
+		ptrs_.clear();
 		uintptr_t node_amount=0;
 		if (auto_ptr) {
 			ptrs_.clear();
@@ -434,14 +466,7 @@ public:
 				for (auto jt:it.right_ops_) ptrs_[jt]|=false;
 			}
 		}
-		units_by_lhs_.clear();
-		for (const auto& it:units_) units_by_lhs_[it.left_op_].push_back(&it);
-		closures_.clear();
-		for (auto& it:ptrs_) {
-			if (it.second) calculate_closures(it.first);
-		}
-		for (auto* it:lr_node_list_) delete it;
-		lr_node_list_.clear();
+		generate_initialize();
 		auto it=units_by_lhs_.find(start_);
 		if (it==units_by_lhs_.end()) return;
 		std::vector<unit_type> start_units;
@@ -466,9 +491,7 @@ public:
 			_STDEX_OUTPUT_PARSER<<std::endl;
 		}
 #endif
-		first_set_.clear();
 		calculate_first();
-		follow_set_.clear();
 		calculate_follow();
 #ifdef _STDEX_OUTPUT_PARSER
 		_STDEX_OUTPUT_PARSER<<"\nfirsts:\n\n";
@@ -488,7 +511,6 @@ public:
 			_STDEX_OUTPUT_PARSER<<temp_follow<<"}\n";
 		}
 #endif
-		lr_sheet_.clear();
 		construct_table();
 #ifdef _STDEX_OUTPUT_PARSER
 		_STDEX_OUTPUT_PARSER<<"\n";
@@ -577,7 +599,14 @@ public:
 		for (auto it:listeners) it->on_error((uintptr_t)-1,parser_listener<_Tp,_SentenceEnum>::ET_UNKNOWN,0,(_Tp)-1);
 		return false;
 	}
-	
+	virtual bool validate() {
+		try {
+			generate_parser();
+		} catch (const std::exception& e) {
+			return false;
+		}
+		return true;
+	}
 	friend std::ostream& operator <<(std::ostream& os,const parser& p) {
 		auto write_int=[&](auto v){
 			os.write(reinterpret_cast<const char*>(&v),4);
