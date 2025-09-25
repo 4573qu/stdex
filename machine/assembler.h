@@ -1,4 +1,4 @@
-//Last Modified At 2025/09/20
+//Last Modified At 2025/09/26
 //@Version 1.0.0.0
 #ifndef _STDEX_MACHINE_ASSEMBLER_H_
 #define _STDEX_MACHINE_ASSEMBLER_H_ 1
@@ -94,7 +94,7 @@ private:
 			instruction_->offset_=current_id_-current_length_-1-has_66_prefix_-has_67_prefix_;
 			instruction_->bits_=assembler_->program_bits_;
 		}
-		void try_set_id(int& id,int length,std::string message) {
+		void try_set_id(intptr_t& id,int length,std::string message) {
 			if (id<0) id=current_id_+id+1;
 			if (id<0 || id+length>get_bytes().size()) throw std::out_of_range(message+std::string(" at id ")+std::to_string(id));
 		}
@@ -502,7 +502,7 @@ private:
 			if (id==(uintptr_t)-1) return 0;
 			if (word==TT::TT_EOF) {
 				if (assembler_) {
-					uintptr_t start=std::max(0,(intptr_t)(id-1-code_amount_));
+					uintptr_t start=std::max((intptr_t)0,(intptr_t)(id-1-code_amount_));
 					for (intptr_t i=0;i<(intptr_t)(assembler_->bytes_.size()-id+1+code_amount_);i++) {
 						new_instruction(CT::CT_ERROR);
 						if (check_instruction(false)) instruction_->offset_=i+start;

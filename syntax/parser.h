@@ -1,5 +1,5 @@
 //Last Modified At 2025/09/25
-//@Version 3.2.1.0
+//@Version 3.2.2.0
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
@@ -58,15 +58,18 @@ struct parser_unit {
 		dot_=other.dot_;
 	}
 	bool operator ==(const parser_unit<_Tp,_SentenceEnum>& other) const {
-		if (right_ops_.size()!=other.right_ops_.size()) return false;
-		for (int i=0;i<right_ops_.size();i++) {
-			if (right_ops_[i]!=other.right_ops_[i]) return false;
-		}
-		if (dot_!=other.dot_) return false;
-		return left_op_==other.left_op_;
+		return left_op_==other.left_op_ && dot_==other.dot_ && right_ops_==other.right_ops_;
 	}
 	bool operator !=(const parser_unit<_Tp,_SentenceEnum>& other) const {
 		return !((*this)==other);
+	}
+	bool operator <(const parser_unit<_Tp,_SentenceEnum>& other) const {
+		if (left_op_!=other.left_op_) return left_op_<other.left_op_;
+		if (right_ops_.size()!=other.right_ops_.size()) return right_ops_.size()<other.right_ops_.size();
+		for (int i=0;i<right_ops_.size();i++) {
+			if (right_ops_[i]!=other.right_ops_[i]) return right_ops_[i]<other.right_ops_[i];
+		}
+		return dot_<other.dot_;
 	}
 	std::string to_string() {
 		std::string result=std::to_string(id_)+":"+std::to_string(left_op_)+"->";
@@ -101,8 +104,8 @@ public:
 		ET_UNKNOWN,
 	};
 	bool enabled_;
-	virtual int on_shift(uintptr_t id,int state,_Tp word)=0;
-	virtual int on_reduction(uintptr_t id,int state,int next,_SentenceEnum sentence_id,int reduction_num)=0;
+	virtual intptr_t on_shift(uintptr_t id,int state,_Tp word)=0;
+	virtual intptr_t on_reduction(uintptr_t id,int state,int next,_SentenceEnum sentence_id,int reduction_num)=0;
 	virtual void on_accept()=0;
 	virtual int on_error(uintptr_t id,error_type type,int state,_Tp word)=0;
 };
@@ -163,8 +166,8 @@ protected:
 	struct unit_type_hash {
 		std::size_t operator ()(unit_type* unit) const {
 			std::size_t h=0;
-			hash_combine(h,std::hash<_Tp>{}(unit->left_op_));
-			for (auto& it:unit->right_ops_) hash_combine(h,std::hash<_Tp>{}(it));
+			hash_combine(h,std::hash<intptr_t>{}(unit->left_op_));
+			for (auto& it:unit->right_ops_) hash_combine(h,std::hash<intptr_t>{}(it));
 			hash_combine(h,std::hash<int>{}(unit->dot_));
 			return h;
 		}
@@ -180,38 +183,14 @@ protected:
 		uintptr_t id_;
 		std::vector<unit_type> unit_list_;
 		std::unordered_map<_Tp,lr_node*> edges_;
-		std::unordered_map<lr_node*,std::unordered_set<unit_type*,unit_type_hash,unit_type_equal>>* node_units_;
 		lr_node(uintptr_t id) : id_(id) {}
 		
 		bool operator ==(const lr_node& other) const {
-			/*std::unordered_set<unit_type*,unit_type_hash,unit_type_equal> x1,x2;
-			for (auto& it:unit_list_) x1.insert((unit_type*)&it);
-			for (auto& it:other.unit_list_) x2.insert((unit_type*)&it);
-			return x1==x2;*/
-			if (!node_units_ && !other.node_units_) return false;
-			auto& node_units=node_units_?*node_units_:*other.node_units_;
-			/*std::cout<<"A Hash Compare:\n";
-			for (auto& it:node_units[const_cast<lr_node*>(this)]) {
-				std::cout<<it->to_string()<<std::endl;
+			if (unit_list_.size()!=other.unit_list_.size()) return false;
+			for (int i=0;i<unit_list_.size();i++) {
+				if (unit_list_[i]!=other.unit_list_[i]) return false;
 			}
-			std::cout<<"VS\n";
-			for (auto& it:node_units[const_cast<lr_node*>(&other)]) {
-				std::cout<<it->to_string()<<std::endl;
-			}*/
-			bool result=true;
-			auto& n1=node_units[const_cast<lr_node*>(this)];
-			auto& n2=node_units[const_cast<lr_node*>(&other)];
-			//std::cout<<std::hex<<(uintptr_t)(&n1)<<" "<<(uintptr_t)(&n2)<<std::endl;
-			//result=(n1==n2);<---Something Wrong With This
-			if (n1.size()!=n2.size()) result=false;
-			if (result) {
-				for (auto& it:n1) {
-					if (n2.find(it)==n2.end()) result=false;
-				}
-			}
-			//std::cout<<"RESULT AS "<<(result?"true":"false")<<std::endl<<std::endl;
-			return result;
-			//return edges_==other.edges_;
+			return true;
 		}
 		bool operator !=(const lr_node& other) const {
 			return !((*this)==other);
@@ -219,10 +198,11 @@ protected:
 	};
 	struct lr_node_hash {
 		std::size_t operator ()(lr_node* node) const {
+			return 0;
 			std::size_t h=0;
-			if (!node->node_units_) return h;
-			auto& units=*node->node_units_;
-			for (auto& it:units[node]) hash_combine(h,unit_type_hash{}(it));
+			std::unordered_set<unit_type*,unit_type_hash,unit_type_equal> x0;
+			for (auto& it:node->unit_list_) x0.insert((unit_type*)&it);
+			for (auto& it:x0) hash_combine(h,unit_type_hash{}(it));
 			return h;
 		}
 	};
@@ -233,7 +213,6 @@ protected:
 		}
 	};
 	std::unordered_set<lr_node*,lr_node_hash,lr_node_equal> lr_node_list_;
-	std::unordered_map<lr_node*,std::unordered_set<unit_type*,unit_type_hash,unit_type_equal>> lr_node_units_;
 	std::map<_Tp,std::unordered_set<_Tp>> first_set_;
 	std::map<_Tp,std::unordered_set<_Tp>> follow_set_;
 	std::unordered_map<_Tp,std::unordered_set<std::shared_ptr<unit_type>>> closures_;
@@ -289,14 +268,12 @@ protected:
 		}
 		for (auto* it:lr_node_list_) delete it;
 		lr_node_list_.clear();
-		lr_node_units_.clear();
 		first_set_.clear();
 		follow_set_.clear();
 		lr_sheet_.clear();
 	}
 	lr_node* generate_lr_node(std::vector<unit_type> starts,uintptr_t& node_amount) {
 		lr_node* curr_node=new lr_node(node_amount++);
-		curr_node->node_units_=&lr_node_units_;
 		std::unordered_set<std::shared_ptr<unit_type>> temp_set;
 		curr_node->unit_list_=starts;
 		for (auto& it:curr_node->unit_list_) {
@@ -304,10 +281,9 @@ protected:
 			if (it.dot_<it.right_ops_.size()) temp_set.insert(closures_[it.right_ops_[it.dot_]].begin(),closures_[it.right_ops_[it.dot_]].end());
 		}
 		for (auto& it:temp_set) curr_node->unit_list_.push_back(*it);
-		for (auto& it:curr_node->unit_list_) lr_node_units_[curr_node].insert(&it);
+		std::sort(curr_node->unit_list_.begin(),curr_node->unit_list_.end());
 		auto [it,inserted]=lr_node_list_.insert(curr_node);
 		if (!inserted) {
-			lr_node_units_.erase(curr_node);
 			delete curr_node;
 			node_amount--;
 			return *it;
