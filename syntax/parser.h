@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/24
-//@Version 3.2.0.0
+//Last Modified At 2025/09/25
+//@Version 3.2.1.0
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
@@ -9,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <queue>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -154,19 +155,62 @@ public:
 	}
 
 protected:
+	public:
+	constexpr static std::size_t magic_=0x9E3779B9;
+	static void hash_combine(std::size_t& seed,std::size_t value) noexcept {
+		seed^=value+magic_+(seed<<6)+(seed>>2);
+	}
+	struct unit_type_hash {
+		std::size_t operator ()(unit_type* unit) const {
+			std::size_t h=0;
+			hash_combine(h,std::hash<_Tp>{}(unit->left_op_));
+			for (auto& it:unit->right_ops_) hash_combine(h,std::hash<_Tp>{}(it));
+			hash_combine(h,std::hash<int>{}(unit->dot_));
+			return h;
+		}
+	};
+	struct unit_type_equal {
+		bool operator ()(unit_type* lhs,unit_type* rhs) const {
+			if (lhs==rhs) return true;
+			return *lhs==*rhs;
+		}
+	};
 	class lr_node {
 	public:
 		uintptr_t id_;
 		std::vector<unit_type> unit_list_;
 		std::unordered_map<_Tp,lr_node*> edges_;
+		std::unordered_map<lr_node*,std::unordered_set<unit_type*,unit_type_hash,unit_type_equal>>* node_units_;
 		lr_node(uintptr_t id) : id_(id) {}
-
+		
 		bool operator ==(const lr_node& other) const {
-			if (unit_list_.size()!=other.unit_list_.size()) return false;
-			for (uintptr_t i=0;i<unit_list_.size();i++) {
-				if (unit_list_[i]!=other.unit_list_[i]) return false;
+			/*std::unordered_set<unit_type*,unit_type_hash,unit_type_equal> x1,x2;
+			for (auto& it:unit_list_) x1.insert((unit_type*)&it);
+			for (auto& it:other.unit_list_) x2.insert((unit_type*)&it);
+			return x1==x2;*/
+			if (!node_units_ && !other.node_units_) return false;
+			auto& node_units=node_units_?*node_units_:*other.node_units_;
+			/*std::cout<<"A Hash Compare:\n";
+			for (auto& it:node_units[const_cast<lr_node*>(this)]) {
+				std::cout<<it->to_string()<<std::endl;
 			}
-			return true;
+			std::cout<<"VS\n";
+			for (auto& it:node_units[const_cast<lr_node*>(&other)]) {
+				std::cout<<it->to_string()<<std::endl;
+			}*/
+			bool result=true;
+			auto& n1=node_units[const_cast<lr_node*>(this)];
+			auto& n2=node_units[const_cast<lr_node*>(&other)];
+			//std::cout<<std::hex<<(uintptr_t)(&n1)<<" "<<(uintptr_t)(&n2)<<std::endl;
+			//result=(n1==n2);<---Something Wrong With This
+			if (n1.size()!=n2.size()) result=false;
+			if (result) {
+				for (auto& it:n1) {
+					if (n2.find(it)==n2.end()) result=false;
+				}
+			}
+			//std::cout<<"RESULT AS "<<(result?"true":"false")<<std::endl<<std::endl;
+			return result;
 			//return edges_==other.edges_;
 		}
 		bool operator !=(const lr_node& other) const {
@@ -176,12 +220,9 @@ protected:
 	struct lr_node_hash {
 		std::size_t operator ()(lr_node* node) const {
 			std::size_t h=0;
-			static uintptr_t magic=0x9E3779B9;
-			for (const auto& it:node->unit_list_) {
-				h^=std::hash<_Tp>{}(it.left_op_)+magic+(h<<6)+(h>>2);
-				for (const auto& jt:it.right_ops_) h^=std::hash<_Tp>{}(jt)+magic+(h<<6)+(h>>2);
-				h^=std::hash<_SentenceEnum>{}(it.id_)+magic+(h<<6)+(h>>2);
-			}
+			if (!node->node_units_) return h;
+			auto& units=*node->node_units_;
+			for (auto& it:units[node]) hash_combine(h,unit_type_hash{}(it));
 			return h;
 		}
 	};
@@ -192,6 +233,7 @@ protected:
 		}
 	};
 	std::unordered_set<lr_node*,lr_node_hash,lr_node_equal> lr_node_list_;
+	std::unordered_map<lr_node*,std::unordered_set<unit_type*,unit_type_hash,unit_type_equal>> lr_node_units_;
 	std::map<_Tp,std::unordered_set<_Tp>> first_set_;
 	std::map<_Tp,std::unordered_set<_Tp>> follow_set_;
 	std::unordered_map<_Tp,std::unordered_set<std::shared_ptr<unit_type>>> closures_;
@@ -247,12 +289,14 @@ protected:
 		}
 		for (auto* it:lr_node_list_) delete it;
 		lr_node_list_.clear();
+		lr_node_units_.clear();
 		first_set_.clear();
 		follow_set_.clear();
 		lr_sheet_.clear();
 	}
 	lr_node* generate_lr_node(std::vector<unit_type> starts,uintptr_t& node_amount) {
 		lr_node* curr_node=new lr_node(node_amount++);
+		curr_node->node_units_=&lr_node_units_;
 		std::unordered_set<std::shared_ptr<unit_type>> temp_set;
 		curr_node->unit_list_=starts;
 		for (auto& it:curr_node->unit_list_) {
@@ -260,8 +304,10 @@ protected:
 			if (it.dot_<it.right_ops_.size()) temp_set.insert(closures_[it.right_ops_[it.dot_]].begin(),closures_[it.right_ops_[it.dot_]].end());
 		}
 		for (auto& it:temp_set) curr_node->unit_list_.push_back(*it);
+		for (auto& it:curr_node->unit_list_) lr_node_units_[curr_node].insert(&it);
 		auto [it,inserted]=lr_node_list_.insert(curr_node);
 		if (!inserted) {
+			lr_node_units_.erase(curr_node);
 			delete curr_node;
 			node_amount--;
 			return *it;
@@ -298,6 +344,9 @@ protected:
 				for (auto& jt:it[i]) first_sets[&it[i]].insert(nptr_set[jt].begin(),nptr_set[jt].end());
 			}
 		}*/
+		for (auto& it:nptr_set) {
+			if (!ptr_set.count(it.first)) ptr_set[it.first].clear();
+		}
 		auto first_sets=inverse_topology_closure<_Tp>(ptr_set,[&](_Tp node) -> std::unordered_set<_Tp>&{
 			return nptr_set[node];
 		});
@@ -477,13 +526,17 @@ public:
 			return lhs->id_<rhs->id_;
 		};
 		std::set<lr_node*,decltype(lr_sort)> lr_output(lr_sort);
-		for (auto it:lr_node_list_) lr_output.insert(it);
-		for (auto it:lr_output) {
+		for (auto& it:lr_node_list_) lr_output.insert(it);
+		for (auto& it:lr_output) {
 			_STDEX_OUTPUT_PARSER<<it->id_<<":"<<std::endl;
 			_STDEX_OUTPUT_PARSER<<"  units:"<<std::endl;
 			for (auto jt:it->unit_list_) {
 				_STDEX_OUTPUT_PARSER<<"    "<<jt.left_op_<<"->";
-				for (auto kt:jt.right_ops_) _STDEX_OUTPUT_PARSER<<kt<<" ";
+				for (int i=0;i<jt.right_ops_.size();i++) {
+					if (i==jt.dot_) _STDEX_OUTPUT_PARSER<<"· ";
+					_STDEX_OUTPUT_PARSER<<jt.right_ops_[i]<<" ";
+				}
+				if (jt.dot_==jt.right_ops_.size()) _STDEX_OUTPUT_PARSER<<"· ";
 				_STDEX_OUTPUT_PARSER<<std::endl;
 			}
 			_STDEX_OUTPUT_PARSER<<"  edges:"<<std::endl;
