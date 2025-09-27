@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/25
-//@Version 1.0.0.1
+//Last Modified At 2025/09/28
+//@Version 1.1.0.0
 #ifndef _STDEX_SYNTAX_LR_PARSER_H_
 #define _STDEX_SYNTAX_LR_PARSER_H_ 1
 
@@ -217,6 +217,164 @@ public:
 		}
 #endif
 	}
+};
+
+template <typename _Tp,typename _SentenceEnum=int,uintptr_t _K=1>
+class lr_parser : public parser<_Tp,_SentenceEnum> {
+	using base=parser<_Tp,_SentenceEnum>;
+	using unit_type=typename base::unit_type;
+	using lr_node=typename base::lr_node;
+	struct lrk_node : lr_node {
+		std::map<unit_type*,std::set<std::vector<Tp>> lookaheads_;
+		lrk_node(uintptr_t id) : lr_node(id) {
+			table_=&lrk_items_;
+		}
+		bool operator ==(const lrk_node& other) {
+			if (*static_cast<lr_node*>(this)!=*static_cast<lr_node*>(const_cast<lrk_node*>(&other))) return false;
+			for (int i=0;i<unit_list_.size();i++) {
+				if (lookaheads_[&unit_list_[i]]!=other.lookaheads_[&other.unit_list_[i]]) return false;
+			}
+			return true;
+		}
+	};
+public:
+	lr_parser(std::initializer_list<std::variant<_Tp,std::vector<unit_type>,std::map<_Tp,bool>>> init_list) : parser<_Tp,_SentenceEnum>(init_list) { }
+private:
+	lrk_node* generate_lrk_node(lrk_node* prev_node,std::vector<int> starts,uintptr_t& node_amount) {
+		lrk_node* curr_node=new lr_node(node_amount++);
+		std::unordered_set<unit_type*> temp_set;
+		if (!prev_node) {
+			for (auto& it:starts) {
+				curr_node->unit_list_.push_back(units_[i]);
+				if (units_[i].left_op_==base::start_) curr_node->lookaheads_[&curr_node->unit_list_[curr_node->unit_list_.size()-1]].insert({base::eof_});
+				curr_node->unit_list_[curr_node->unit_list_.size()-1].dot_=0;
+				temp_set.insert(&curr_node->unit_list_[curr_node->unit_list_.size()-1]);
+			}
+		} else {
+			for (auto& it:starts) {
+				curr_node->unit_list_.push_back(prev_node->unit_list_[i]);
+				curr_node->lookaheads_[&curr_node->unit_list_[curr_node->unit_list_.size()-1]]=prev_node->lookaheads_[&prev_node->unit_list_[i]];
+				curr_node->unit_list_[curr_node->unit_list_.size()-1].dot_++;
+				temp_set.insert(&curr_node->unit_list_[curr_node->unit_list_.size()-1]);
+			}
+		}
+
+//use closure to get units
+//SECOND propagate to every unit of curr_node
+//思路是对的，核心是改闭包
+/*
+闭包部分简述参考：
+一个产生式X，他的lookahead记为LX，是否可以认为，由他闭包构造的DFA节点的所有新增产生式，都只有两种情况：第一种是和LX有关的，第二种是LX无关的。在LR(0)中，我针对每一个符号构造了一个闭包，意味着遇到这个符号可以闭包展开哪些产生式；现在对于LR(k)，我可以同样保留这个设计，但每一个闭包项额外记录：产生它所携带的lookahead和他是否和传入的LX有关。
+然后，我这样生成下一个lr节点时这样做：
+继承上一个节点来的所有产生式和对应的lookahead，然后挪动点的位置；
+构造一个map<token,lookahead>，将每个点后token的lookahead合并成LX（比如说两个产生式挪完点之后都是S，那么就把这两个产生式的lookahead合并成S对应的LX）；最后，调用闭包，直接把闭包产生的产生式全部加入这个项目集。这样是不是就可以了？
+除此之外的一个问题是：你这个问题问得特别深入，已经不只是“LR(k) 的定义是什么”，而是在琢磨**怎么构造 LR(k) 项目集族**，以及怎么在程序里落地实现。等于是你想把 **LR(0) 那套“点移动+闭包”的节点构造流程**推广到带 lookahead 的版本。我们一点一点梳理。
+
+---
+
+## 1. 背景回顾：LR(0) 和 LR(1) 的差异
+
+- **LR(0)** 项目：只存放“点”的位置：  
+  \[(A -> α · β)\]  
+  闭包时：如果点后面是非终结符 \(B\)，就把 \(B\) 的所有产生式 \((B -> · \gamma)\) 加进来。
+
+- **LR(1)** 项目：除了点，还记录一个 **lookahead 符号**：  
+  \[(A -> α · β, a)\]  
+  闭包规则：如果点后面是非终结符 \(B\)，就把 \(B\) 的产生式全加进去，但要给它们分配正确的 lookahead 集合。这个集合是：  
+  \[\text{First}_1(β a)\]  
+  也就是说，点后串 \(β\) 跟已有的 lookahead 符号 \(a\) 合并推导，看未来 1 个符号可能是什么。
+
+- **LR(k)**：完全类似，不过 lookahead 由单个符号变成了长度 \(\leq k\) 的串：  
+  \[(A -> α · β, u),\quad u \in \Sigma^{\le k}\]  
+  闭包时给新产生式分配的 lookahead 集合是：  
+  \[\text{First}_k(β u)\]  
+  这里的 Firstk 就是推导未来**最多 \(k\) 个前缀终结符串**。
+
+---
+
+## 2. 回答你设想的“继承+合并+闭包”法
+
+你提的三个步骤：
+1. **继承所有产生式及 lookahead，移动点。**
+2. **收集所有点后的 token → 合并 lookahead 进一个 map[token → LX]。**
+3. **对这个 map 做闭包，把对应的产生式加进来。**
+
+→ 方向是对的！这就是 LR(k) 标准算法的程序员实践形态。不同的只是：
+- 你手里要维护的不再是单一符号的 lookahead，而是「长度 ≤ k 的串」。
+- lookahead 合并，不是简单 union，而是要通过 **Firstk** 函数来计算准确结果（避免多余分支）。
+
+---
+
+## 3. 关键点：改造闭包（closure）函数
+
+### 原版(LR(0))闭包逻辑：
+- 遇到点后符号是(B)：把(B->·γ)全部加进来，不管三七二十一。
+
+### LR(1)/LR(k) 闭包逻辑（你需要改造的地方）：
+- 遇到点后符号是(B)：  
+  - 先取lookahead集合(u)（这个项目携带的）。  
+  - 计算(Firstk(βu))，其中(β) 是点后紧随的串。  
+  - 把产生式((B->·γ,v))加进来lookahead(v)=上面的集合。  
+
+注意：“Firstk” 是下一个重点：  
+- 定义：(Firstk(α))=从串(α) 出发能推导出来的**所有**终结符前缀，长度≤(k)。  
+- 如果(α)能推出一些以ε开头的串，那lookahead也可能继续“吃”后续串。这个就是LR(1)中ε与Follow的结合点。
+
+---
+
+## 4. 改造你的流程图
+
+所以你的“map<token,lookahead>”方案可以继续用，但要有个修正：
+
+- **不是 token → lookahead**，而是 **非终结符 → lookahead 集合**。  
+  因为点后面可能跟的是非终结符 (B)，此时闭包要去展开 (B)。而 lookahead 的集合就是 (Firstk(βu))。  
+- 这个集合可能很大（尤其 (k>1) 时会爆炸），所以实际实现里要么压缩存储，要么乖乖回到 LR(1) 就收工（这就是为什么 LR(>1) 很少用）。
+
+---
+
+## 5. 总结成简单操作规约
+
+**闭包 for LR(k):**
+- 输入：项目集 (I)。  
+- 初始化：把(I)拷贝到结果集(J)。  
+- While 可添加新项目：  
+  对于每个((A->α·Bβ,u)∈J)：  
+  - 计算(L=Firstk(βu))。  
+  - For 每个(B->γ)：  
+    - 加入((B->·γ,v))对每个(v∈L)。  
+
+→ 直到没有新项目。
+
+---
+
+## 6. 轻松一句话版
+
+你说得对，**LR(k)闭包就是LR(0)闭包那套，只不过每次展开时“顺手带条尾巴”，尾巴是lookahead集合，而这条尾巴需要用Firstk算出来。**  
+这样既能保留你原来“移动点+构造闭包”的风格，又能精确计算LR(k)的附加信息。  
+
+---
+*/	
+
+		
+		for (auto& it:temp_set) curr_node->unit_list_.push_back(*it);
+		std::sort(curr_node->unit_list_.begin(),curr_node->unit_list_.end());
+
+
+
+		auto [it,inserted]=lr_node_list_.insert(curr_node);
+		if (!inserted) {
+			delete curr_node;
+			node_amount--;
+			return *it;
+		}
+		std::unordered_map<_Tp,std::vector<int>> temp_map;
+		for (int i=0;i<curr_node->unit_list_.size();i++) {
+			if (curr_node->unit_list_[i].dot_<curr_node->unit_list_[i].right_ops_.size()) temp_map[curr_node->unit_list_[i].right_ops_[curr_node->unit_list_[i].dot_]].push_back(i);
+		}
+		for (auto& it:temp_map) curr_node->edges_[it.first]=generate_lr_node(curr_node,it.second,node_amount);
+		return curr_node;
+	}
+	//FOR GLR change construct_table->GLR_BASIC AND MAKE class GLR { GLR_BASIC } to avoid invalid function using.
 };
 
 }
