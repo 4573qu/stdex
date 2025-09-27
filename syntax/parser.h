@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/25
-//@Version 3.2.2.0
+//Last Modified At 2025/09/28
+//@Version 3.2.2.1
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
@@ -462,12 +462,10 @@ protected:
 				i++;
 			}
 			if (it->unit_list_.size()==1 && it->unit_list_[0].right_ops_.size() && it->unit_list_[0].right_ops_[it->unit_list_[0].right_ops_.size()-1]==eof_) {
-				unit_type* temp_unit=new unit_type;
-				temp_unit->left_op_=it->unit_list_[0].left_op_;
-				for (auto jt:it->unit_list_[0].right_ops_) temp_unit->right_ops_.push_back(jt);
+				unit_type temp_unit=unit_list_[0];
 				temp_unit->dot_=-1;
 				for (auto& jt:start_units) {
-					if (*temp_unit==*jt) {
+					if (*jt==temp_unit) {
 						for (auto& kt:lr_node_list_) {
 							for (auto& lt:kt->edges_) {
 								if (lt.second->id_==it->id_) lr_sheet_[std::make_pair(eof_,kt->id_)].type_=ST_ACCEPT;

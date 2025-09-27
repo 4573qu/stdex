@@ -137,15 +137,13 @@ private:
 				i++;
 			}
 			if (it->unit_list_.size()==1 && it->unit_list_[0].right_ops_.size() && it->unit_list_[0].right_ops_[it->unit_list_[0].right_ops_.size()-1]==base::eof_) {
-				unit_type* temp_unit=new unit_type;
-				temp_unit->left_op_=it->unit_list_[0].left_op_;
-				for (auto jt:it->unit_list_[0].right_ops_) temp_unit->right_ops_.push_back(jt);
+				unit_type temp_unit=unit_list_[0];
 				temp_unit->dot_=-1;
 				for (auto& jt:start_units) {
-					if (*temp_unit==*jt) {
-						for (auto& kt:base::lr_node_list_) {
+					if (*jt==temp_unit) {
+						for (auto& kt:lr_node_list_) {
 							for (auto& lt:kt->edges_) {
-								if (lt.second->id_==it->id_) base::lr_sheet_[std::make_pair(base::eof_,kt->id_)].type_=ST_ACCEPT;
+								if (lt.second->id_==it->id_) lr_sheet_[std::make_pair(eof_,kt->id_)].type_=ST_ACCEPT;
 							}
 						}
 					}
