@@ -15,6 +15,7 @@ namespace stdex {
 		namespace core { }
 	}
 	namespace perf { }
+	namespace profiling { }
 	namespace structure { }
 	namespace syntax { }
 	namespace type { }
@@ -36,6 +37,7 @@ namespace std {
 	using namespace stdex::memory;
 	using namespace stdex::meta::core;
 	using namespace stdex::perf;
+	using namespace stdex::profiling;
 	using namespace stdex::structure;
 	using namespace stdex::syntax;
 	using namespace stdex::type;
