@@ -16,7 +16,7 @@ class scope_guard {
 	bool active_;
 
 public:
-	explicit scope_guard(_Func&& func) noexcept(std::is_nothrow_move_constructible_v<_Func>) : func_(std::move(func)) , active_(true) {}
+	explicit scope_guard(_Func&& func) noexcept(std::is_nothrow_move_constructible_v<_Func>) : func_(std::move(func)) , active_(true) { }
 	scope_guard(scope_guard&& other) noexcept(std::is_nothrow_move_constructible_v<_Func>) : func_(std::move(other.func_)) , active_(other.active_) {
 		other.active_=false;
 	}
