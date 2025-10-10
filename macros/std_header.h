@@ -22,7 +22,11 @@ namespace stdex {
 	namespace vision { }
 }
 
+#ifdef _STDEX_HEADER_NAME
+namespace _STDEX_HEADER_NAME {
+#else
 namespace std {
+#endif
 
 	using namespace stdex::algorithm;
 	using namespace stdex::bitwise;
