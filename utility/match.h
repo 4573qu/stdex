@@ -3,6 +3,7 @@
 #ifndef _STDEX_UTILITY_MATCH_H_
 #define _STDEX_UTILITY_MATCH_H_ 1
 
+#include <cstddef>
 #include <stdexcept>
 #include <tuple>
 #include <type_traits>
@@ -170,11 +171,11 @@ template <typename... _Patterns>
 class ds_pattern {
 	std::tuple<_Patterns...> patterns_;
 
-	template <typename _Tp,size_t... _Is>
+	template <typename _Tp,std::size_t... _Is>
 	constexpr bool matches_impl(_Tp&& value,std::index_sequence<_Is...>) const {
 		return (std::get<_Is>(patterns_).matches(std::get<_Is>(value)) && ...);
 	}	
-	template <typename _Tp,typename _Func,size_t... _Is>
+	template <typename _Tp,typename _Func,std::size_t... _Is>
 	constexpr auto execute_impl(_Tp&& value,_Func&& func,std::index_sequence<_Is...>) const {
 		if constexpr (std::is_invocable_v<_Func,decltype(std::get<_Is>(std::forward<_Tp>(value)))...>) {
 			return func(std::get<_Is>(std::forward<_Tp>(value))...);
