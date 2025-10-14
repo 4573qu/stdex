@@ -1,7 +1,7 @@
 //Last Modified At 2025/10/11
 //@Version 1.0.0.0
 #ifndef _STDEX_STRUCTURE_FLAT_MAP_H_
-#define _STDEX_STRUCTURE_FLAT_MAP_ 1
+#define _STDEX_STRUCTURE_FLAT_MAP_H_ 1
 
 #include <algorithm>
 #include <functional>
@@ -27,20 +27,20 @@ namespace structure {
 template <typename _Key,typename _Tp,typename _Compare=std::less<_Key>,class _Allocator=std::allocator<std::pair<_Key,_Tp>>>
 class flat_map {
 private:
-	using value_type=std::pair<_Key,_T>;
+	using value_type=std::pair<_Key,_Tp>;
 	using container_type=std::vector<value_type>;
 	
 public:
 	using key_type=_Key;
-	using mapped_type=_T;
+	using mapped_type=_Tp;
 	using key_compare=_Compare;
 	using allocator_type=_Allocator;
 	using size_type=typename container_type::size_type;
 	using difference_type=typename container_type::difference_type;
 	using reference=value_type&;
 	using const_reference=const value_type&;
-	using pointer=typename std::allocator_traits<Allocator>::pointer;
-	using const_pointer=typename std::allocator_traits<Allocator>::const_pointer;
+	using pointer=typename std::allocator_traits<_Allocator>::pointer;
+	using const_pointer=typename std::allocator_traits<_Allocator>::const_pointer;
 
 	using iterator=typename container_type::iterator;
 	using const_iterator=typename container_type::const_iterator;
@@ -73,7 +73,7 @@ public:
 	explicit flat_map(const _Compare& comp,const _Allocator& alloc=_Allocator()) : data_(alloc) , comp_(comp) {}
 	explicit flat_map(const _Allocator& alloc) : data_(alloc) , comp_(_Compare()) {}
 	template <typename _InputIt>
-	flat_map(_InputIt first,_InputIt last,const _Compare& comp=Compare(),const _Allocator& alloc=_Allocator()) : comp_(comp) {
+	flat_map(_InputIt first,_InputIt last,const _Compare& comp=_Compare(),const _Allocator& alloc=_Allocator()) : comp_(comp) {
 		insert(first,last);
 	}
 	flat_map(std::initializer_list<value_type> init,const _Compare& comp=_Compare(),const _Allocator& alloc=_Allocator()) : comp_(comp) {
@@ -86,14 +86,14 @@ public:
 	flat_map(flat_map&& other,const _Allocator& alloc) : data_(std::move(other.data_) ,alloc), comp_(std::move(other.comp_)) {}
 	~flat_map()=default;
 
-	flat_map& operator =(const flat_map&) {
+	flat_map& operator =(const flat_map& other) {
 		if (this!=&other) {
 			data_=other.data_;
  			comp_=other.comp_;
 		}
 		return *this;
 	};
-	flat_map& operator=(flat_map&&) noexcept = default;
+	flat_map& operator =(flat_map&&) noexcept = default;
 	/*flat_map& operator =(flat_map&& other) noexcept (std::allocator_traits<_Allocator>::propagate_on_container_move_assignment::value || std::allocator_traits<_Allocator>::is_always_equal::value) {
 		if (this!=&other) {
 			data_=std::move(other.data_);
@@ -151,79 +151,79 @@ public:
 	const_reverse_iterator rend() const noexcept { return data_.rend(); }
 	const_reverse_iterator crend() const noexcept { return data_.crend(); }
 
-	template <typename _K>
+	template <typename _K=_Key>
 	_Tp& at(const _K& key) {
 		auto it=find_impl(key);
 		if (it==data_.end()) throw std::out_of_range("flat_map::at: key not found");
 		return it->second;
 	}
-	template <typename _K>
+	template <typename _K=_Key>
 	const _Tp& at(const _K& key) const {
 		auto it=find_impl(key);
 		if (it==data_.end()) throw std::out_of_range("flat_map::at: key not found");
 		return it->second;
 	}
-	template <typename _K>
+	template <typename _K=_Key>
 	_Tp& operator [](const _K& key) {
 		auto it=find_impl(key);
 		if (it==data_.end()) it=data_.insert(it,value_type(key,_Tp{}));
 		return it->second;
 	}
-	template <typename _K>
+	template <typename _K=_Key>
 	_Tp& operator [](_K&& key) {
 		auto it=find_impl(key);
 		if (it==data_.end()) it=data_.insert(it,value_type(std::move(key),_Tp{}));
 		return it->second;
 	}
 
-	template <typename _K>
+	template <typename _K=_Key>
 	iterator find(const _K& key) {
 		return find_impl(key);
 	}
-	template <typename _K>
+	template <typename _K=_Key>
 	const_iterator find(const _K& key) const {
 		return find_impl(key);
 	}
-	template <typename _K>
+	template <typename _K=_Key>
 	bool contains(const _K& key) const {
 		return find_impl(key)!=data_.end();
 	}
-	template <typename _K>
+	template <typename _K=_Key>
 	size_type count(const _K& key) const {
 		return contains(key)?1:0;
 	}
-	template <typename _K>
+	template <typename _K=_Key>
 	iterator lower_bound(const _K& key) {
 		return std::lower_bound(data_.begin(),data_.end(),key,[this](const value_type& elem,const _K& k){
 			return comp_(elem.first, k);
 		});
 	}
-	template <typename _K>
+	template <typename _K=_Key>
 	const_iterator lower_bound(const _K& key) const {
 		return std::lower_bound(data_.begin(),data_.end(),key,[this](const value_type& elem,const _K& k){
 			return comp_(elem.first,k);
 		});
 	}
-	template <typename _K>
+	template <typename _K=_Key>
 	iterator upper_bound(const _K& key) {
 		return std::upper_bound(data_.begin(),data_.end(),key,[this](const value_type& elem,const _K& k){
 			return comp_(elem.first,k);
 		});
 	}
-	template <typename _K>
+	template <typename _K=_Key>
 	const_iterator upper_bound(const _K& key) const {
 		return std::upper_bound(data_.begin(),data_.end(),key,[this](const value_type& elem,const _K& k) {
 			return comp_(elem.first,k);
 		});
 	}
-	template <typename _K>
+	template <typename _K=_Key>
 	std::pair<iterator,iterator> equal_range(const _K& key) {
 		return std::equal_range(data_.begin(),data_.end(),key,[this](const value_type& a,const value_type& b){
 			return comp_(a.first,b.first);
 		});
 	}
 	
-	template<typename _K>
+	template <typename _K=_Key>
 	std::pair<const_iterator,const_iterator> equal_range(const _K& key) const {
 		return std::equal_range(data_.begin(),data_.end(),key,[this](const value_type& a,const value_type& b){
 			return comp_(a.first,b.first);
@@ -232,24 +232,24 @@ public:
 	
 	void clear() noexcept { data_.clear(); }
 
-	template <typename _P>
+	template <typename _P=std::pair<_Key,_Tp>>
 	std::pair<iterator,bool> insert(const _P& value) {
 		auto it=lower_bound(value.first);
 		if (it!=data_.end() && !comp_(value.first,it->first)) return {it,false};
 		return {data_.insert(it,value),true};
 	}
-	template <typename _P>
+	template <typename _P=std::pair<_Key,_Tp>>
 	std::pair<iterator,bool> insert(_P&& value) {
 		auto it=lower_bound(value.first);
 		if (it!=data_.end() && !comp_(value.first,it->first)) return {it,false};
 		return {data_.insert(it,std::forward<_P>(value)),true};
 	}
-	template<typename _P>
+	template <typename _P=std::pair<_Key,_Tp>>
 	iterator insert(const_iterator hint,const _P& value) {
 		(void)hint;
 		return insert(value).first;
 	}
-	template<typename _P>
+	template <typename _P=std::pair<_Key,_Tp>>
 	iterator insert(const_iterator hint,_P&& value) {
 		(void)hint;
 		return insert(std::forward<_P>(value)).first;
