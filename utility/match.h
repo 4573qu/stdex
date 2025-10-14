@@ -1,14 +1,18 @@
-//Last Modified At 2025/10/10
-//@Version 1.0.0.0
+//Last Modified At 2025/10/14
+//@Version 1.1.0.0
 #ifndef _STDEX_UTILITY_MATCH_H_
 #define _STDEX_UTILITY_MATCH_H_ 1
 
+#include <any>
 #include <cstddef>
+#include <functional>
+#include <optional>
 #include <stdexcept>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "../macros/cpp_version.h"//At Least 1.0
 
@@ -49,7 +53,7 @@ struct is_variant_like : std::false_type {};
 
 template <typename _Tp>
 struct is_variant_like<_Tp,std::void_t<decltype(std::variant_size<std::decay_t<_Tp>>::value)>> : std::true_type {};
-    
+	
 template <typename _Tp>
 inline constexpr bool is_variant_like_v=is_variant_like<_Tp>::value;
 #endif
@@ -82,7 +86,7 @@ public:
 		if constexpr (std::is_invocable_v<_Func,_Up>) {
 			return func(std::forward<_Up>(value));
 		} else {
-	    	return func();
+			return func();
 		}
 	}
 };
@@ -101,7 +105,7 @@ public:
 		if constexpr (std::is_invocable_v<_Func,_Tp>) {
 			return func(std::forward<_Tp>(value));
 		} else {
-	    	return func();
+			return func();
 		}
 	}
 };
@@ -118,7 +122,7 @@ public:
 		if constexpr (std::is_invocable_v<_Func,_Up>) {
 			return func(std::forward<_Up>(value));
 		} else {
-	    	return func();
+			return func();
 		}
 	}
 };
@@ -145,7 +149,7 @@ public:
 		if constexpr (std::is_invocable_v<_Func,_Tp>) {
 			return func(std::forward<_Tp>(value));
 		} else {
-	    	return func();
+			return func();
 		}
 	}
 };
@@ -222,7 +226,7 @@ public:
 		if constexpr (std::is_invocable_v<_Func,_Tp>) {
 			return func(std::forward<_Tp>(value));
 		} else {
-	    	return func();
+			return func();
 		}
 	}
 };
@@ -242,7 +246,7 @@ public:
 		if constexpr (std::is_invocable_v<_Func,_Tp>) {
 			return func(std::forward<_Tp>(value));
 		} else {
-	    	return func();
+			return func();
 		}
 	}
 };
@@ -261,7 +265,7 @@ public:
 		if constexpr (std::is_invocable_v<_Func,_Tp>) {
 			return func(std::forward<_Tp>(value));
 		} else {
-	    	return func();
+			return func();
 		}
 	}
 };
@@ -346,13 +350,14 @@ constexpr auto operator >>(_Pattern&& pattern,_Action&& action) {
 }
 
 struct match_options {
-    bool throw_on_no_match=true;
+	bool throw_on_no_match=true;
 };
 
 template <typename _Tp>
 class matcher {
 	_Tp&& value_;
 	match_options options_;
+	std::optional<std::function<std::any(std::any, std::any)>> accumulator_;
 
 	template <typename _Case,typename... _Rest>
 	constexpr auto match_impl(_Case&& case_,_Rest&&... rest) {
@@ -365,28 +370,67 @@ class matcher {
 			} else {
 				if (options_.throw_on_no_match) throw std::runtime_error("Pattern match failed: no case matched");
 				else {
-					using result_type=decltype(case_.pattern.execute(value_,std::move(case_.action)));
-					if constexpr (std::is_void_v<result_type>) {
+					if constexpr (std::is_void_v<decltype(case_.pattern.execute(value_,std::move(case_.action)))>) {
 						return;
 					} else {
-						return result_type{};
+						return decltype(case_.pattern.execute(value_,std::move(case_.action))){};
 					}
 				}	
 			}
 		}
 	}
+	template <typename... _Cases>
+	constexpr auto accumulate_match(_Cases&&... cases) {
+		std::vector<std::any> matched_results;
+		auto collector=[this,&matched_results](auto&& case_) {
+			if (case_.pattern.matches(value_)) {
+				auto result=case_.pattern.execute(value_,std::move(case_.action));
+				matched_results.push_back(std::any(result));
+			}
+		};
+		(collector(std::forward<_Cases>(cases)),...);
+		if (matched_results.empty()) {
+			if (options_.throw_on_no_match) throw std::runtime_error("Pattern match failed: no case matched");
+			else {
+				if constexpr (sizeof...(_Cases) > 0) {
+					if constexpr (!std::is_void_v<result_type>) {
+						return decltype(std::declval<std::tuple_element_t<0,std::tuple<_Cases...>>>().pattern.execute(value_,std::declval<std::tuple_element_t<0,std::tuple<_Cases...>>>().action)){};
+					}
+				}
+				return;
+			}
+		}
+		std::any accumulated=matched_results[0];
+		for (std::size_t i=1;i<matched_results.size();i++) accumulated=accumulator_.value()(accumulated,matched_results[i]);
+		if constexpr (sizeof...(_Cases)>0) {
+			if constexpr (!std::is_void_v<decltype(std::declval<std::tuple_element_t<0,std::tuple<_Cases...>>>().pattern.execute(value_,std::declval<std::tuple_element_t<0,std::tuple<_Cases...>>>().action))>) {
+				return std::any_cast<decltype(std::declval<std::tuple_element_t<0,std::tuple<_Cases...>>>().pattern.execute(value_,std::declval<std::tuple_element_t<0,std::tuple<_Cases...>>>().action))>(accumulated);
+			}
+		}
+	}
 
 public:
-	constexpr matcher(_Tp&& value,match_options opts={}) : value_(std::forward<_Tp>(value)) , options_(opts) { }
+	constexpr matcher(_Tp&& value,match_options opts={},std::optional<std::function<std::any(std::any,std::any)>> accumulator=std::nullopt) : value_(std::forward<_Tp>(value)) , options_(opts) , accumulator_(std::move(accumulator)) { }
 	template <typename... _Cases>
 	constexpr auto operator()(_Cases&&... cases) {
-		return match_impl(std::forward<_Cases>(cases)...);
+		if (accumulator_.has_value()) return accumulate_match(std::forward<_Cases>(cases)...);
+		else return match_impl(std::forward<_Cases>(cases)...);
 	}
 };
 
-template <typename _Tp>
-constexpr auto match(_Tp&& value,match_options opts={}) {
-	return matcher<_Tp>(std::forward<_Tp>(value),opts);
+template <typename _Tp,typename _Accumulator>
+constexpr auto match(_Tp&& value,match_options opts={},_Accumulator&& accumulator=std::nullopt) {
+	return matcher<_Tp>(std::forward<_Tp>(value),opts,accumulator);
+}
+
+template <typename _Tp,typename _Accumulator>
+constexpr auto match(_Tp&& value,_Accumulator&& accumulator,match_options opts={}) {
+	return matcher<_Tp>(std::forward<_Tp>(value),opts,std::function<std::any(std::any,std::any)>(std::forward<_Accumulator>(accumulator)));
+}
+
+template <typename _Tp,typename _Accumulator>
+constexpr auto match(_Tp&& value,_Accumulator&& accumulator) {
+	return matcher<_Tp>(std::forward<_Tp>(value),match_options{},std::function<std::any(std::any,std::any)>(std::forward<_Accumulator>(accumulator)));
 }
 
 constexpr match_options no_throw{false};
