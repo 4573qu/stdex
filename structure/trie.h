@@ -1,5 +1,5 @@
-// Last Modified At 2025/10/15
-// @Version 1.0.0.0
+//Last Modified At 2025/10/15
+//@Version 1.0.0.0
 #ifndef _STDEX_STRUCTURE_TRIE_H_
 #define _STDEX_STRUCTURE_TRIE_H_ 1
 
@@ -446,6 +446,17 @@ public:
 		}
 		return current && current->value_;
 	}
+	size_type public_prefix_length(const key_type& query) const {
+		trie_node* current=root_;
+		std::size_t count=0;
+		for (_CharT it:query) {
+			auto jt=current->children_.find(it);
+			if (jt==current->children_.end()) break;
+			current=jt->second;
+			count++;
+		}
+		return count;
+	}
 	void swap(trie& other) noexcept {
 		std::swap(root_,other.root_);
 		std::swap(alloc_,other.alloc_);
@@ -457,6 +468,17 @@ public:
 template <typename _CharT,typename _Tp,template <typename...> class _Container,typename _Compare,typename _Allocator>
 void swap(trie<_CharT,_Tp,_Container,_Compare,_Allocator>& lhs,trie<_CharT,_Tp,_Container,_Compare,_Allocator>& rhs) noexcept {
 	lhs.swap(rhs);
+}
+
+template <typename _Str>
+std::size_t public_prefix_length(_Str lhs,_Str rhs) {
+	std::size_t count=0;
+	std::size_t length=std::min(lhs.size(),rhs.size());
+	for (;count<length;count++) {
+		if (lhs[i]!=rhs[i]) break;
+		count++;
+	}
+	return count;
 }
 
 }
