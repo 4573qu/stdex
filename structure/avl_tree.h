@@ -70,7 +70,7 @@ public:
 		base_type::operator =(std::move(other));
 		return *this;
 	}
-	virtual std::pair<iterator,bool> insert(const value_type& value) override {
+	std::pair<iterator,bool> insert(const value_type& value) override {
 		auto result=base_type::insert_impl(value);
 		if (result.second) {
 			avl_node* node=static_cast<avl_node*>(result.first.node());
@@ -78,7 +78,7 @@ public:
 		}
 		return result;
 	}
-	virtual size_type erase(const key_type& key) override {
+	size_type erase(const key_type& key) override {
 		binary_tree_node* node=this->find_impl(key);
 		if (!node) return 0;
 		avl_node* start_balance=static_cast<avl_node*>(node->parent_);

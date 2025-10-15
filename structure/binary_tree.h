@@ -32,8 +32,12 @@ public:
 	using const_reference=const value_type&;
 
 protected:
-	constexpr bool is_exact_binary_tree() const noexcept {
-		return std::is_same_v<std::decay_t<decltype(*this)>,binary_tree>;
+	virtual bool is_exact_binary_tree() const noexcept {
+		return typeid(*this)==typeid(std::remove_cv_t<binary_tree<_Tp,_Key,_Compare,_Allocator>>);
+		//return dynamic_cast<const binary_tree<_Tp,_Key,_Compare,_Allocator>*>(this) != nullptr && typeid(*this)==typeid(binary_tree<_Tp,_Key,_Compare,_Allocator>);
+		//return typeid(std::remove_cv_t<std::remove_reference_t<decltype(*this)>>)==typeid(binary_tree<_Tp,_Key,_Compare,_Allocator>);
+        //return std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*this)>>,binary_tree<_Tp,_Key,_Compare,_Allocator>>;
+		//return std::is_same_v<std::decay_t<decltype(*this)>,binary_tree>;
 	}
 	struct binary_tree_node {
 		value_type data_;
