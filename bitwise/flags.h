@@ -1,7 +1,7 @@
 //Last Modified At 2025/09/20
 //@Version 2.0.2.6
-#ifndef _STD4573_BITWISE_FLAGS_H_
-#define _STD4573_BITWISE_FLAGS_H_ 1
+#ifndef _STDEX_BITWISE_FLAGS_H_
+#define _STDEX_BITWISE_FLAGS_H_ 1
 
 #include <algorithm>
 #include <map>

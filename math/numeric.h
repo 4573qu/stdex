@@ -1,7 +1,7 @@
 //Last Modified At 2025/07/20
 //@Version 1.0.0.2
-#ifndef _STD4573_MATH_NUMERIC_H_
-#define _STD4573_MATH_NUMERIC_H_ 1
+#ifndef _STDEX_MATH_NUMERIC_H_
+#define _STDEX_MATH_NUMERIC_H_ 1
 
 #include <cstddef>
 #include <iostream>

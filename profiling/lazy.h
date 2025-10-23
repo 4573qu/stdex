@@ -1,7 +1,7 @@
 //Last Modified At 2025/10/11
 //@Version 1.0.0.0
-#ifndef _STD4573_PROFILING_LAZY_H_
-#define _STD4573_PROFILING_LAZY_H_ 1
+#ifndef _STDEX_PROFILING_LAZY_H_
+#define _STDEX_PROFILING_LAZY_H_ 1
 
 #include <functional>
 #include <optional>

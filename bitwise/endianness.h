@@ -1,7 +1,7 @@
 //Last Modified At 2025/09/13
 //@Version 1.0.0.0
-#ifndef _STD4573_BITWISE_ENDIANNESS_H_
-#define _STD4573_BITWISE_ENDIANNESS_H_ 1
+#ifndef _STDEX_BITWISE_ENDIANNESS_H_
+#define _STDEX_BITWISE_ENDIANNESS_H_ 1
 
 #include <cstddef>
 #include <cstdint>

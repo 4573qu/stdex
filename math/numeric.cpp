@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/09
-//@Version 1.0.0.3
+//Last Modified At 2025/10/23
+//@Version 1.0.0.4
 //@H_Version 1.0.0.2
 #include "numeric.h"
 
@@ -14,12 +14,8 @@
 double stdex::math::multibase::epsilon_=1e-9;
 
 void stdex::math::bigint::normalize() {
-	while (digits_.size()>1 && digits_.back()==0) {
-		digits_.pop_back();
-	}
-	if (digits_.size()==1 && digits_[0]==0) {
-		negative_=false;
-	}
+	while (digits_.size()>1 && digits_.back()==0) digits_.pop_back();
+	if (digits_.size()==1 && digits_[0]==0) negative_=false;
 }
 
 stdex::math::bigint stdex::math::bigint::multiply(const bigint& lhs,const bigint& rhs) {
@@ -29,9 +25,7 @@ stdex::math::bigint stdex::math::bigint::multiply(const bigint& lhs,const bigint
 	stdex::math::bigint lhs_low,lhs_high,rhs_low,rhs_high;
 	void (*process)(const stdex::math::bigint&,stdex::math::bigint&,stdex::math::bigint&,size_t)=[](const stdex::math::bigint& origin,stdex::math::bigint& low,stdex::math::bigint& high,size_t k) -> void {
 		low.digits_.assign(origin.digits_.begin(),origin.digits_.begin()+std::min(k,origin.digits_.size()));
-		if (origin.digits_.size()>k) {
-			high.digits_.assign(origin.digits_.begin()+k,origin.digits_.end());
-		}
+		if (origin.digits_.size()>k) high.digits_.assign(origin.digits_.begin()+k,origin.digits_.end());
 	};
 	process(lhs,lhs_low,lhs_high,k);
 	process(rhs,rhs_low,rhs_high,k);
@@ -70,13 +64,9 @@ stdex::math::bigint::bigint(const std::string& s) {
 		start=1;
 	} else {
 		negative_=false;
-		if (s[0]=='+') {
-			start=1;
-		}
+		if (s[0]=='+') start=1;
 	}
-	while (start<s.size() && s[start]=='0') {
-		start++;
-	}
+	while (start<s.size() && s[start]=='0') start++;
 	if (start==s.size()) {
 		digits_.push_back(0);
 		negative_=false;
@@ -85,9 +75,7 @@ stdex::math::bigint::bigint(const std::string& s) {
 	for (int i=s.size()-1;i>=static_cast<int>(start);i-=9) {
 		int digit=0;
 		for (int j=std::max(static_cast<int>(start),i-8);j<=i;j++) {
-			if (!std::isdigit(s[j])) {
-				throw std::invalid_argument("Invalid character in bigint string");
-			}
+			if (!std::isdigit(s[j])) throw std::invalid_argument("Invalid character in bigint string");
 			digit=digit*10+(s[j]-'0');
 		}
 		digits_.push_back(digit);
@@ -122,17 +110,13 @@ stdex::math::bigint& stdex::math::bigint::operator =(stdex::math::bigint&& other
 
 stdex::math::bigint stdex::math::bigint::operator -() const {
 	stdex::math::bigint result=*this;
-	if (!zero()) {
-		result.negative_=!negative_;	
-	}
+	if (!zero()) result.negative_=!negative_;	
 	return result;
 }
 
 stdex::math::bigint stdex::math::bigint::operator +(const stdex::math::bigint& other) const {
 	if (negative_!=other.negative_) {
-		if (negative_) {
-			return other-(-(*this));
-		}
+		if (negative_) return other-(-(*this));
 		return *this-(-other);
 	}
 	stdex::math::bigint result;
@@ -156,9 +140,7 @@ stdex::math::bigint& stdex::math::bigint::operator +=(const stdex::math::bigint&
 }
 
 stdex::math::bigint stdex::math::bigint::operator -(const stdex::math::bigint& other) const {
-	if (negative_!=other.negative_) {
-		return *this+(-other);
-	}
+	if (negative_!=other.negative_) return *this+(-other);
 	stdex::math::bigint result;
 	if (abs()<other.abs()) {
 		result=other.abs()-abs();
@@ -175,9 +157,7 @@ stdex::math::bigint stdex::math::bigint::operator -(const stdex::math::bigint& o
 		if (diff<0) {
 			diff+=base_;
 			borrow=1;
-		} else {
-			borrow=0;
-		}
+		} else borrow=0;
 		result.digits_[i]=diff;
 	}
 	result.normalize();
@@ -190,9 +170,7 @@ stdex::math::bigint& stdex::math::bigint::operator -=(const stdex::math::bigint&
 }
 
 stdex::math::bigint stdex::math::bigint::operator *(const stdex::math::bigint& other) const {
-	if (zero() || other.zero()) {
-		return stdex::math::bigint(0);	
-	}
+	if (zero() || other.zero()) return stdex::math::bigint(0);	
 	stdex::math::bigint result;
 	if (digits_.size()>32 || other.digits_.size()>32) {
 		result=multiply(*this,other);
@@ -220,14 +198,10 @@ stdex::math::bigint& stdex::math::bigint::operator *=(const stdex::math::bigint&
 }
 
 stdex::math::bigint stdex::math::bigint::operator /(const stdex::math::bigint& other) const {
-	if (other.zero()) {
-		throw std::domain_error("Division by zero");
-	}
+	if (other.zero()) throw std::domain_error("Division by zero");
 	stdex::math::bigint dividend=abs();
 	stdex::math::bigint div=other.abs();
-	if (dividend<div) {
-		return stdex::math::bigint(0);
-	}
+	if (dividend<div) return stdex::math::bigint(0);
 	stdex::math::bigint quotient,remainder;
 	size_t n=div.digits_.size();
 	size_t m=dividend.digits_.size()-n;    
@@ -238,10 +212,10 @@ stdex::math::bigint stdex::math::bigint::operator /(const stdex::math::bigint& o
 			long long current=dividend.digits_[i]+carry*base_;
 			quotient.digits_[i]=current/div.digits_[0];
 			carry=current%div.digits_[0];
-        }
+		}
 		quotient.normalize();
 		quotient.negative_=negative_^other.negative_;
-	    return quotient;
+		return quotient;
 	}
 	int d=base_/(div.digits_.back()+1);
 	dividend*=d;
@@ -264,9 +238,7 @@ stdex::math::bigint stdex::math::bigint::operator /(const stdex::math::bigint& o
 			if (check>current) {
 				q_hat--;
 				r_hat+=div.digits_[n-1];
-			} else {
-				break;
-			}
+			} else break;
 		}
 		stdex::math::bigint temp=div*static_cast<int>(q_hat);
 		if (temp>dividend.subnum(j,j+n+1)) {
@@ -275,9 +247,7 @@ stdex::math::bigint stdex::math::bigint::operator /(const stdex::math::bigint& o
 		}
 		quotient.digits_[j]=q_hat;
 		stdex::math::bigint diff=dividend.subnum(j,j+n+1)-temp;
-		for (int i=0;i<=n;i++) {
-			dividend.digits_[j+i]=(i<diff.digits_.size())?diff.digits_[i]:0;
-		}
+		for (int i=0;i<=n;i++) dividend.digits_[j+i]=(i<diff.digits_.size())?diff.digits_[i]:0;
 	}
 	quotient.normalize();
 	quotient.negative_=negative_^other.negative_;
@@ -309,16 +279,10 @@ bool stdex::math::bigint::operator !=(const stdex::math::bigint& other) const {
 }
 
 bool stdex::math::bigint::operator <(const stdex::math::bigint& other) const {
-	if (negative_!=other.negative_) {
-		return negative_;
-	}
-	if (digits_.size()!=other.digits_.size()) {
-		return negative_?(digits_.size()>other.digits_.size()):(digits_.size()<other.digits_.size());
-	}
+	if (negative_!=other.negative_) return negative_;
+	if (digits_.size()!=other.digits_.size()) return negative_?(digits_.size()>other.digits_.size()):(digits_.size()<other.digits_.size());
 	for (int i=digits_.size()-1;i>=0;i--) {
-		if (digits_[i]!=other.digits_[i]) {
-			return negative_?(digits_[i]>other.digits_[i]):(digits_[i]<other.digits_[i]);
-		}
+		if (digits_[i]!=other.digits_[i]) return negative_?(digits_[i]>other.digits_[i]):(digits_[i]<other.digits_[i]);
 	}
 	return false;
 }
@@ -336,9 +300,7 @@ bool stdex::math::bigint::operator >=(const stdex::math::bigint& other) const {
 }
 
 stdex::math::bigint stdex::math::bigint::operator <<(size_t n) const {
-	if (zero()) {
-		return *this;
-	}
+	if (zero()) return *this;
 	stdex::math::bigint result(*this);
 	result.digits_.insert(result.digits_.begin(),n,0);
 	return result;
@@ -383,9 +345,7 @@ std::istream& stdex::math::operator >>(std::istream& is,stdex::math::bigint& num
 		stdex::math::bigint temp(input);
 		num.digits_=temp.digits_;
 		num.negative_=temp.negative_;
-	} else {
-		is.setstate(std::ios::failbit);
-	}
+	} else is.setstate(std::ios::failbit);
 	/*if (use_int) {
 		new(&temp) stdex::math::bigint(int_input);
 	} else {
@@ -416,25 +376,17 @@ stdex::math::bigint stdex::math::bigint::subnum(size_t start,size_t end) const {
 }
 
 std::string stdex::math::bigint::to_string() const {
-	if (zero()) {
-		return "0";
-	}
+	if (zero()) return "0";
 	std::ostringstream oss;
-	if (negative_) {
-		oss<<'-';
-	}
+	if (negative_) oss<<'-';
 	oss<<digits_.back();
-	for (int i=digits_.size()-2;i>=0;i--) {
-		oss<<std::setw(9)<<std::setfill('0')<<digits_[i];
-	}    
+	for (int i=digits_.size()-2;i>=0;i--) oss<<std::setw(9)<<std::setfill('0')<<digits_[i];  
 	return oss.str();
 }
 
 stdex::math::bigint::operator long long() const {
 	long long result=0;
-	for (int i=digits_.size()-1;i>=0;i--) {
-		result=result*base_+digits_[i];
-	}
+	for (int i=digits_.size()-1;i>=0;i--) result=result*base_+digits_[i];
 	return negative_?-result:result;
 }
 
@@ -453,9 +405,7 @@ stdex::math::bigint::operator double() const {
 }
 
 void stdex::math::rational::reduce() {
-	if (denominator_.zero()) {
-		throw std::domain_error("Zero denominator in rational");
-	}
+	if (denominator_.zero()) throw std::domain_error("Zero denominator in rational");
 	if (numerator_.zero()) {
 		denominator_=stdex::math::bigint(1);
 		return;
@@ -553,9 +503,7 @@ stdex::math::rational& stdex::math::rational::operator *=(const stdex::math::rat
 }
 
 stdex::math::rational stdex::math::rational::operator /(const stdex::math::rational& other) const {
-	if (other.numerator_.zero()) {
-		throw std::domain_error("Division by zero in rational");
-	}
+	if (other.numerator_.zero()) throw std::domain_error("Division by zero in rational");
 	return *this*stdex::math::rational(other.denominator_,other.numerator_);
 }
 
@@ -598,9 +546,7 @@ std::istream& stdex::math::operator >>(std::istream& is,stdex::math::rational& n
 		stdex::math::rational temp(input);
 		num.num()=temp.num();
 		num.den()=temp.den();
-	} else {
-		is.setstate(std::ios::failbit);
-	}
+	} else is.setstate(std::ios::failbit);
 	return is;
 }
 

@@ -9,7 +9,8 @@ b_tree(->database?)
 sparse_table
 fibonacci_heap
 kd_tree
-persistent_*
+persistent_map
+versioned_map
 binomial_heap
 pairing_heap
 leftist_heap

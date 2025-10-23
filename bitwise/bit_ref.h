@@ -1,7 +1,7 @@
 //Last Modified At 2025/09/13
 //@Version 1.0.0.0
-#ifndef _STD4573_BITWISE_BIT_REF_H_
-#define _STD4573_BITWISE_BIT_REF_H_ 1
+#ifndef _STDEX_BITWISE_BIT_REF_H_
+#define _STDEX_BITWISE_BIT_REF_H_ 1
 
 #include <cstdint>
 #include <type_traits>

@@ -1,7 +1,7 @@
 //Last Modified At 2025/09/14
 //@Version 1.0.0.1
-#ifndef _STD4573_BITWISE_BIT_ITERATOR_H_
-#define _STD4573_BITWISE_BIT_ITERATOR_H_ 1
+#ifndef _STDEX_BITWISE_BIT_ITERATOR_H_
+#define _STDEX_BITWISE_BIT_ITERATOR_H_ 1
 
 #include <climits>
 #include <cstddef>
