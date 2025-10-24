@@ -22,10 +22,12 @@
 #define _STDEX_CPP20_VERSION 202002L
 #endif
 
+#ifndef _STDEX_CONSTEXPR
 #if __cplusplus>=_STDEX_CPP20_VERSION
 #define _STDEX_CONSTEXPR constexpr
 #else
 #define _STDEX_CONSTEXPR
+#endif
 #endif
 
 namespace stdex {
