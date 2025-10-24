@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/11
-//@Version 1.0.0.0
+//Last Modified At 2025/10/24
+//@Version 1.0.0.1
 #ifndef _STDEX_STRUCTURE_FLAT_MAP_H_
 #define _STDEX_STRUCTURE_FLAT_MAP_H_ 1
 
@@ -10,7 +10,9 @@
 #include <utility>
 #include <vector>
 
+#if __has_include("../macros/cpp_version.h")
 #include "../macros/cpp_version.h"//At Least 1.0
+#endif
 
 #ifndef _STDEX_CPP20_VERSION
 #define _STDEX_CPP20_VERSION 202002L
@@ -328,17 +330,17 @@ public:
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
 	auto keys() const {
-		return std::views::transform(*this,[](const auto& pair) -> const _Key& {
+		return std::views::transform(*this,[](const auto& pair)->const _Key&{
 			return pair.first;
 		});
 	}
 	auto values() const {
-		return std::views::transform(*this,[](const auto& pair) -> const _Tp& {
+		return std::views::transform(*this,[](const auto& pair)->const _Tp&{
 			return pair.second;
 		});
 	}
 	auto values() {
-		return std::views::transform(*this,[](auto& pair) -> _Tp& {
+		return std::views::transform(*this,[](auto& pair)->_Tp&{
 			return pair.second;
 		});
 	}

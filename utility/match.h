@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/14
-//@Version 1.1.0.0
+//Last Modified At 2025/10/24
+//@Version 1.1.0.1
 #ifndef _STDEX_UTILITY_MATCH_H_
 #define _STDEX_UTILITY_MATCH_H_ 1
 
@@ -14,7 +14,9 @@
 #include <variant>
 #include <vector>
 
+#if __has_include("../macros/cpp_version.h")
 #include "../macros/cpp_version.h"//At Least 1.0
+#endif
 
 #ifndef _STDEX_CPP20_VERSION
 #define _STDEX_CPP20_VERSION 202002L

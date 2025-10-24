@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/14
-//@Version 1.0.0.1
+//Last Modified At 2025/10/24
+//@Version 1.0.0.2
 #ifndef _STDEX_BITWISE_BITS_H_
 #define _STDEX_BITWISE_BITS_H_ 1
 
@@ -8,7 +8,9 @@
 #include <cstdint>
 #include <type_traits>
 
+#if __has_include("../macros/cpp_version.h")
 #include "../macros/cpp_version.h"//At Least 1.0
+#endif
 
 #ifndef _STDEX_CPP20_VERSION
 #define _STDEX_CPP20_VERSION 202002L

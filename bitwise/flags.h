@@ -1,4 +1,4 @@
-//Last Modified At 2025/09/20
+//Last Modified At 2025/10/24
 //@Version 2.0.2.6
 #ifndef _STDEX_BITWISE_FLAGS_H_
 #define _STDEX_BITWISE_FLAGS_H_ 1
@@ -14,7 +14,9 @@
 #include <vector>
 #include <utility>
 
+#if __has_include("../macros/cpp_version.h")
 #include "../macros/cpp_version.h"//At Least 1.0
+#endif
 
 #ifndef _STDEX_CPP20_VERSION
 #define _STDEX_CPP20_VERSION 202002L

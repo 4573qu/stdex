@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/10
-//@Version 1.0.0.2
+//Last Modified At 2025/10/24
+//@Version 1.0.0.3
 #ifndef _STDEX_PROFILING_PERF_H_
 #define _STDEX_PROFILING_PERF_H_ 1
 
@@ -12,7 +12,9 @@
 #include <string>
 #include <vector>
 
+#if __has_include("../macros/cpp_version.h")
 #include "../macros/cpp_version.h"//At Least 1.0
+#endif
 
 #if __cplusplus >= _STDEX_CPP20_VERSION
 #include <format>
