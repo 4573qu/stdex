@@ -105,7 +105,7 @@ private:
 			return (assembler_->get_cpu_type()==CT_MACHINE_X86_32)^has_67_prefix_;
 		}
 		bool check_instruction(bool with_size = true) {
-			return assembler_ && instruction_ && with_size ? (instruction_->operands_.size()) : true;
+			return assembler_ && instruction_ && with_size?(instruction_->operands_.size()):true;
 		}
 		machine_bits get_operand_bits_w() {
 			if (!assembler_) return MB_32;

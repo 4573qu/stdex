@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/24
-//@Version 1.0.0.3
+//Last Modified At 2025/10/27
+//@Version 1.0.0.4
 #ifndef _STDEX_PROFILING_PERF_H_
 #define _STDEX_PROFILING_PERF_H_ 1
 
@@ -16,7 +16,11 @@
 #include "../macros/cpp_version.h"//At Least 1.0
 #endif
 
-#if __cplusplus >= _STDEX_CPP20_VERSION
+#ifndef _STDEX_CPP20_VERSION
+#define _STDEX_CPP20_VERSION 202002L
+#endif
+
+#if __cplusplus>=_STDEX_CPP20_VERSION
 #include <format>
 #include <source_location>
 #else
@@ -108,7 +112,7 @@ public:
 			case TU_SECONDS:		time=elapsed<TU_SECONDS>(); break;
 			default: 				throw std::invalid_argument("Invalid TIME_UNIT");
 		}
-#if __cplusplus >= 202002L
+#if __cplusplus>=_STDEX_CPP20_VERSION
 		return std::format("{:.{}f} {}",time,precision,TU_to_string(unit));
 #else
 		std::ostringstream ss;
@@ -124,12 +128,12 @@ private:
 	std::string name_;
 	TIME_UNIT unit_;
 	std::ostream* output_;
-#if __cplusplus >= 202002L
+#if __cplusplus>=_STDEX_CPP20_VERSION
 	std::source_location location_;
 #endif
 
 public:
-#if __cplusplus >= 202002L
+#if __cplusplus>=_STDEX_CPP20_VERSION
 	scope_timer(std::string_view name="",TIME_UNIT unit=TU_MILLISECONDS,std::ostream* output=&std::cout,const std::source_location& location=std::source_location::current()) : name_(name) , unit_(unit) , output_(output) , location_(location) {
 		timer_.start();
     }
@@ -141,7 +145,7 @@ public:
     ~scope_timer() {
 		timer_.stop();
 		if (output_) {
-#if __cplusplus >= 202002L
+#if __cplusplus>=_STDEX_CPP20_VERSION
 			(*output_)<<std::format("[{}] {}: {}\n",location_.function_name(),name_.empty()?"Elapsed":name_,timer_.format(unit_));
 #else
 			if (!name_.empty()) (*output_)<<"["<<name_<<"] Elapsed: "<<timer_.format(unit_)<<"\n";
