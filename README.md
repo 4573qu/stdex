@@ -17,17 +17,20 @@ For project reference development mode, use:
 ---
 
 ### Directory Overview
-- **bitmask**: Bitmask operations  
+- **bitwise**: Bitwise operations  
+- **container**: Containers like enhanced any or function
+- **crypto**: Encodings and encryptions
 - **logging**: Logging operations *(Temporarily unavailable)*  
 - **machine**: Machine-level operations *(Currently Windows-only)* *(Temporarily unavailable)* 
 - **macros**: General MACROS for library files and developers 
 - **math**: Mathematical operations  
+- **memory**: Operations of memory level
 - **meta**: Metadata operations *(Temporarily unavailable)*  
-- **other**: Uncategorized items  
-  *(Includes modified `diff_match_patch` from [Google OSS](https://github.com/google/diff-match-patch))* *(Temporarily unavailable)*  
+- **other**: Uncategorized items *(Includes modified `diff_match_patch` from [Google OSS](https://github.com/google/diff-match-patch))* *(Temporarily unavailable)*  
 - **profiling**: Profiling tools
-- **structure**: Common data structures *(Temporarily unavailable)*  
-- **syntax**: Lexical & syntax operations *(Temporarily unavailable)*  
-- **type**: Data type operations  
+- **structure**: Common data structures *(DisjointSet & NaryTree is Temporarily unavailable)*  
+- **syntax**: Lexical & syntax operations *(Lexer is Temporarily unavailable)*  
+- **type**: Data type operations 
   *(Currently supports bitmap/ini/json; `json` library modified from [nlohmann OSS](https://github.com/nlohmann/json))* *(Temporarily unavailable)*  
+- **utility**: Quick tools like syntactic sugar
 - **vision**: Vision-related operations *(Temporarily unavailable)*  
