@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/28
-//@Version 3.2.2.1
+//Last Modified At 2025/10/30
+//@Version 3.3.0.0
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
@@ -121,33 +121,37 @@ public:
 	std::map<_Tp,std::vector<const unit_type*>> units_by_lhs_;
 	std::map<_Tp,bool> ptrs_;
 	_Tp start_;
-	_Tp seperator_;
 	_Tp epsilon_;
 	_Tp eof_;
 	std::vector<parser_listener<_Tp,_SentenceEnum>*> listeners_;
 	parser() {
 		start_=(_Tp)-1;
-		seperator_=(_Tp)-1;
 		epsilon_=(_Tp)-1;
 		eof_=(_Tp)-1;
 	}
-	parser(_Tp start,_Tp seperator,_Tp epsilon,_Tp eof) : start_(start) , seperator_(seperator) , epsilon_(epsilon) , eof_(eof) { }
-	parser(_Tp start,_Tp seperator,_Tp epsilon,_Tp eof,std::vector<unit_type> units) : start_(start) , seperator_(seperator) , epsilon_(epsilon) , eof_(eof) , units_(units) { }
+	parser(_Tp start,_Tp epsilon,_Tp eof) : start_(start) , epsilon_(epsilon) , eof_(eof) { }
+	parser(_Tp start,_Tp seperator,_Tp epsilon,_Tp eof) : start_(start) , epsilon_(epsilon) , eof_(eof) { }
+	parser(_Tp start,_Tp epsilon,_Tp eof,std::vector<unit_type> units) : start_(start) , epsilon_(epsilon) , eof_(eof) , units_(units) { }
+	parser(_Tp start,_Tp seperator,_Tp epsilon,_Tp eof,std::vector<unit_type> units) : start_(start) , epsilon_(epsilon) , eof_(eof) , units_(units) { }
 #if __cplusplus>=_STDEX_CPP17_VERSION
 	parser(std::initializer_list<std::variant<_Tp,std::vector<unit_type>,std::map<_Tp,bool>>> init_list) {
-		if (init_list.size()<5 || init_list.size()>6) throw std::invalid_argument("The number of the initializer arguments for parser must be 5 or 6!");
+		if (init_list.size()<4 || init_list.size()>6) throw std::invalid_argument("The number of the initializer arguments for parser must be 4,5 or 6!");
 		auto it=init_list.begin();
+		bool has_seperator=!(std::holds_alternative<std::vector<unit_type>>(*(init_list.begin()+4)));
+		if (has_seperator && init_list.size()==4) throw std::invalid_argument("The number of the old version of the initializer arguments for parser must be 5 or 6!");
+		if (!has_seperator && init_list.size()==6) throw std::invalid_argument("The number of the new version of the initializer arguments for parser must be 4 or 5!");
 		if (std::holds_alternative<_Tp>(*it)) start_=std::get<_Tp>(*it++);
 		else throw std::invalid_argument(std::string("The first argument for parser must be _Tp(")+std::string(typeid(_Tp).name())+std::string(") to represent OP_START!"));
-		if (std::holds_alternative<_Tp>(*it)) seperator_=std::get<_Tp>(*it++);
-		else throw std::invalid_argument(std::string("The second argument for parser must be _Tp(")+std::string(typeid(_Tp).name())+std::string(") to represent OP_SEPERATOR!"));
+		if (has_seperator) it++;
+		//if (std::holds_alternative<_Tp>(*it)) seperator_=std::get<_Tp>(*it++);
+		//else throw std::invalid_argument(std::string("The second argument for parser must be _Tp(")+std::string(typeid(_Tp).name())+std::string(") to represent OP_SEPERATOR!"));
 		if (std::holds_alternative<_Tp>(*it)) epsilon_=std::get<_Tp>(*it++);
 		else throw std::invalid_argument(std::string("The third argument for parser must be _Tp(")+std::string(typeid(_Tp).name())+std::string(") to represent OP_EPSILON(ε)!"));
 		if (std::holds_alternative<_Tp>(*it)) eof_=std::get<_Tp>(*it++);
 		else throw std::invalid_argument(std::string("The fourth argument for parser must be _Tp(")+std::string(typeid(_Tp).name())+std::string(") to represent OP_EOF(end sign)!"));
 		if (std::holds_alternative<std::vector<unit_type>>(*it)) units_=std::get<std::vector<unit_type>>(*it++);
 		else throw std::invalid_argument(std::string("The fifth argument for parser must be std:vector<unit_type>(")+std::string(typeid(std::vector<unit_type>).name())+std::string(") to give grammars!"));
-		if (init_list.size()!=5) {
+		if (init_list.size()>(int)has_seperator+4) {
 			if (std::holds_alternative<std::map<_Tp,bool>>(*it)) ptrs_=std::get<std::map<_Tp,bool>>(*it++);
 			else throw std::invalid_argument(std::string("The sixth argument for parser must be std::map<_Tp,bool>(")+std::string(typeid(std::map<_Tp,bool>).name())+std::string(") to give ptr\'s infos!"));
 		}

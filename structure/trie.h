@@ -24,7 +24,7 @@ template <typename _Container,typename _CharT,typename _NodePtr,typename=void>
 struct is_trie_container : std::false_type {};
 template <typename _Container,typename _CharT,typename _NodePtr>
 struct is_trie_container<_Container,_CharT,_NodePtr,std::void_t<
-    typename _Container::key_type,
+	typename _Container::key_type,
 	typename _Container::mapped_type,
 	decltype(std::declval<_Container>().insert(std::declval<std::pair<_CharT,_NodePtr>>())),
 	decltype(std::declval<_Container>().find(std::declval<_CharT>())),
