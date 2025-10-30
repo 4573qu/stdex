@@ -73,6 +73,70 @@ private:
 		}
 		return result;
 	}*/
+	struct bit_reader {
+		const uint8_t* data_;
+		std::size_t size_;
+		std::size_t bitpos_;
+		bit_reader(const uint8_t* d,std::size_t s) : data_(d) , size_(s) , bitpos_(0) { }
+		uint32_t read_bits(int n) {
+			uint32_t val=0;
+			for (int i=0;i<n;i++) {
+				if (bitpos_/8>=size_) throw std::runtime_error("deflate: out of data");
+				if (data_[bitpos_/8]&(1<<(bitpos_%8))) val|=1u<<i;
+				bitpos_++;
+			}
+			return val;
+		}
+		void byte_align() { bitpos_=(bitpos_+7)&~7; }
+	};
+	struct huffman {
+		std::vector<uint16_t> table_;
+		std::vector<uint8_t> length_;
+		int maxbits_;
+		int decode(bit_reader& br) const {
+			int code=0,first=0,index=0;
+			for (int len=1;len<=maxbits_;len++) {
+				code|=br.read_bits(1);
+				int count=table_[len];
+				if (code-first<count) return index+(code-first);
+				index+=count;
+				first=(first+count)<<1;
+				code<<=1;
+			}
+			throw std::runtime_error("invalid huffman code");
+		}
+	};
+	static huffman build_fixed_tree_LIT() {
+		huffman h;
+		h.maxbits_=9;
+		h.table_.resize(16,0);
+		h.length_.resize(288,0);
+		for (int i=0;i<=143;i++) h.length_[i]=8;
+		for (int i=144;i<=255;i++) h.length_[i]=9;
+		for (int i=256;i<=279;i++) h.length_[i]=7;
+		for (int i=280;i<=287;i++) h.length_[i]=8;
+		len_codes_to_table(h);
+		return h;
+	}
+	static huffman build_fixed_tree_DIST() {
+		huffman h;
+		h.maxbits_=5;
+		h.table_.resize(16,0);
+		h.length_.resize(32,5);
+		len_codes_to_table(h);
+		return h;
+    }
+	static void len_codes_to_table(huffman& h){
+		int MAXBITS=0;
+		for (uint8_t it:h.length_) {
+			if (it>MAXBITS) MAXBITS=it;	
+		}
+		h.maxbits_=MAXBITS;
+		h.table_.assign(MAXBITS+1,0);
+		for(uint8_t it:h.length_) {
+			if(it) h.table_[it]++;
+		}
+	}
 	static void write_bits(std::vector<uint8_t>& out,uint32_t& bitbuf,int& bitcount,uint32_t val,int bits) {
 		bitbuf|=(val<<bitcount);
 		bitcount+=bits;
@@ -147,27 +211,16 @@ private:
 	}
 
 public:
-	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,int level=6) {
+	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,int level=6,bool raw=false) {
 		std::vector<uint8_t> compressed;
 		uint8_t cmf=0x78;
 		uint8_t flg=0x01;
 		if (level>=6) flg=0x9C;
 		else if (level>=3) flg=0x5E;
-		compressed.push_back(cmf);
-		compressed.push_back(flg);
-		/*std::size_t pos=0;
-		while (pos<data.size()) {
-			size_t block_size=std::min<size_t>(data.size()-pos,65535);
-			uint8_t bfinal=(pos + block_size >= data.size())?1:0;
-			uint8_t btype=0;
-			compressed.push_back(static_cast<uint8_t>(bfinal|(btype<<1)));
-			compressed.push_back(static_cast<uint8_t>(block_size&0xFF));
-			compressed.push_back(static_cast<uint8_t>((block_size>>8)&0xFF));
-			compressed.push_back(static_cast<uint8_t>((~block_size)&0xFF));
-			compressed.push_back(static_cast<uint8_t>(((~block_size)>>8)&0xFF));
-			compressed.insert(compressed.end(),data.begin()+pos,data.begin()+pos+block_size);
-			pos+=block_size;
-		}*/
+		if (!raw) {
+			compressed.push_back(cmf);
+			compressed.push_back(flg);
+		}
 		uint32_t bitbuf=0;
 		int bitcount=0;
 		write_bits(compressed,bitbuf,bitcount,1,1);
@@ -186,15 +239,17 @@ public:
 		}
 		write_bits(compressed,bitbuf,bitcount,0x00,7);
 		flush_bits(compressed,bitbuf,bitcount);
-		uint32_t adler=compute_adler32(data);
-		compressed.push_back(static_cast<uint8_t>((adler>>24)&0xFF));
-		compressed.push_back(static_cast<uint8_t>((adler>>16)&0xFF));
-		compressed.push_back(static_cast<uint8_t>((adler>>8)&0xFF));
-		compressed.push_back(static_cast<uint8_t>(adler&0xFF));
+		if (!raw) {
+			uint32_t adler=compute_adler32(data);
+			compressed.push_back(static_cast<uint8_t>((adler>>24)&0xFF));
+			compressed.push_back(static_cast<uint8_t>((adler>>16)&0xFF));
+			compressed.push_back(static_cast<uint8_t>((adler>>8)&0xFF));
+			compressed.push_back(static_cast<uint8_t>(adler&0xFF));
+		}
 		return compressed;
 	}
 	static std::vector<uint8_t> decompress(const std::vector<uint8_t>& compressed) {
-		if (compressed.size()<6) throw std::runtime_error("Invalid compressed data!");
+		/*if (compressed.size()<6) throw std::runtime_error("Invalid compressed data!");
 		uint8_t cmf=compressed[0];
 		uint8_t flg=compressed[1];
 		if ((cmf&0x0F)!=8) throw std::runtime_error("Invalid compression method!");
@@ -219,7 +274,7 @@ public:
 			if (bfinal) break;
 		}
 		if (pos+4>compressed.size()) throw std::runtime_error("Missing ADLER32 checksum!");*/
-		uint32_t bitbuf=0;
+		/*uint32_t bitbuf=0;
 		int bitcnt=0;
 		auto read_bits=[&](int n)->uint32_t{
 			while (bitcnt<n && pos<compressed.size()-4) {
@@ -294,6 +349,106 @@ public:
 		uint32_t expected_adler=(static_cast<uint32_t>(compressed[pos])<<24)|(static_cast<uint32_t>(compressed[pos+1])<<16)|(static_cast<uint32_t>(compressed[pos+2])<<8)|static_cast<uint32_t>(compressed[pos+3]);
 		uint32_t actual_adler=compute_adler32(decompressed);
 		if (expected_adler!=actual_adler) throw std::runtime_error("ADLER32 checksum mismatch!");
+		return decompressed;*/
+		if (compressed.size()<2) throw std::runtime_error("too short");
+		uint8_t cmf=compressed[0],flg=compressed[1];
+		if ((cmf&0x0F)!=8) throw std::runtime_error("not DEFLATE");
+		if (((cmf<<8)+flg)%31!=0) throw std::runtime_error("zlib FCHECK");
+		bit_reader br(&compressed[2],compressed.size()-2);
+        std::vector<uint8_t> decompressed;
+		bool last=false;
+		while (!last) {
+			last=br.read_bits(1);
+			int btype=br.read_bits(2);
+			if (btype==0) {
+				br.byte_align();
+				if ((br.bitpos_/8)+4>compressed.size()-2) throw std::runtime_error("stored overflow");
+				uint16_t len=compressed[2+br.bitpos_/8]|(compressed[2+br.bitpos_/8 +1]<<8);
+				uint16_t nlen=compressed[2+br.bitpos_/8+2]|(compressed[2+br.bitpos_/8+3]<<8);
+				if ((len^0xFFFF)!=nlen) throw std::runtime_error("stored nlen mismatch");
+				br.bitpos_+=32;
+				std::size_t off=2+(br.bitpos_/8);
+				if (off+len>compressed.size()) throw std::runtime_error("stored beyond");
+				decompressed.insert(decompressed.end(),&compressed[off],&compressed[off+len]);
+				br.bitpos_+=len*8;
+				continue;
+			}
+			huffman litlen,dist;
+			auto read_symbol=[&](const huffman& h)->int{
+				int code=0,first=0,index=0;
+				for (int len=1;len<=h.maxbits_;len++) {
+					code|=br.read_bits(1);
+					int count=h.table_[len];
+					if (code-first<count) return index+code-first;
+					index+=count;
+					first=(first+count)<<1;
+					code<<=1;
+				}
+				throw std::runtime_error("bad code");
+			};
+			if (btype==1) {
+				litlen=build_fixed_tree_LIT();
+				dist=build_fixed_tree_DIST();
+			} else if (btype==2) {
+				int HLIT=br.read_bits(5)+257;
+				int HDIST=br.read_bits(5)+1;
+				int HCLEN=br.read_bits(4)+4;
+				static const int order[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
+				std::vector<uint8_t> code_len(19,0);
+				for (int i=0;i<HCLEN;i++) code_len[order[i]]=br.read_bits(3);
+				huffman code_tree;
+				code_tree.length_=code_len;
+                len_codes_to_table(code_tree);
+                std::vector<uint8_t> ll_len;
+				int total=HLIT+HDIST;
+				while ((int)ll_len.size()<total) {
+					int sym=read_symbol(code_tree);
+					if (sym<=15) ll_len.push_back(sym);
+					else if (sym==16) {
+						int rep=3+br.read_bits(2);
+						uint8_t prev=ll_len.empty()?0:ll_len.back();
+						while (rep--) ll_len.push_back(prev);
+					} else if (sym==17) {
+						int rep=3+br.read_bits(3);
+						while(rep--) ll_len.push_back(0);
+					} else if (sym==18) {
+						int rep=11+br.read_bits(7);
+						while(rep--) ll_len.push_back(0);
+					}
+				}
+				litlen.length_.assign(ll_len.begin(),ll_len.begin()+HLIT);
+				dist.length_.assign(ll_len.begin()+HLIT,ll_len.end());
+				len_codes_to_table(litlen);
+				len_codes_to_table(dist);
+			} else throw std::runtime_error("Reserved BTYPE");
+            static const int lens[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
+			static const int lext[29]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
+			static const int dstbase[30]={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
+			static const int dstext[30]={0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
+			while (1) {
+				int sym=read_symbol(litlen);
+				if (sym<256) {
+					decompressed.push_back((uint8_t)sym);
+					continue;
+				}
+				if (sym==256) break; // end of block
+				if (sym>285) throw std::runtime_error("bad length sym");
+				int len=lens[sym-257];
+				if (lext[sym-257]) len+=br.read_bits(lext[sym-257]);
+				int distSym=read_symbol(dist);
+				if (distSym>29) throw std::runtime_error("bad dist sym");
+				int distv=dstbase[distSym];
+				if (dstext[distSym]) distv+=br.read_bits(dstext[distSym]);
+				if ((std::size_t)distv>decompressed.size()) throw std::runtime_error("dist too far");
+				std::size_t start=decompressed.size()-distv;
+				for (int i=0;i<len;i++) decompressed.push_back(decompressed[start+i]);
+			}
+		}
+        if (compressed.size()<br.bitpos_/8+4+2) return decompressed;
+		std::size_t adler_pos=compressed.size()-4;
+		uint32_t expect=(compressed[adler_pos]<<24)|(compressed[adler_pos+1]<<16)|(compressed[adler_pos+2]<<8)|compressed[adler_pos+3];
+		uint32_t actual=compute_adler32(decompressed);
+		if (actual!=expect) throw std::runtime_error("adler error");
 		return decompressed;
 	}
 };
@@ -611,8 +766,7 @@ public:
 		}
 		std::vector<bool> data_bit_stream(complete_bit_stream.begin()+bit_pos,complete_bit_stream.begin()+bit_pos+data_bit_count);
         
-        // 鍝堝か鏇艰В鐮?        // 鎴戜滑闇€瑕佺煡閬撳師濮嬫暟鎹殑澶у皬锛岃繖閲屼娇鐢ㄤ竴涓及璁″€?        // 鍦ㄥ疄闄呭疄鐜颁腑锛岃繖涓俊鎭簲璇ヨ瀛樺偍
-        std::size_t estimated_size = compressed_data.size(); // 淇濆畧浼拌
+        // 閸濆牆銇嬮弴鑹靶掗惍?        // 閹存垳婊戦棁鈧憰浣虹叀闁挸甯慨瀣殶閹诡喚娈戞径褍鐨敍宀冪箹闁插奔濞囬悽銊ょ娑擃亙鍙婄拋鈥斥偓?        // 閸︺劌鐤勯梽鍛杽閻滈鑵戦敍宀冪箹娑擃亙淇婇幁顖氱安鐠囥儴顫︾€涙ê鍋?        std::size_t estimated_size = compressed_data.size(); // 娣囨繂鐣ф导鎷岊吀
         std::vector<uint8_t> transformed = huffman_decode(data_bit_stream, huffman_tree, estimated_size);*/
 		uint32_t expected_crc=((uint32_t)compressed[compressed.size()-8]<<24)|((uint32_t)compressed[compressed.size()-7]<<16)|((uint32_t)compressed[compressed.size()-6]<<8)|(uint32_t)compressed[compressed.size()-5];
 		uint32_t original_size=((uint32_t)compressed[compressed.size()-4]<<24)|((uint32_t)compressed[compressed.size()-3]<<16)|((uint32_t)compressed[compressed.size()-2]<<8)|(uint32_t)compressed[compressed.size()-1];
@@ -1011,6 +1165,17 @@ private:
 		}
 		return zip_data;
 	}
+	static uint16_t read_le16(const uint8_t* p) {
+		return (uint16_t)p[0]|((uint16_t)p[1]<<8);
+	}
+	static uint32_t read_le32(const uint8_t* p) {
+		return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);
+	}
+	static uint64_t read_le64(const uint8_t* p) {
+		uint64_t v=0;
+		for(int i=7;i>=0;i--) v=(v<<8)|p[i];
+		return v;
+	}
 	bool parse_central_directory(const char* data,std::size_t size,const end_of_central_directory* eocd) {
 		data_.assign(reinterpret_cast<const uint8_t*>(data),reinterpret_cast<const uint8_t*>(data)+size);
 		if (eocd->central_dir_offset_>=size)return false;
@@ -1033,24 +1198,21 @@ private:
 			uint64_t zip64_offset=0;
 			std::size_t pos=0;
 			while (pos+4<=extra.size()) {
-				uint16_t header_id=*reinterpret_cast<const uint16_t*>(&extra[pos]);
-				uint16_t data_size=*reinterpret_cast<const uint16_t*>(&extra[pos+2]);
+				uint16_t header_id=read_le16(&extra[pos]);
+				uint16_t data_size=read_le16(&extra[pos+2]);
 				pos+=4;
 				if (pos+data_size>extra.size()) break;
-				if (header_id==0x0001) {
+				if (header_id==0x0001 && data_size>=8) {
 					std::size_t rd=0;
 					if (cdh->uncompressed_size_==0xFFFFFFFF && rd+8<=data_size) {
-						zip64_uncompressed=*reinterpret_cast<const uint64_t*>(&extra[pos+rd]);
+						zip64_uncompressed=read_le64(&extra[pos+rd]);
 						rd+=8;
 					}
 					if (cdh->compressed_size_==0xFFFFFFFF && rd+8<=data_size) {
-						zip64_compressed=*reinterpret_cast<const uint64_t*>(&extra[pos+rd]);
+						zip64_compressed=read_le64(&extra[pos+rd]);
 						rd+=8;
 					}
-					if (cdh->local_header_offset_==0xFFFFFFFF && rd+8<=data_size) {
-						zip64_offset=*reinterpret_cast<const uint64_t*>(&extra[pos+rd]);
-						rd+=8;
-					}
+					if (cdh->local_header_offset_==0xFFFFFFFF && rd+8<=data_size) zip64_offset=read_le64(&extra[pos+rd]);
 				}
 				pos+=data_size;
 			}
@@ -1074,6 +1236,18 @@ private:
 			file.internal_attributes(cdh->internal_attributes_);
 			file.external_attributes(cdh->external_attributes_);
 			files_.push_back(std::move(file));
+		}
+		for (auto& it:files_) {
+			if (it.local_header_offset()+sizeof(local_file_header)>=size) continue;
+			const local_file_header* lfh=reinterpret_cast<const local_file_header*>(data+it.local_header_offset());
+			if (!lfh->valid()) continue;
+			const uint8_t* name_start=reinterpret_cast<const uint8_t*>(lfh)+sizeof(local_file_header);
+			const uint8_t* extra_start=name_start+lfh->file_name_length_;
+			if (extra_start+lfh->extra_field_length_>reinterpret_cast<const uint8_t*>(data)+size) continue;
+			const uint8_t* data_start=extra_start+lfh->extra_field_length_;
+			uint32_t possible_len=std::min<uint32_t>(lfh->compressed_size_,size-(data_start-reinterpret_cast<const uint8_t*>(data)));
+			if (possible_len==0 && it.compressed_size()>0) possible_len=it.compressed_size();
+			it.compressed_size(possible_len);
 		}
 		return true;
 	}
@@ -1211,7 +1385,7 @@ public:
 		auto ftime=std::filesystem::last_write_time(file_path,ec);
 		auto sctp=std::chrono::time_point_cast<std::chrono::system_clock::duration>(ftime-decltype(ftime)::clock::now()+std::chrono::system_clock::now());
 		file.last_write_time(sctp);
-		file.external_attributes(0x20); // DOS鏂囦欢灞炴€?		file.compress_data(level);
+		file.external_attributes(0x20); // DOS閺傚洣娆㈢仦鐐粹偓?		file.compress_data(level);
 		files_.push_back(std::move(file));
 		return true;
 	}
@@ -1355,6 +1529,7 @@ public:
 
 	bool extract_to(const file_info& file,const std::filesystem::path& target_path) const {
 		if (file.is_directory()) return std::filesystem::create_directories(target_path);
+		std::filesystem::create_directories(target_path.parent_path());
 		auto data=extract(file);
 		if (data.empty()) return false;
 		std::ofstream out_file(target_path,std::ios::binary);
