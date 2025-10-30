@@ -4,25 +4,23 @@
 #define _STDEX_TYPE_ZIP_H_ 1
 
 #include <algorithm>
-#include <array>
 #include <bitset>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <iterator>
-#include <iomanip>
-#include <map>
 #include <memory>
 #include <queue>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
-#include <type_traits>
 #include <vector>
+
+#include "../integrity/crc.h"//At Least 1.0
 
 namespace stdex {
 
@@ -31,6 +29,123 @@ namespace type {
 namespace zip {
 
 class deflate_compressor {
+private:
+	/*struct lz77_match {
+		std::size_t distance_;
+		std::size_t length_;
+		uint8_t literal_;
+		bool is_literal_;
+		lz77_match(uint8_t lit) : literal_(lit) , is_literal_(true) {}
+		lz77_match(std::size_t dist,std::size_t len) : distance_(dist) , length_(len) , is_literal_(false) {}
+	};
+	static std::vector<lz77_match> lz77_compress(const std::vector<uint8_t>& data, size_t window_size = 32768) {
+		std::vector<lz77_match> matches;
+		std::size_t pos=0;
+		while (pos<data.size()) {
+			std::size_t best_match_length=0;
+			std::size_t best_match_distance=0;
+			std::size_t search_start=(pos>window_size)?pos-window_size:0;
+			for (std::size_t i=search_start;i<pos;i++) {
+				std::size_t match_length=0;
+				while (match_length<258 && pos+match_length<data.size() && i+match_length<pos && data[i+match_length]==data[pos+match_length]) match_length++;
+				if (match_length>best_match_length && match_length>=3) {
+					best_match_length=match_length;
+					best_match_distance=pos-i;
+				}
+			}
+			if (best_match_length>=3) {
+				matches.emplace_back(best_match_distance,best_match_length);
+				pos+=best_match_length;
+			} else matches.emplace_back(data[pos++]);
+		}
+		return matches;
+	}
+	static void add_bits(uint32_t bits,std::size_t bit_count,std::vector<bool>& bit_stream) {
+		for (std::size_t i=0;i<bit_count;i++) bit_stream.push_back((bits>>i)&1);
+	}
+	static uint32_t read_bits(const std::vector<bool>& bit_stream,std::size_t& bit_pos,std::size_t bit_count) {
+		uint32_t result=0;
+		for (std::size_t i=0;i<bit_count;i++) {
+			if (bit_pos<bit_stream.size()) {
+				result|=(bit_stream[bit_pos]?1:0)<<i;
+				bit_pos++;
+			}
+		}
+		return result;
+	}*/
+	static void write_bits(std::vector<uint8_t>& out,uint32_t& bitbuf,int& bitcount,uint32_t val,int bits) {
+		bitbuf|=(val<<bitcount);
+		bitcount+=bits;
+		while (bitcount>=8) {
+			out.push_back(bitbuf&0xFF);
+			bitbuf>>=8;
+			bitcount-=8;
+		}
+	}
+	static void flush_bits(std::vector<uint8_t>& out,uint32_t& bitbuf,int& bitcount) {
+		while (bitcount>0) {
+			out.push_back(bitbuf&0xFF);
+			bitbuf>>=8;
+			bitcount-=8;
+		}
+	}
+	static uint32_t compute_adler32(const std::vector<uint8_t>& data) {
+		uint32_t a=1,b=0;
+		for (uint8_t it:data) {
+			a=(a+it)%65521;
+			b=(b+a)%65521;
+		}
+		return (b<<16)|a;
+	}
+	struct huffman_tree {
+		struct Node {
+			int sym_=-1;
+			int left_=-1,right_=-1; };
+			std::vector<Node> nodes_;
+			int root_=-1;
+	};
+	static huffman_tree build_tree(const std::vector<int>& lengths) {
+		std::vector<int> bl_count(16,0);
+		for (int it:lengths) {
+			if(it>0) bl_count[it]++;
+		}
+		std::vector<int> next_code(16,0);
+		int code=0;
+		for (int bits=1;bits<16;bits++) {
+			code=(code+bl_count[bits-1])<<1;
+			next_code[bits]=code;
+		}
+		huffman_tree tree;
+		tree.nodes_.push_back({-1,-1,-1});
+		for (std::size_t n=0;n<lengths.size();n++) {
+			int len=lengths[n];
+			if(len==0) continue;
+			int c=next_code[len]++;
+			int node=0;
+			for (int i=len-1;i>=0;i--) {
+				int bit=(c>>i)&1;
+				int& nxt=bit?tree.nodes_[node].right_:tree.nodes_[node].left_;
+				if(nxt==-1) {
+					nxt=tree.nodes_.size();
+					tree.nodes_.push_back({-1,-1,-1});
+				}
+				node=nxt;
+			}
+			tree.nodes_[node].sym_=(int)n;
+		}
+		tree.root_=0;
+		return tree;
+	}
+	static int read_symbol(const huffman_tree& tree,const std::function<int(int)>& read_bit){
+		int node=tree.root_;
+		while (1) {
+			int bit=read_bit(1);
+			node=(bit?tree.nodes_[node].right_:tree.nodes_[node].left_);
+			if (node==-1) throw std::runtime_error("invalid huffman code");
+			if (tree.nodes_[node].sym_!=-1) return tree.nodes_[node].sym_;
+		}
+	}
+
 public:
 	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,int level=6) {
 		std::vector<uint8_t> compressed;
@@ -40,7 +155,7 @@ public:
 		else if (level>=3) flg=0x5E;
 		compressed.push_back(cmf);
 		compressed.push_back(flg);
-		std::size_t pos=0;
+		/*std::size_t pos=0;
 		while (pos<data.size()) {
 			size_t block_size=std::min<size_t>(data.size()-pos,65535);
 			uint8_t bfinal=(pos + block_size >= data.size())?1:0;
@@ -52,7 +167,25 @@ public:
 			compressed.push_back(static_cast<uint8_t>(((~block_size)>>8)&0xFF));
 			compressed.insert(compressed.end(),data.begin()+pos,data.begin()+pos+block_size);
 			pos+=block_size;
+		}*/
+		uint32_t bitbuf=0;
+		int bitcount=0;
+		write_bits(compressed,bitbuf,bitcount,1,1);
+		write_bits(compressed,bitbuf,bitcount,1,2);
+		for (uint8_t it:data) {
+			uint16_t code;
+			int len;
+			if (it<=143) {
+				code=0x30+it;
+				len=8;
+			} else {
+				code=0x190+(it-144);
+				len=9;
+			}
+			write_bits(compressed,bitbuf,bitcount,code,len);
 		}
+		write_bits(compressed,bitbuf,bitcount,0x00,7);
+		flush_bits(compressed,bitbuf,bitcount);
 		uint32_t adler=compute_adler32(data);
 		compressed.push_back(static_cast<uint8_t>((adler>>24)&0xFF));
 		compressed.push_back(static_cast<uint8_t>((adler>>16)&0xFF));
@@ -68,7 +201,7 @@ public:
 		if ((cmf*256+flg)%31!=0) throw std::runtime_error("Invalid FCHECK");
 		std::vector<uint8_t> decompressed;
 		size_t pos=2;
-		while (pos<compressed.size()-4) {
+		/*while (pos<compressed.size()-4) {
 			if (pos>=compressed.size()) throw std::runtime_error("Unexpected end of compressed data!");
 			uint8_t header=compressed[pos++];
 			bool bfinal=(header&0x01)!=0;
@@ -85,21 +218,83 @@ public:
 			} else throw std::runtime_error("Compressed blocks not supported!");
 			if (bfinal) break;
 		}
-		if (pos+4>compressed.size()) throw std::runtime_error("Missing ADLER32 checksum!");
+		if (pos+4>compressed.size()) throw std::runtime_error("Missing ADLER32 checksum!");*/
+		uint32_t bitbuf=0;
+		int bitcnt=0;
+		auto read_bits=[&](int n)->uint32_t{
+			while (bitcnt<n && pos<compressed.size()-4) {
+				bitbuf|=(uint32_t)compressed[pos++]<<bitcnt;
+				bitcnt+=8;
+			}
+			uint32_t val=bitbuf&((1u<<n)-1);
+			bitbuf>>=n;
+			bitcnt-=n;
+			return val;
+		};
+		bool bfinal=false;
+		while (!bfinal) {
+			bfinal=read_bits(1);
+			uint32_t btype=read_bits(2);
+			if (btype==1) {
+				while (1) {
+					uint32_t code=read_bits(7);
+					if (code==0x00) break;
+					if (code<=0x8B) decompressed.push_back(code-0x30);
+					else decompressed.push_back(144+(code-0x190));
+				}
+			} else if (btype==2) {
+				int HLIT=read_bits(5)+257;
+				int HDIST=read_bits(5)+1;
+				int HCLEN=read_bits(4)+4;
+				static const int order[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
+				std::vector<int> code_length(19,0);
+				for (int i=0;i<HCLEN;i++) code_length[order[i]]=read_bits(3);
+				auto len_tree=build_tree(code_length);
+				int total=HLIT+HDIST;
+				std::vector<int> ll_lengths;
+				while ((int)ll_lengths.size()<total) {
+					int sym=read_symbol(len_tree,[&](int){ return read_bits(1); });
+					if (sym<=15) ll_lengths.push_back(sym);
+					else if (sym==16) {
+						int repeat=read_bits(2)+3;
+						int prev=ll_lengths.empty()?0:ll_lengths.back();
+						for (int i=0;i<repeat;i++) ll_lengths.push_back(prev);
+					} else if (sym==17) {
+						int repeat=read_bits(3)+3;
+						for (int i=0;i<repeat;i++) ll_lengths.push_back(0);
+					} else if (sym==18) {
+						int repeat=read_bits(7)+11;
+						for (int i=0;i<repeat;i++) ll_lengths.push_back(0);
+					}
+				}
+				std::vector<int> lit_len_len(ll_lengths.begin(),ll_lengths.begin()+HLIT);
+				std::vector<int> dist_len(ll_lengths.begin()+HLIT,ll_lengths.end());
+				auto lit_tree=build_tree(lit_len_len);
+				auto dist_tree=build_tree(dist_len);
+				while (true) {
+					int sym=read_symbol(lit_tree,[&](int){ return read_bits(1); });
+					if (sym<256) {
+						decompressed.push_back(sym);
+						continue;
+					}
+					if (sym==256) break;
+					static const int base_len[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
+					static const int ext_len[29]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
+					int len_index=sym-257;
+					uint32_t length=base_len[len_index]+(ext_len[len_index]?read_bits(ext_len[len_index]):0);
+					int dist_sym=read_symbol(dist_tree,[&](int){ return read_bits(1); });
+					static const int base_dist[30]={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
+					static const int ext_dist[30]={0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
+					uint32_t distance=base_dist[dist_sym]+(ext_dist[dist_sym]?read_bits(ext_dist[dist_sym]):0);
+					std::size_t start=decompressed.size()-distance;
+					for (uint32_t i=0;i<length;i++) decompressed.push_back(decompressed[start+i]);
+				}
+			} else throw std::runtime_error("unsupported block type");
+		}
 		uint32_t expected_adler=(static_cast<uint32_t>(compressed[pos])<<24)|(static_cast<uint32_t>(compressed[pos+1])<<16)|(static_cast<uint32_t>(compressed[pos+2])<<8)|static_cast<uint32_t>(compressed[pos+3]);
 		uint32_t actual_adler=compute_adler32(decompressed);
 		if (expected_adler!=actual_adler) throw std::runtime_error("ADLER32 checksum mismatch!");
 		return decompressed;
-	}
-
-private:
-	static uint32_t compute_adler32(const std::vector<uint8_t>& data) {
-		uint32_t a=1,b=0;
-		for (uint8_t it:data) {
-			a=(a+it)%65521;
-			b=(b+a)%65521;
-		}
-		return (b<<16)|a;
 	}
 };
 
@@ -111,7 +306,7 @@ class bzip2_compressor {
 		std::shared_ptr<huffman_node> right_;
 		huffman_node(int s,int f) : symbol_(s) , frequency_(f) , left_(nullptr) , right_(nullptr) { }
 		huffman_node(std::shared_ptr<huffman_node> l,std::shared_ptr<huffman_node> r) : symbol_(-1) , frequency_(l->frequency_+r->frequency_) , left_(l) , right_(r) { }
-		bool is_leaf() const { return symbol!=-1; }
+		bool is_leaf() const { return symbol_!=-1; }
 	};
 	struct huffman_compare {
 		bool operator ()(const std::shared_ptr<huffman_node>& a,const std::shared_ptr<huffman_node>& b) {
@@ -139,6 +334,94 @@ class bzip2_compressor {
 		}
 		return pq.top();
 	}
+	static void serialize_huffman_tree(const std::shared_ptr<huffman_node>& node,std::vector<bool>& bit_stream) {
+		if (node->is_leaf()) {
+			bit_stream.push_back(true);
+			for (int i=0;i<8;i++) bit_stream.push_back((node->symbol_>>i)&1);
+		} else {
+			bit_stream.push_back(false);
+			serialize_huffman_tree(node->left_,bit_stream);
+			serialize_huffman_tree(node->right_,bit_stream);
+		}
+	}
+	static std::shared_ptr<huffman_node> deserialize_huffman_tree(const std::vector<bool>& bit_stream,std::size_t& bit_pos) {
+		if (bit_pos>=bit_stream.size()) return nullptr;
+		bool is_leaf=bit_stream[bit_pos++];
+		if (is_leaf) {
+			uint8_t symbol=0;
+			for (int i=0;i<8 && bit_pos<bit_stream.size();i++) {
+				if (bit_stream[bit_pos++]) symbol|=(1<<i);
+			}
+			return std::make_shared<huffman_node>(symbol,0);
+		} else {
+			auto left=deserialize_huffman_tree(bit_stream,bit_pos);
+			auto right=deserialize_huffman_tree(bit_stream,bit_pos);
+			if (!left || !right) return nullptr;
+			return std::make_shared<huffman_node>(left,right);
+		}
+	}
+	static std::vector<uint8_t> inverse_bwt(const std::vector<uint8_t>& data) {
+		if (data.empty()) return data;
+		/*std::vector<std::pair<uint8_t,std::size_t>> pairs;
+		pairs.reserve(data.size());
+		for (std::size_t i=0;i<data.size();i++) pairs.emplace_back(data[i],i);
+		std::sort(pairs.begin(),pairs.end());
+		std::vector<uint8_t> result;
+		result.reserve(data.size());
+		std::size_t current_index=0;
+		for (std::size_t i=0;i<data.size();i++) {
+			current_index=pairs[current_index].second;
+			result.push_back(pairs[current_index].first);
+		}
+		return result;*/
+		if (data.size()<4) throw std::runtime_error("Invalid BWT data!");
+		std::size_t original_index=(static_cast<std::size_t>(data[data.size()-4])<<24)|(static_cast<std::size_t>(data[data.size()-3])<<16)|(static_cast<std::size_t>(data[data.size()-2])<<8)|static_cast<std::size_t>(data[data.size()-1]);
+		std::vector<uint8_t> bwt_data(data.begin(),data.end()-4);
+		std::vector<std::pair<uint8_t,std::size_t>> table;
+		table.reserve(bwt_data.size());
+		for (std::size_t i=0;i<bwt_data.size();i++) table.emplace_back(bwt_data[i],i);
+		std::stable_sort(table.begin(),table.end(),[](const std::pair<uint8_t,std::size_t>& a,const std::pair<uint8_t,std::size_t>& b){
+			return a.first<b.first;
+		});
+		std::vector<uint8_t> result;
+		result.reserve(bwt_data.size());
+		std::size_t current_index=original_index;
+		for (std::size_t i=0;i<bwt_data.size();i++) {
+			current_index=table[current_index].second;
+			result.push_back(bwt_data[current_index]);
+		}
+		return result;
+	}
+	static std::vector<uint8_t> inverse_mtf(const std::vector<uint8_t>& data) {
+		std::vector<uint8_t> dictionary(256);
+		for (int i=0;i<256;i++) dictionary[i]=static_cast<uint8_t>(i);
+		std::vector<uint8_t> result;
+		result.reserve(data.size());
+		for (uint8_t it:data) {
+			uint8_t ch=dictionary[it];
+			result.push_back(ch);
+			for (int i=it;i>0;i--) dictionary[i]=dictionary[i-1];
+ 			dictionary[0]=ch;
+		}
+		return result;
+	}
+	static std::vector<uint8_t> inverse_rle(const std::vector<uint8_t>& data) {
+		std::vector<uint8_t> result;
+		result.reserve(data.size()*2);
+		std::size_t i=0;
+		while (i<data.size()) {
+			if (i+4<data.size() && data[i]==data[i+1] && data[i]==data[i+2] && data[i]==data[i+3]) {
+				uint8_t value=data[i];
+				uint8_t count=data[i+4]+4;
+				for (int j=0;j<count;j++) result.push_back(value);
+				i+=5;
+			} else {
+				result.push_back(data[i]);
+				i++;
+			}
+		}
+		return result;
+	}
 	static std::vector<uint8_t> apply_bwt(const std::vector<uint8_t>& data) {
 		if (data.empty()) return data;
 		std::vector<std::vector<uint8_t>> rotations;
@@ -150,15 +433,25 @@ class bzip2_compressor {
 		}
 		std::sort(rotations.begin(),rotations.end());
 		std::vector<uint8_t> result;
-		result.reserve(data.size());
-		for (const auto& it:rotations) result.push_back(it.back());
+		//result.reserve(data.size());
+		//for (const auto& it:rotations) result.push_back(it.back());
+		result.reserve(data.size()+4);
+		std::size_t original_index=0;
+		for (std::size_t i=0;i<rotations.size();i++) {
+			result.push_back(rotations[i].back());
+			if (rotations[i]==data) original_index=i;
+		}
+		result.push_back(static_cast<uint8_t>((original_index>>24)&0xFF));
+		result.push_back(static_cast<uint8_t>((original_index>>16)&0xFF));
+		result.push_back(static_cast<uint8_t>((original_index>>8)&0xFF));
+		result.push_back(static_cast<uint8_t>(original_index&0xFF));
 		return result;
 	}
 	static std::vector<uint8_t> apply_mtf(const std::vector<uint8_t>& data) {
 		std::vector<uint8_t> dictionary(256);
 		for (int i=0;i<256;i++) dictionary[i]=static_cast<uint8_t>(i);
 		std::vector<uint8_t> result;
-		sresult.reserve(data.size());
+		result.reserve(data.size());
 		for (uint8_t it:data) {
 			auto jt=std::find(dictionary.begin(),dictionary.end(),it);
 			std::size_t index=std::distance(dictionary.begin(),jt);
@@ -193,6 +486,55 @@ class bzip2_compressor {
 		}
 		return result;
 	}
+	static std::vector<uint8_t> huffman_decode(const std::string& bit_stream,const std::shared_ptr<huffman_node>& root, size_t data_size) {
+		std::vector<uint8_t> result;
+		result.reserve(data_size);
+		auto current_node=root;
+		for (char it:bit_stream) {
+			if (it=='0') current_node=current_node->left_;
+			else current_node=current_node->right_;
+			if (current_node->is_leaf()) {
+				result.push_back(static_cast<uint8_t>(current_node->symbol_));
+				current_node=root;
+				if (result.size()>=data_size) break;
+			}
+		}
+		return result;
+	}
+	static std::vector<uint8_t> huffman_decode(const std::vector<bool>& bit_stream,const std::shared_ptr<huffman_node>& root,std::size_t data_size) {
+		std::vector<uint8_t> result;
+		result.reserve(data_size);
+		auto current_node=root;
+		for (std::size_t i=0;i<bit_stream.size() && result.size()<data_size;i++) {
+			if (bit_stream[i]) current_node=current_node->right_;
+			else current_node=current_node->left_;
+			if (current_node->is_leaf()) {
+				result.push_back(static_cast<uint8_t>(current_node->symbol_));
+				current_node=root;
+			}
+		}
+		return result;
+	}
+	static std::vector<uint8_t> bits_to_bytes(const std::vector<bool>& bit_stream) {
+		std::vector<uint8_t> bytes;
+		bytes.reserve((bit_stream.size()+7)/8);
+		for (std::size_t i=0;i<bit_stream.size();i+=8) {
+			uint8_t byte=0;
+			for (int j=0;j<8 && i+j<bit_stream.size();j++) {
+				if (bit_stream[i+j]) byte|=(1<<j);
+			}
+			bytes.push_back(byte);
+		}
+		return bytes;
+	}
+	static std::vector<bool> bytes_to_bits(const std::vector<uint8_t>& bytes,std::size_t bit_count) {
+		std::vector<bool> bit_stream;
+		bit_stream.reserve(bit_count);
+		for (std::size_t i=0;i<bytes.size() && bit_stream.size()<bit_count;i++) {
+			for (int j=0;j<8 && bit_stream.size()<bit_count;j++) bit_stream.push_back((bytes[i]>>j)&1);
+		}
+		return bit_stream;
+	}
 
 public:
 	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,int level=6) {
@@ -211,19 +553,38 @@ public:
 		auto huffman_tree=build_huffman_tree(frequencies);
 		std::vector<std::string> huffman_codes(256);
 		build_huffman_codes(huffman_tree,"",huffman_codes);
-		std::string bit_stream;
+		std::vector<bool> tree_bit_stream;
+		serialize_huffman_tree(huffman_tree,tree_bit_stream);
+		/*std::string bit_stream;
 		for (uint8_t it:transformed) bit_stream+=huffman_codes[it];
 		while (bit_stream.length()%8!=0) bit_stream+='0';
 		for (std::size_t i=0;i<bit_stream.length();i+=8) {
 			std::string byte_str=bit_stream.substr(i,8);
 			uint8_t byte=static_cast<uint8_t>(std::bitset<8>(byte_str).to_ulong());
 			compressed.push_back(byte);
+		}*/
+		std::vector<bool> data_bit_stream;
+		for (uint8_t it:transformed) {
+			const std::string& code=huffman_codes[it];
+			for (char jt:code) data_bit_stream.push_back(jt=='1');
 		}
+		std::vector<bool> complete_bit_stream;
+		uint32_t tree_bit_count=tree_bit_stream.size();
+		for (int i=0;i<32;i++) complete_bit_stream.push_back((tree_bit_count>>i)&1);
+		complete_bit_stream.insert(complete_bit_stream.end(),tree_bit_stream.begin(),tree_bit_stream.end());
+		uint32_t data_bit_count=data_bit_stream.size();
+		for (int i=0;i<32;i++) complete_bit_stream.push_back((data_bit_count>>i)&1);
+		complete_bit_stream.insert(complete_bit_stream.end(),data_bit_stream.begin(),data_bit_stream.end());
+		std::vector<uint8_t> compressed_data=bits_to_bytes(complete_bit_stream);
+		compressed.insert(compressed.end(),compressed_data.begin(),compressed_data.end());
 		uint32_t crc=integrity::crc32::calculate(data);
-		compressed.push_back(static_cast<uint8_t>((crc>>24)&0xFF));
+		/*compressed.push_back(static_cast<uint8_t>((crc>>24)&0xFF));
 		compressed.push_back(static_cast<uint8_t>((crc>>16)&0xFF));
 		compressed.push_back(static_cast<uint8_t>((crc>>8)&0xFF));
-		compressed.push_back(static_cast<uint8_t>(crc&0xFF));
+		compressed.push_back(static_cast<uint8_t>(crc&0xFF));*/
+		for (int i=3;i>=0;i--) compressed.push_back((crc>>(i*8))&0xFF);
+		uint32_t original_size=(uint32_t)data.size();
+		for (int i=3;i>=0;i--) compressed.push_back((original_size>>(i*8))&0xFF);
 		return compressed;
 	}
 	static std::vector<uint8_t> decompress(const std::vector<uint8_t>& compressed) {
@@ -231,9 +592,52 @@ public:
 		if (compressed[0]!='B' || compressed[1]!='Z' || compressed[2]!='h') throw std::runtime_error("Invalid BZIP2 header!");
 		int level=compressed[3]-'0';
 		if (level<1 || level>9) throw std::runtime_error("Invalid BZIP2 compression level!");
-		std::vector<uint8_t> transformed(compressed.begin()+4,compressed.end()-4);
+		if (compressed.size()<12) throw std::runtime_error("Incomplete BZIP2 data!");
+		/*std::vector<uint8_t> transformed(compressed.begin()+4,compressed.end()-4);
+		std::vector<bool> complete_bit_stream=bytes_to_bits(compressed_data,compressed_data.size() * 8);
+		std::size_t bit_pos=0;
+		uint32_t tree_bit_count=0;
+		for (int i=0;i<32 && bit_pos<complete_bit_stream.size();i++) {
+			if (complete_bit_stream[bit_pos++]) tree_bit_count|=(1<<i);
+		}
+		std::vector<bool> tree_bit_stream(complete_bit_stream.begin()+bit_pos,complete_bit_stream.begin()+bit_pos+tree_bit_count);
+		bit_pos+=tree_bit_count;
+		std::size_t tree_bit_pos=0;
+		auto huffman_tree=deserialize_huffman_tree(tree_bit_stream,tree_bit_pos);
+		if (!huffman_tree) throw std::runtime_error("Failed to deserialize Huffman tree!");
+		uint32_t data_bit_count=0;
+		for (int i=0;i<32 && bit_pos<complete_bit_stream.size();i++) {
+			if (complete_bit_stream[bit_pos++]) data_bit_count|=(1<<i);
+		}
+		std::vector<bool> data_bit_stream(complete_bit_stream.begin()+bit_pos,complete_bit_stream.begin()+bit_pos+data_bit_count);
+        
+        // 鍝堝か鏇艰В鐮?        // 鎴戜滑闇€瑕佺煡閬撳師濮嬫暟鎹殑澶у皬锛岃繖閲屼娇鐢ㄤ竴涓及璁″€?        // 鍦ㄥ疄闄呭疄鐜颁腑锛岃繖涓俊鎭簲璇ヨ瀛樺偍
+        std::size_t estimated_size = compressed_data.size(); // 淇濆畧浼拌
+        std::vector<uint8_t> transformed = huffman_decode(data_bit_stream, huffman_tree, estimated_size);*/
+		uint32_t expected_crc=((uint32_t)compressed[compressed.size()-8]<<24)|((uint32_t)compressed[compressed.size()-7]<<16)|((uint32_t)compressed[compressed.size()-6]<<8)|(uint32_t)compressed[compressed.size()-5];
+		uint32_t original_size=((uint32_t)compressed[compressed.size()-4]<<24)|((uint32_t)compressed[compressed.size()-3]<<16)|((uint32_t)compressed[compressed.size()-2]<<8)|(uint32_t)compressed[compressed.size()-1];
+		std::vector<uint8_t> compressed_data(compressed.begin()+4,compressed.end()-8);
+		auto complete_bit_stream=bytes_to_bits(compressed_data,compressed_data.size()*8);
+		std::size_t bit_pos=0;
+		uint32_t tree_bit_count=0;
+		for (int i=0;i<32 && bit_pos<complete_bit_stream.size();i++) {
+			if (complete_bit_stream[bit_pos++]) tree_bit_count|=(1<<i);
+		}
+		std::vector<bool> tree_bit_stream(complete_bit_stream.begin()+bit_pos,complete_bit_stream.begin()+bit_pos+tree_bit_count);
+		std::size_t tree_bit_pos=0;
+		auto huffman_tree=deserialize_huffman_tree(tree_bit_stream,tree_bit_pos);
+		if (!huffman_tree) throw std::runtime_error("Failed to deserialize Huffman tree!");
+		uint32_t data_bit_count=0;
+		for (int i=0;i<32 && bit_pos<complete_bit_stream.size();i++) {
+			if (complete_bit_stream[bit_pos++]) data_bit_count|=(1<<i);
+		}
+		std::vector<bool> data_bit_stream(complete_bit_stream.begin()+bit_pos,complete_bit_stream.begin()+bit_pos+data_bit_count);
+		std::vector<uint8_t> transformed=huffman_decode(data_bit_stream,huffman_tree,original_size);
 		std::vector<uint8_t> result=transformed;
-		uint32_t expected_crc=(static_cast<uint32_t>(compressed[compressed.size()-4])<<24)|(static_cast<uint32_t>(compressed[compressed.size()-3])<<16)|(static_cast<uint32_t>(compressed[compressed.size()-2])<<8)|static_cast<uint32_t>(compressed[compressed.size()-1]);
+		result=inverse_rle(result);
+		result=inverse_mtf(result);
+		result=inverse_bwt(result);
+		//uint32_t expected_crc=(static_cast<uint32_t>(compressed[compressed.size()-4])<<24)|(static_cast<uint32_t>(compressed[compressed.size()-3])<<16)|(static_cast<uint32_t>(compressed[compressed.size()-2])<<8)|static_cast<uint32_t>(compressed[compressed.size()-1]);
 		uint32_t actual_crc=integrity::crc32::calculate(result);
 		if (expected_crc!=actual_crc) throw std::runtime_error("BZIP2 CRC32 mismatch!");
 		return result;
@@ -277,7 +681,7 @@ struct central_directory_header {
 	uint16_t internal_attributes_;
 	uint32_t external_attributes_;
 	uint32_t local_header_offset_;
-	static constexpr uint32_t expected_signature_=0x02014B50_;
+	static constexpr uint32_t expected_signature_=0x02014B50;
 	bool valid() const noexcept {
 		return signature_==expected_signature_;
 	}
@@ -305,6 +709,30 @@ struct data_descriptor {
 	uint32_t uncompressed_size_;
 	static constexpr uint32_t expected_signature_=0x08074B50;
 };
+
+struct zip64_end_of_central_directory {
+    uint32_t signature_;
+    uint64_t size_of_record_;
+    uint16_t version_made_by_;
+    uint16_t version_needed_;
+    uint32_t disk_number_;
+    uint32_t disk_number_start_;
+    uint64_t num_entries_on_disk_;
+    uint64_t total_entries_;
+    uint64_t central_dir_size_;
+    uint64_t central_dir_offset_;
+    static constexpr uint32_t expected_signature_=0x06064B50;
+    bool valid() const noexcept { return signature_==expected_signature_; }
+};
+
+struct zip64_end_of_central_directory_locator {
+    uint32_t signature_;
+    uint32_t disk_with_eocd_;
+    uint64_t offset_of_eocd_;
+    uint32_t total_disks_;
+    static constexpr uint32_t expected_signature_=0x07064B50;
+    bool valid() const noexcept { return signature_==expected_signature_; }
+};
 #pragma pack(pop)
 
 enum compression_method : uint16_t {
@@ -329,7 +757,7 @@ enum compression_level : int {
 	CL_FAST=1,
 	CL_NORMAL=6,
 	CL_MAXIMUM=9,
-}
+};
 
 class file_info {
 public:
@@ -380,10 +808,12 @@ public:
 	std::chrono::system_clock::time_point last_write_time() const {
 		return last_write_time_;
 	}
-
 	void calculate_crc32() {
 		crc32_=integrity::crc32::calculate(data_);
-	
+	}
+	void set_directory(bool d) {
+		is_directory_=d;
+	}
 	void filename(string_type name) { 
 		filename_=std::move(name);
 		update_filepath();
@@ -438,6 +868,7 @@ public:
 	void compress_data(compression_level level=CL_NORMAL) {
 		if (method_==CM_STORED || data_.empty()) {
 			compressed_size_=uncompressed_size_;
+			calculate_crc32();
 			return;
 		}
 		std::vector<uint8_t> compressed;
@@ -456,6 +887,7 @@ public:
 			default: {
 				method_=CM_STORED;
 				compressed_size_=uncompressed_size_;
+				calculate_crc32();
 				return;
 			}
 		}
@@ -466,6 +898,7 @@ public:
 			method_=CM_STORED;
 			compressed_size_=uncompressed_size_;
 		}
+		calculate_crc32();
 	}
 	void decompress_data() {
 		if (method_==CM_STORED || data_.empty()) return;
@@ -496,7 +929,8 @@ public:
 
 private:
 	std::vector<value_type> files_;
-	std::vector<char> data_;
+	std::vector<uint8_t> data_;
+	std::string archive_comment_;
 
 	std::vector<uint8_t> build_zip_data() {
 		std::vector<uint8_t> zip_data;
@@ -509,6 +943,7 @@ private:
 			lfh.signature_=local_file_header::expected_signature_;
 			lfh.version_needed_=20;
 			lfh.flags_=0;
+			if (!std::all_of(file.filename().begin(),file.filename().end(),[](unsigned char c){ return c < 128; })) lfh.flags_|=(1<<11);
 			lfh.compression_method_=static_cast<uint16_t>(file.method());
 			auto [dos_time,dos_date]=file.to_dos_time();
 			lfh.last_mod_time_=dos_time;
@@ -529,10 +964,11 @@ private:
 		for (const auto& [index,local_offset]:local_header_offsets) {
 			const auto& file=files_[index];
 			central_directory_header cdh{};
-			cdh.signature=central_directory_header::expected_signature_;
+			cdh.signature_=central_directory_header::expected_signature_;
 			cdh.version_made_by_=20;
 			cdh.version_needed_=20;
 			cdh.flags_=0;
+			if (!std::all_of(file.filename().begin(),file.filename().end(),[](unsigned char c){ return c < 128; })) cdh.flags_|=(1<<11);
 			cdh.compression_method_=static_cast<uint16_t>(file.method());
 			auto [dos_time,dos_date]=file.to_dos_time();
 			cdh.last_mod_time_=dos_time;
@@ -559,7 +995,7 @@ private:
 		}
 		uint32_t central_dir_size=static_cast<uint32_t>(zip_data.size()-central_dir_start);
 		end_of_central_directory eocd{};
-		eocd.signature_=end_of_central_directory::expected_signature;
+		eocd.signature_=end_of_central_directory::expected_signature_;
 		eocd.disk_number_=0;
 		eocd.disk_start_=0;
 		eocd.num_entries_on_disk_=static_cast<uint16_t>(files_.size());
@@ -576,7 +1012,7 @@ private:
 		return zip_data;
 	}
 	bool parse_central_directory(const char* data,std::size_t size,const end_of_central_directory* eocd) {
-		data_=std::vector<char>(data,data+size);
+		data_.assign(reinterpret_cast<const uint8_t*>(data),reinterpret_cast<const uint8_t*>(data)+size);
 		if (eocd->central_dir_offset_>=size)return false;
 		const char* cd_start=data+eocd->central_dir_offset_;
 		const char* cd_end=cd_start+eocd->central_dir_size_;
@@ -591,17 +1027,49 @@ private:
 			ptr+=cdh->file_name_length_;
 			if (ptr+cdh->extra_field_length_>cd_end) return false;
 			file.extra_field(std::vector<uint8_t>(reinterpret_cast<const uint8_t*>(ptr),reinterpret_cast<const uint8_t*>(ptr)+cdh->extra_field_length_));
-			ptr+=cdh->extra_field_length;
+			const auto& extra=file.extra_field();
+			uint64_t zip64_uncompressed=0;
+			uint64_t zip64_compressed=0;
+			uint64_t zip64_offset=0;
+			std::size_t pos=0;
+			while (pos+4<=extra.size()) {
+				uint16_t header_id=*reinterpret_cast<const uint16_t*>(&extra[pos]);
+				uint16_t data_size=*reinterpret_cast<const uint16_t*>(&extra[pos+2]);
+				pos+=4;
+				if (pos+data_size>extra.size()) break;
+				if (header_id==0x0001) {
+					std::size_t rd=0;
+					if (cdh->uncompressed_size_==0xFFFFFFFF && rd+8<=data_size) {
+						zip64_uncompressed=*reinterpret_cast<const uint64_t*>(&extra[pos+rd]);
+						rd+=8;
+					}
+					if (cdh->compressed_size_==0xFFFFFFFF && rd+8<=data_size) {
+						zip64_compressed=*reinterpret_cast<const uint64_t*>(&extra[pos+rd]);
+						rd+=8;
+					}
+					if (cdh->local_header_offset_==0xFFFFFFFF && rd+8<=data_size) {
+						zip64_offset=*reinterpret_cast<const uint64_t*>(&extra[pos+rd]);
+						rd+=8;
+					}
+				}
+				pos+=data_size;
+			}
+			if (zip64_uncompressed>0) file.uncompressed_size(static_cast<uint32_t>(std::min<uint64_t>(zip64_uncompressed,0xFFFFFFFF)));
+			if (zip64_compressed>0) file.compressed_size(static_cast<uint32_t>(std::min<uint64_t>(zip64_compressed,0xFFFFFFFF)));
+			if (zip64_offset>0) file.local_header_offset(static_cast<uint32_t>(std::min<uint64_t>(zip64_offset,0xFFFFFFFF)));
+			ptr+=cdh->extra_field_length_;
 			if (cdh->file_comment_length_>0) {
 				if (ptr+cdh->file_comment_length_>cd_end) return false;
 				file.comment(std::string(ptr,cdh->file_comment_length_));
 				ptr+=cdh->file_comment_length_;
 			}
 			file.method(static_cast<compression_method>(cdh->compression_method_));
+			bool utf8=cdh->flags_&(1<<11);
+			if (!utf8) { }
 			file.compressed_size(cdh->compressed_size_);
 			file.uncompressed_size(cdh->uncompressed_size_);
 			file.crc32(cdh->crc32_);
-			file.local_header_offset_(cdh->local_header_offset_);
+			file.local_header_offset(cdh->local_header_offset_);
 			file.set_dos_time(cdh->last_mod_time_,cdh->last_mod_date_);
 			file.internal_attributes(cdh->internal_attributes_);
 			file.external_attributes(cdh->external_attributes_);
@@ -634,27 +1102,71 @@ public:
 	}
 	bool parse(const char* data,std::size_t size) {
 		files_.clear();
-		constexpr std::size_t min_eocd_size=sizeof(end_of_central_directory);
-		if (size<min_eocd_size) return false;
-		const auto* end_ptr=data+size;
-		for (const char* ptr=end_ptr-min_eocd_size;ptr>=data;ptr--) {
-			if (ptr+min_eocd_size>end_ptr) continue;
-			const auto* eocd=reinterpret_cast<const end_of_central_directory*>(ptr);
-			if (eocd->valid()) {
-				archive_comment_=extract_archive_comment(eocd,data,size);
-				return parse_central_directory(data,size,eocd);
+		const char* end=data+size;
+		const end_of_central_directory* eocd=nullptr;
+		const zip64_end_of_central_directory_locator* loc64=nullptr;
+		const zip64_end_of_central_directory* eocd64=nullptr;
+		const std::size_t max_eocd_search=std::min<std::size_t>(size,0xFFFF+sizeof(end_of_central_directory));
+		const char* eocd_search_start=end-max_eocd_search;
+		for (const char* p=end-4;p>=eocd_search_start;p--) {
+			if (p[0]=='P' && p[1]=='K' && p[2]==0x05 && p[3]==0x06) {
+				auto cand=reinterpret_cast<const end_of_central_directory*>(p);
+				if (cand->valid()) {
+					eocd=cand;
+					break;
+				}
+			}
+			if (p==data) break;
+		}
+		const std::size_t max_loc64_search=std::min<std::size_t>(size,1024*8);
+		const char* loc_search_start=end-max_loc64_search;
+		for (const char* p=end-4;p>=loc_search_start;--p) {
+			if (p[0]=='P' && p[1]=='K' && p[2]==0x06 && p[3]==0x07) {
+				auto cand=reinterpret_cast<const zip64_end_of_central_directory_locator*>(p);
+				if (cand->valid()) {
+					loc64=cand;
+					break;
+				}
+			}
+			if (p==data) break; 
+		}
+		uint64_t cd_offset=0;
+		uint64_t cd_size=0;
+		uint64_t entries=0;
+		if (loc64 && loc64->valid()) {
+			uint64_t pos=loc64->offset_of_eocd_;
+			if (pos+sizeof(zip64_end_of_central_directory)<=size) {
+			auto cand64=reinterpret_cast<const zip64_end_of_central_directory*>(data+pos);
+			if (cand64 && cand64->valid()) {
+				eocd64=cand64;
+				cd_offset=eocd64->central_dir_offset_;
+				cd_size=eocd64->central_dir_size_;
+				entries=eocd64->total_entries_;
 			}
 		}
-		return false;
+		}
+		if (!eocd64 && eocd) {
+			if (!eocd->valid()) return false;
+			cd_offset=eocd->central_dir_offset_;
+			cd_size=eocd->central_dir_size_;
+			entries=eocd->total_entries_;
+		}
+		if (cd_offset==0 || cd_offset>=size) return false;
+		if (cd_offset+cd_size>size) cd_size=size-cd_offset;
+		end_of_central_directory eocd_tmp{};
+		eocd_tmp.central_dir_offset_=static_cast<uint32_t>(cd_offset);
+		eocd_tmp.central_dir_size_=static_cast<uint32_t>(cd_size);
+		eocd_tmp.total_entries_=static_cast<uint16_t>(entries);
+		return parse_central_directory(data,size,&eocd_tmp);
 	}
 	std::vector<uint8_t> extract(const file_info& file) const {
 		if (file.local_header_offset()>=data_.size()) return {};
 		const auto* lfh_ptr=data_.data()+file.local_header_offset();
 		const auto* lfh=reinterpret_cast<const local_file_header*>(lfh_ptr);
 		if (!lfh->valid() || lfh_ptr+sizeof(local_file_header)>data_.data()+data_.size()) return {};
-		const uint8_t* file_data_start=lfh_ptr+sizeof(local_file_header)+lfh->file_name_length+lfh->extra_field_length;
-		if (file_data_start+lfh->compressed_size>data_.data()+data_.size()) return {};
-		std::vector<uint8_t> compressed_data(lfh->compressed_size);
+		const uint8_t* file_data_start=lfh_ptr+sizeof(local_file_header)+lfh->file_name_length_+lfh->extra_field_length_;
+		if (file_data_start+lfh->compressed_size_>data_.data()+data_.size()) return {};
+		std::vector<uint8_t> compressed_data(file_data_start,file_data_start+lfh->compressed_size_);
 		try {
 			switch (file.method()) {
 				case CM_STORED: return compressed_data;
@@ -678,8 +1190,10 @@ public:
 		file_info file(name_in_archive.empty()?file_path.filename().string():name_in_archive);
 		if (std::filesystem::is_directory(file_path,ec)) {
 			file.filename(file.filename()+"/");
-			file.is_directory_=true;
-			file.last_write_time(std::filesystem::last_write_time(file_path,ec));
+			file.set_directory(true);
+			auto ftime=std::filesystem::last_write_time(file_path,ec);
+			auto sctp=std::chrono::time_point_cast<std::chrono::system_clock::duration>(ftime-decltype(ftime)::clock::now()+std::chrono::system_clock::now());
+			file.last_write_time(sctp);
 			file.external_attributes(0x10);
 			files_.push_back(std::move(file));
 			return true;
@@ -694,9 +1208,10 @@ public:
 		file.data(std::move(file_data));
 		file.method(method);
 		file.calculate_crc32();
-		file.last_write_time(fs::last_write_time(file_path,ec));
-		file.external_attributes(0x20); // DOS文件属性
-		file.compress_data(level);
+		auto ftime=std::filesystem::last_write_time(file_path,ec);
+		auto sctp=std::chrono::time_point_cast<std::chrono::system_clock::duration>(ftime-decltype(ftime)::clock::now()+std::chrono::system_clock::now());
+		file.last_write_time(sctp);
+		file.external_attributes(0x20); // DOS鏂囦欢灞炴€?		file.compress_data(level);
 		files_.push_back(std::move(file));
 		return true;
 	}
@@ -714,7 +1229,7 @@ public:
 			if (it.is_directory(ec)) {
 				archive_path+="/";
 				add_directory(archive_path);
-			} else add_file(entry.path(),method,level,archive_path);
+			} else add_file(it.path(),method,level,archive_path);
 		}
 		return true;
 	}
@@ -735,7 +1250,7 @@ public:
 			normalized_dirname+='/';
 		}
 		file_info file(normalized_dirname);
-		file.is_directory_=true;
+		file.set_directory(true);
 		file.last_write_time(std::chrono::system_clock::now());
 		file.comment(comment);
 		file.external_attributes(0x10);
@@ -847,11 +1362,11 @@ public:
 		out_file.write(reinterpret_cast<const char*>(data.data()),data.size());
 		return !!out_file;
 	}
-	bool extract_all(const fs::path& target_dir) const {
+	bool extract_all(const std::filesystem::path& target_dir) const {
 		std::error_code ec;
 		for (const auto& file:files_) {
 			auto target_path=target_dir/file.filepath();
-			if (!extract_to(file,target_path))return false;
+			if (!extract_to(file,target_path)) return false;
 		}
 		return true;
 	}

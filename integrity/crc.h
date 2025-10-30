@@ -53,9 +53,9 @@ private:
 			}
 		}();
 		if constexpr (reflect_input_) {
-			value_=(value_>>8)^table[idx];
+			value_=(value_>>8)^table_[idx];
 		} else {
-			value_=(value_<<8)^table[idx];
+			value_=(value_<<8)^table_[idx];
 		}
 	}
 
@@ -71,15 +71,15 @@ public:
 		std::array<value_type,256> table{};
 		for (int i=0;i<256;i++) {
 			value_type crc=static_cast<value_type>(i);
-			if constexpr (reflect_input) {
+			if constexpr (reflect_input_) {
 				for (int j=0;j<8;j++) {
-					if (crc&1) crc=(crc>>1)^polynomial;
+					if (crc&1) crc=(crc>>1)^polynomial_;
 					else crc>>=1;
 				}
 			} else {
 				crc<<=(_Bits-8);
 				for (int j=0;j<8;j++) {
-					if (crc&(static_cast<value_type>(1)<<(_Bits-1))) crc=(crc<<1)^polynomial;
+					if (crc&(static_cast<value_type>(1)<<(_Bits-1))) crc=(crc<<1)^polynomial_;
 					else crc<<=1;
 				}
 			}
@@ -89,7 +89,7 @@ public:
 	}
 	static constexpr auto table_=generate_table();
 
-	crc() noexcept : value_(initial_value) {}
+	crc() noexcept : value_(initial_value_) {}
 #if __cplusplus>=_STDEX_CPP20_VERSION
 	void update(std::span<const std::byte> data) noexcept {
 		for (auto it:data) {
@@ -150,7 +150,7 @@ public:
 		return calculate(std::data(container),std::size(container));
 	}
 	void reset() noexcept {
-		value_=initial_value;
+		value_=initial_value_;
 	}
 };
 
