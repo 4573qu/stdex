@@ -447,7 +447,7 @@ class bzip2_compressor {
 		}
 		return result;
 	}
-	static std::vector<uint8_t> huffman_decode(const std::string& bit_stream,const std::shared_ptr<huffman_node>& root, size_t data_size) {
+	static std::vector<uint8_t> huffman_decode(const std::string& bit_stream,const std::shared_ptr<huffman_node>& root,std::size_t data_size) {
 		std::vector<uint8_t> result;
 		result.reserve(data_size);
 		auto current_node=root;
@@ -697,10 +697,10 @@ private:
 	string_type filename_;
 	path_type filepath_;
 	compression_method method_=CM_STORED;
-	uint32_t compressed_size_=0;
-	uint32_t uncompressed_size_=0;
+	uint64_t compressed_size_=0;
+	uint64_t uncompressed_size_=0;
 	uint32_t crc32_=0;
-	uint32_t local_header_offset_=0;
+	uint64_t local_header_offset_=0;
 	bool is_directory_=false;
 	std::chrono::system_clock::time_point last_write_time_=std::chrono::system_clock::now();
 	byte_vector data_;
@@ -723,10 +723,10 @@ public:
 	const string_type& filename() const noexcept { return filename_; }
 	const path_type& filepath() const noexcept { return filepath_; }
 	compression_method method() const noexcept { return method_; }
-	uint32_t compressed_size() const noexcept { return compressed_size_; }
-	uint32_t uncompressed_size() const noexcept { return uncompressed_size_; }
+	uint64_t compressed_size() const noexcept { return compressed_size_; }
+	uint64_t uncompressed_size() const noexcept { return uncompressed_size_; }
 	uint32_t crc32() const noexcept { return crc32_; }
-	uint32_t local_header_offset() const noexcept { return local_header_offset_; }
+	uint64_t local_header_offset() const noexcept { return local_header_offset_; }
 	bool is_directory() const noexcept { return is_directory_; }
 	const byte_vector& data() const noexcept { return data_; }
 	const std::string& comment() const noexcept { return comment_; }
@@ -748,16 +748,16 @@ public:
 	}
 	
 	void method(compression_method m) { method_=m; }
-	void compressed_size(uint32_t size) { compressed_size_=size; }
-	void uncompressed_size(uint32_t size) { uncompressed_size_=size; }
+	void compressed_size(uint64_t size) { compressed_size_=size; }
+	void uncompressed_size(uint64_t size) { uncompressed_size_=size; }
 	void crc32(uint32_t crc) { crc32_=crc; }
-	void local_header_offset(uint32_t offset) { local_header_offset_=offset; }
+	void local_header_offset(uint64_t offset) { local_header_offset_=offset; }
 	void last_write_time(std::chrono::system_clock::time_point time) { 
 		last_write_time_=time; 
 	}
 	void data(byte_vector d) { 
 		data_=std::move(d);
-		uncompressed_size_=static_cast<uint32_t>(data_.size());
+		uncompressed_size_=data_.size();
 	}
 	void comment(std::string c) { comment_=std::move(c); }
 	void internal_attributes(uint16_t attr) { internal_attributes_=attr; }
@@ -823,7 +823,7 @@ public:
 		crc32_=orcc;
 		if (compression_successful) {
 			data_=std::move(compressed);
-			compressed_size_=static_cast<uint32_t>(data_.size());
+			compressed_size_=data_.size();
 		} else {
 			method_=CM_STORED;
 			compressed_size_=uncompressed_size_;
@@ -842,7 +842,7 @@ public:
 			}
 			default: throw std::runtime_error("Unsupported compression method for decompression!");
 		}
-		uncompressed_size_=static_cast<uint32_t>(data_.size());
+		uncompressed_size_=data_.size();
 		method_=CM_STORED;
 	}
 };
@@ -857,6 +857,10 @@ public:
 	using size_type=typename std::vector<value_type>::size_type;
 
 private:
+	struct central_direction_view {
+		uint64_t offset,size,entries;
+	};
+	
 	std::vector<value_type> files_;
 	std::vector<uint8_t> data_;
 	std::string archive_comment_;
@@ -871,17 +875,27 @@ private:
 		buf.push_back((v>>16)&0xFF);
 		buf.push_back((v>>24)&0xFF);
 	}
+	static void append_le64(std::vector<uint8_t>& buf,uint64_t v) {
+		buf.push_back(v&0xFF);
+		buf.push_back((v>>8)&0xFF);
+		buf.push_back((v>>16)&0xFF);
+		buf.push_back((v>>24)&0xFF);
+		buf.push_back((v>>32)&0xFF);
+		buf.push_back((v>>40)&0xFF);
+		buf.push_back((v>>48)&0xFF);
+		buf.push_back((v>>56)&0xFF);
+	}
 
 	std::vector<uint8_t> build_zip_data() {
 		std::vector<uint8_t> zip_data;
-		std::vector<std::pair<size_t,uint32_t>> local_header_offsets;
+		std::vector<std::pair<std::size_t,uint64_t>> local_header_offsets;
 		for (std::size_t i=0;i<files_.size();i++) {
 			auto& file=files_[i];
-			uint32_t local_header_offset=static_cast<uint32_t>(zip_data.size());
+			uint64_t local_header_offset=zip_data.size();
 			local_header_offsets.emplace_back(i,local_header_offset);
 			local_file_header lfh{};
 			lfh.signature_=local_file_header::expected_signature_;
-			lfh.version_needed_=20;
+			lfh.version_needed_=45;
 			lfh.flags_=0;
 			if (!std::all_of(file.filename().begin(),file.filename().end(),[](unsigned char c){ return c < 128; })) lfh.flags_|=(1<<11);
 			lfh.compression_method_=static_cast<uint16_t>(file.method());
@@ -892,24 +906,39 @@ private:
 			lfh.last_mod_time_=dos_time;
 			lfh.last_mod_date_=dos_date;
 			lfh.crc32_=file.crc32();
-			lfh.compressed_size_=file.compressed_size();
-			lfh.uncompressed_size_=file.uncompressed_size();
+			std::vector<uint8_t> extra=file.extra_field();
+			bool use_zip64=false;
+			if (file.compressed_size()>=0xFFFFFFFFULL || file.uncompressed_size()>=0xFFFFFFFFULL || local_header_offset>=0xFFFFFFFFULL) {
+				use_zip64=true;
+				append_le16(extra,0x0001);
+				std::size_t data_len=16;
+				if (local_header_offset>=0xFFFFFFFFULL) data_len+=8;
+				append_le16(extra,static_cast<uint16_t>(data_len));
+				append_le64(extra,file.uncompressed_size());
+				append_le64(extra,file.compressed_size());
+				if (local_header_offset>=0xFFFFFFFFULL) append_le64(extra,local_header_offset);
+				lfh.compressed_size_=0xFFFFFFFF;
+				lfh.uncompressed_size_=0xFFFFFFFF;
+			} else {
+				lfh.compressed_size_=static_cast<uint32_t>(file.compressed_size());
+				lfh.uncompressed_size_=static_cast<uint32_t>(file.uncompressed_size());
+			}
+			lfh.extra_field_length_=static_cast<uint16_t>(extra.size());
 			lfh.file_name_length_=static_cast<uint16_t>(file.filename().size());
-			lfh.extra_field_length_=static_cast<uint16_t>(file.extra_field().size());
 			const uint8_t* lfh_ptr=reinterpret_cast<const uint8_t*>(&lfh);
 			zip_data.insert(zip_data.end(),lfh_ptr,lfh_ptr+sizeof(lfh));
 			const uint8_t* filename_ptr=reinterpret_cast<const uint8_t*>(file.filename().data());
 			zip_data.insert(zip_data.end(),filename_ptr,filename_ptr+file.filename().size());
-			zip_data.insert(zip_data.end(),file.extra_field().begin(),file.extra_field().end());
+			zip_data.insert(zip_data.end(),extra.begin(),extra.end());
 			if (!file.is_directory()) zip_data.insert(zip_data.end(), file.data().begin(), file.data().end());
 		}
-		uint32_t central_dir_start=static_cast<uint32_t>(zip_data.size());
+		uint64_t central_dir_start=zip_data.size();
 		for (const auto& [index,local_offset]:local_header_offsets) {
 			const auto& file=files_[index];
 			central_directory_header cdh{};
 			cdh.signature_=central_directory_header::expected_signature_;
-			cdh.version_made_by_=20;
-			cdh.version_needed_=20;
+			cdh.version_made_by_=45;
+			cdh.version_needed_=45;
 			cdh.flags_=0;
 			if (!std::all_of(file.filename().begin(),file.filename().end(),[](unsigned char c){ return c < 128; })) cdh.flags_|=(1<<11);
 			cdh.compression_method_=static_cast<uint16_t>(file.method());
@@ -917,15 +946,29 @@ private:
 			cdh.last_mod_time_=dos_time;
 			cdh.last_mod_date_=dos_date;
 			cdh.crc32_=file.crc32();
-			cdh.compressed_size_=file.compressed_size();
-			cdh.uncompressed_size_=file.uncompressed_size();
 			cdh.file_name_length_=static_cast<uint16_t>(file.filename().size());
-			cdh.extra_field_length_=static_cast<uint16_t>(file.extra_field().size());
+			std::vector<uint8_t> extra = file.extra_field();
+			if (file.compressed_size()>=0xFFFFFFFFULL || file.uncompressed_size()>=0xFFFFFFFFULL || local_offset>=0xFFFFFFFFULL) {
+				append_le16(extra,0x0001);
+				std::size_t data_len=16;
+				if (local_offset>=0xFFFFFFFFULL) data_len+=8;
+				append_le16(extra,static_cast<uint16_t>(data_len));
+				append_le64(extra,file.uncompressed_size());
+				append_le64(extra,file.compressed_size());
+				if (local_offset>=0xFFFFFFFFULL) append_le64(extra,local_offset);
+				cdh.uncompressed_size_=0xFFFFFFFF;
+				cdh.compressed_size_=0xFFFFFFFF;
+				cdh.local_header_offset_=0xFFFFFFFF;
+			} else {
+				cdh.uncompressed_size_=static_cast<uint32_t>(file.uncompressed_size());
+				cdh.compressed_size_=static_cast<uint32_t>(file.compressed_size());
+				cdh.local_header_offset_=static_cast<uint32_t>(local_offset);
+			}
+			cdh.extra_field_length_ = static_cast<uint16_t>(extra.size());
 			cdh.file_comment_length_=static_cast<uint16_t>(file.comment().size());
 			cdh.disk_number_start_=0;
 			cdh.internal_attributes_=file.internal_attributes();
 			cdh.external_attributes_=file.external_attributes();
-			cdh.local_header_offset_=local_offset;
 			const uint8_t* cdh_ptr=reinterpret_cast<const uint8_t*>(&cdh);
 			zip_data.insert(zip_data.end(),cdh_ptr,cdh_ptr+sizeof(cdh));
 			const uint8_t* filename_ptr=reinterpret_cast<const uint8_t*>(file.filename().data());
@@ -936,15 +979,32 @@ private:
 				zip_data.insert(zip_data.end(),comment_ptr,comment_ptr+file.comment().size());
 			}
 		}
-		uint32_t central_dir_size=static_cast<uint32_t>(zip_data.size()-central_dir_start);
+		uint64_t central_dir_size=zip_data.size()-central_dir_start;
+		bool need_zip64=central_dir_start>=0xFFFFFFFFULL || central_dir_size>=0xFFFFFFFFULL || files_.size()>=0xFFFF;
+		if (need_zip64) {
+			append_le32(zip_data,0x06064B50);
+			append_le64(zip_data,44);
+			append_le16(zip_data,45);
+			append_le16(zip_data,45);
+			append_le32(zip_data,0); 
+			append_le32(zip_data,0);
+			append_le64(zip_data,files_.size());
+			append_le64(zip_data,files_.size());
+			append_le64(zip_data,central_dir_size);
+			append_le64(zip_data,central_dir_start);
+			append_le32(zip_data,0x07064B50);
+			append_le32(zip_data,0);
+			append_le64(zip_data,zip_data.size()-central_dir_size-56);
+			append_le32(zip_data,1);
+		}
 		end_of_central_directory eocd{};
 		eocd.signature_=end_of_central_directory::expected_signature_;
 		eocd.disk_number_=0;
 		eocd.disk_start_=0;
 		eocd.num_entries_on_disk_=static_cast<uint16_t>(files_.size());
-		eocd.total_entries_=static_cast<uint16_t>(files_.size());
-		eocd.central_dir_size_=central_dir_size;
-		eocd.central_dir_offset_=central_dir_start;
+	    eocd.total_entries_=static_cast<uint16_t>(std::min<uint64_t>(files_.size(),0xFFFFULL));
+		eocd.central_dir_size_=static_cast<uint32_t>(std::min<uint64_t>(central_dir_size,0xFFFFFFFFULL));
+		eocd.central_dir_offset_=static_cast<uint32_t>(std::min<uint64_t>(central_dir_start,0xFFFFFFFFULL));
 		eocd.comment_length_=static_cast<uint16_t>(archive_comment_.size());
 		const uint8_t* eocd_ptr=reinterpret_cast<const uint8_t*>(&eocd);
 		zip_data.insert(zip_data.end(),eocd_ptr,eocd_ptr+sizeof(eocd));
@@ -965,7 +1025,7 @@ private:
 	}
 	bool parse_central_directory(const char* data,std::size_t size,const end_of_central_directory* eocd) {
 		data_.assign(reinterpret_cast<const uint8_t*>(data),reinterpret_cast<const uint8_t*>(data)+size);
-		if (eocd->central_dir_offset_>=size)return false;
+		if (eocd->central_dir_offset_>=size) return false;
 		const char* cd_start=data+eocd->central_dir_offset_;
 		const char* cd_end=cd_start+eocd->central_dir_size_;
 		if (cd_end>data+size) return false;
@@ -1003,9 +1063,9 @@ private:
 				}
 				pos+=data_size;
 			}
-			if (zip64_uncompressed>0) file.uncompressed_size(static_cast<uint32_t>(std::min<uint64_t>(zip64_uncompressed,0xFFFFFFFF)));
-			if (zip64_compressed>0) file.compressed_size(static_cast<uint32_t>(std::min<uint64_t>(zip64_compressed,0xFFFFFFFF)));
-			if (zip64_offset>0) file.local_header_offset(static_cast<uint32_t>(std::min<uint64_t>(zip64_offset,0xFFFFFFFF)));
+			if (zip64_uncompressed>0) file.uncompressed_size(zip64_uncompressed);
+			if (zip64_compressed>0) file.compressed_size(zip64_compressed);
+			if (zip64_offset>0) file.local_header_offset(zip64_offset);
 			ptr+=cdh->extra_field_length_;
 			if (cdh->file_comment_length_>0) {
 				if (ptr+cdh->file_comment_length_>cd_end) return false;
@@ -1045,6 +1105,90 @@ private:
 				data_len=static_cast<uint32_t>(scan-(file_data_start-reinterpret_cast<const uint8_t*>(data)));
 			}
 			if ((reinterpret_cast<const uint8_t*>(data)+size)<(file_data_start+data_len)) continue;
+			it.data(std::vector<uint8_t>(file_data_start,file_data_start+data_len));
+		}
+		return true;
+	}
+	bool parse_central_directory64(const char* data,std::size_t size,const central_direction_view& cdv) {
+		data_.assign(reinterpret_cast<const uint8_t*>(data),reinterpret_cast<const uint8_t*>(data)+size);
+		uint64_t offset=cdv.offset;
+		uint64_t endpos=offset+cdv.size;
+		if (offset>=size) return false;
+		if (endpos>size) endpos=size;
+		const char* cd_start=data+offset;
+		const char* cd_end=data+endpos;
+		const char* ptr=cd_start;
+		for (uint64_t i=0;i<cdv.entries && ptr+sizeof(central_directory_header)<=cd_end;i++) {
+			const auto* cdh=reinterpret_cast<const central_directory_header*>(ptr);
+			if (!cdh->valid()) return false;
+			ptr+=sizeof(central_directory_header);
+			if (ptr+cdh->file_name_length_>cd_end) return false;
+			file_info file(std::string(ptr,cdh->file_name_length_));
+			ptr+=cdh->file_name_length_;
+			if (ptr+cdh->extra_field_length_>cd_end) return false;
+			file.extra_field(std::vector<uint8_t>(reinterpret_cast<const uint8_t*>(ptr),reinterpret_cast<const uint8_t*>(ptr)+cdh->extra_field_length_));
+			ptr+=cdh->extra_field_length_;
+			if (cdh->file_comment_length_>0) {
+				if (ptr+cdh->file_comment_length_>cd_end) return false;
+				file.comment(std::string(ptr,cdh->file_comment_length_));
+				ptr+=cdh->file_comment_length_;
+			}
+			uint64_t uncomp=cdh->uncompressed_size_;
+			uint64_t comp=cdh->compressed_size_;
+			uint64_t lhoff=cdh->local_header_offset_;
+			if (comp==0xFFFFFFFFu || uncomp==0xFFFFFFFFu || lhoff==0xFFFFFFFFu) {
+				const auto& extra=file.extra_field();
+				std::size_t pos=0;
+				while (pos+4<=extra.size()) {
+					uint16_t header_id=read_le16(&extra[pos]);
+					uint16_t data_size=read_le16(&extra[pos+2]);
+					pos+=4;
+					if (pos+data_size>extra.size()) break;
+					if (header_id==0x0001) {
+						std::size_t rd=0;
+						if (uncomp==0xFFFFFFFFu && rd+8<=data_size) {
+                        	uncomp=read_le64(&extra[pos+rd]);
+							rd+=8;
+						}
+						if (comp==0xFFFFFFFFu && rd+8<=data_size) {
+							comp=read_le64(&extra[pos+rd]);
+							rd+=8;
+						}
+						if (lhoff==0xFFFFFFFFu && rd+8<=data_size) lhoff=read_le64(&extra[pos+rd]);
+					}
+					pos+=data_size;
+				}
+			}
+			file.method(static_cast<compression_method>(cdh->compression_method_));
+			file.compressed_size(comp);
+			file.uncompressed_size(uncomp);
+			file.local_header_offset(lhoff);
+			file.crc32(cdh->crc32_);
+			file.set_dos_time(cdh->last_mod_time_,cdh->last_mod_date_);
+			files_.push_back(std::move(file));
+		}
+		for (auto& it:files_) {
+			uint64_t lhoff=it.local_header_offset();
+			if (lhoff+sizeof(local_file_header)>=size) continue;
+			const local_file_header* lfh=reinterpret_cast<const local_file_header*>(data+lhoff);
+			if (!lfh->valid()) continue;
+			const uint8_t* name_start=reinterpret_cast<const uint8_t*>(lfh)+sizeof(local_file_header);
+			const uint8_t* extra_start=name_start+lfh->file_name_length_;
+			const uint8_t* file_data_start=extra_start+lfh->extra_field_length_;
+			uint64_t data_len=lfh->compressed_size_;
+			bool has_descriptor=(lfh->flags_&0x08)!=0;
+			if (data_len==0) data_len=it.compressed_size();
+			if (has_descriptor && data_len==0) {
+				std::size_t scan=file_data_start-reinterpret_cast<const uint8_t*>(data);
+				std::size_t end_data=size;
+				while (scan+4<end_data) {
+					uint32_t sig=data[scan]|(data[scan+1]<<8)|(data[scan+2]<<16)|(data[scan+3]<<24);
+					if (sig==0x04034b50 || sig==0x02014b50 || sig==0x08074b50) break;
+					scan++;
+				}
+				data_len=static_cast<uint64_t>(scan-(file_data_start-reinterpret_cast<const uint8_t*>(data)));
+			}
+			if (reinterpret_cast<const uint8_t*>(data)+size<file_data_start+data_len) continue;
 			it.data(std::vector<uint8_t>(file_data_start,file_data_start+data_len));
 		}
 		return true;
@@ -1125,15 +1269,32 @@ public:
 		}
 		if (cd_offset==0 || cd_offset>=size) return false;
 		if (cd_offset+cd_size>size) cd_size=size-cd_offset;
-		end_of_central_directory eocd_tmp{};
-		eocd_tmp.central_dir_offset_=static_cast<uint32_t>(cd_offset);
-		eocd_tmp.central_dir_size_=static_cast<uint32_t>(cd_size);
-		eocd_tmp.total_entries_=static_cast<uint16_t>(entries);
-		return parse_central_directory(data,size,&eocd_tmp);
+		central_direction_view cdv{ cd_offset,cd_size,entries };
+		return parse_central_directory64(data,size,cdv);
+		//end_of_central_directory eocd_tmp{};
+		//eocd_tmp.central_dir_offset_=static_cast<uint32_t>(cd_offset);
+		//eocd_tmp.central_dir_size_=static_cast<uint32_t>(cd_size);
+		//eocd_tmp.total_entries_=static_cast<uint16_t>(entries);
+		//return parse_central_directory(data,size,&eocd_tmp);
 	}
 	std::vector<uint8_t> extract(const file_info& file) const {
+		
+		
+		size_t off = static_cast<size_t>(file.local_header_offset());
+printf("[extract-debug] %s  lhoff=%zu  data_size=%zu  files_buf=%zu\n",
+       file.filename().c_str(),
+       off,
+       data_.size(),
+       files_.size());
+if (off >= data_.size()) {
+    printf("[extract-debug] ERROR off >= data size!\n");
+    throw std::runtime_error("invalid local header offset");
+}
+		
 		if (file.local_header_offset()>=data_.size()) throw std::runtime_error("invalid local header offset");
-		const uint8_t* lfh_ptr=data_.data()+file.local_header_offset();
+		std::size_t lhoff=static_cast<std::size_t>(file.local_header_offset());
+		if (lhoff>=data_.size()) throw std::runtime_error("invalid local header offset");
+		const uint8_t* lfh_ptr=data_.data()+lhoff;
 		const local_file_header* lfh=reinterpret_cast<const local_file_header*>(lfh_ptr);
 		if (!lfh->valid()) throw std::runtime_error("invalid local file header");
 		const uint8_t* file_data_start=lfh_ptr+sizeof(local_file_header)+lfh->file_name_length_+lfh->extra_field_length_;
@@ -1190,7 +1351,7 @@ public:
 		in_file.seekg(0,std::ios::end);
 		auto file_size=in_file.tellg();
 		in_file.seekg(0,std::ios::beg);
-		std::vector<uint8_t> file_data(static_cast<size_t>(file_size));
+		std::vector<uint8_t> file_data(static_cast<std::size_t>(file_size));
 		if (!in_file.read(reinterpret_cast<char*>(file_data.data()),file_size)) return false;
 		file.data(std::move(file_data));
 		file.method(method);
