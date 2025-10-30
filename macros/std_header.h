@@ -5,7 +5,9 @@
 
 namespace stdex {
 	namespace algorithm { }
-	namespace bitwise {	}
+	namespace bitwise { }
+	namespace crypto { }
+	namespace integrity { }
 	namespace machine {
 		namespace assembler { }
 	}
@@ -19,7 +21,7 @@ namespace stdex {
 	namespace structure { }
 	namespace syntax { }
 	namespace type { }
-	namespace utility {	}
+	namespace utility { }
 	namespace vision { }
 }
 
@@ -31,6 +33,8 @@ namespace std {
 
 	using namespace stdex::algorithm;
 	using namespace stdex::bitwise;
+	using namespace stdex::crypto;
+	using namespace stdex::integrity;
 	using namespace stdex::machine;
 	using namespace stdex::machine::assembler;
 	using namespace stdex::math;
