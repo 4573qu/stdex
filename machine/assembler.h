@@ -1,4 +1,4 @@
-//Last Modified At 2025/09/26
+//Last Modified At 2025/10/30
 //@Version 1.0.0.0
 #ifndef _STDEX_MACHINE_ASSEMBLER_H_
 #define _STDEX_MACHINE_ASSEMBLER_H_ 1
@@ -838,14 +838,12 @@ private:
 	};
 	static inline syntax::parser<TT,LT> code_parser_={
 		TT::TT_START,
-		TT::TT_SEPERATOR,
 		TT::TT_EPSILON,
 		TT::TT_EOF,
 		units,
 	};
 	static inline syntax::parser<TT,LT> code_parser64_={
 		TT::TT_START,
-		TT::TT_SEPERATOR,
 		TT::TT_EPSILON,
 		TT::TT_EOF,
 		units,

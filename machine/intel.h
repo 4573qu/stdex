@@ -1,4 +1,4 @@
-//Last Modified At 2025/09/19
+//Last Modified At 2025/10/30
 //@Version 1.0.0.0
 #ifndef _STDEX_MACHINE_INTEL_H_
 #define _STDEX_MACHINE_INTEL_H_ 1
@@ -81,7 +81,6 @@ enum line_type {
 
 enum token_type {
 	TT_START=0x100,
-	TT_SEPERATOR,
 	TT_EPSILON,
 	TT_EOF,
 
