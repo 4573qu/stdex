@@ -1,10 +1,9 @@
-//Last Modified At 2025/10/30
+//Last Modified At 2025/10/31
 //@Version 1.0.0.0
 #ifndef _STDEX_TYPE_ZIP_H_
 #define _STDEX_TYPE_ZIP_H_ 1
 
 #include <algorithm>
-#include <bitset>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -107,8 +106,6 @@ private:
 				h.table_[n]=rev;
 			}
 		}
-		printf("[inflate] build table count=%zu maxbits=%d\n",
-             h.length_.size(), h.maxbits_);
 	}
 	static void write_bits(std::vector<uint8_t>& out,uint32_t& bitbuf,int& bitcount,uint32_t val,int bits) {
 		bitbuf|=(val<<bitcount);
@@ -133,54 +130,6 @@ private:
 			b=(b+a)%65521;
 		}
 		return (b<<16)|a;
-	}
-	struct huffman_tree {
-		struct Node {
-			int sym_=-1;
-			int left_=-1,right_=-1; };
-			std::vector<Node> nodes_;
-			int root_=-1;
-	};
-	static huffman_tree build_tree(const std::vector<int>& lengths) {
-		std::vector<int> bl_count(16,0);
-		for (int it:lengths) {
-			if(it>0) bl_count[it]++;
-		}
-		std::vector<int> next_code(16,0);
-		int code=0;
-		for (int bits=1;bits<16;bits++) {
-			code=(code+bl_count[bits-1])<<1;
-			next_code[bits]=code;
-		}
-		huffman_tree tree;
-		tree.nodes_.push_back({-1,-1,-1});
-		for (std::size_t n=0;n<lengths.size();n++) {
-			int len=lengths[n];
-			if(len==0) continue;
-			int c=next_code[len]++;
-			int node=0;
-			for (int i=len-1;i>=0;i--) {
-				int bit=(c>>i)&1;
-				int& nxt=bit?tree.nodes_[node].right_:tree.nodes_[node].left_;
-				if(nxt==-1) {
-					nxt=tree.nodes_.size();
-					tree.nodes_.push_back({-1,-1,-1});
-				}
-				node=nxt;
-			}
-			tree.nodes_[node].sym_=(int)n;
-		}
-		tree.root_=0;
-		return tree;
-	}
-	static int read_symbol(const huffman_tree& tree,const std::function<int(int)>& read_bit){
-		int node=tree.root_;
-		while (1) {
-			int bit=read_bit(1);
-			node=(bit?tree.nodes_[node].right_:tree.nodes_[node].left_);
-			if (node==-1) throw std::runtime_error("invalid huffman code");
-			if (tree.nodes_[node].sym_!=-1) return tree.nodes_[node].sym_;
-		}
 	}
 
 public:
@@ -761,7 +710,7 @@ private:
 	byte_vector extra_field_;
 
 	void update_filepath() {
-		filepath_=filename_;
+		filepath_=std::filesystem::u8path(filename_);
 		is_directory_=!filename_.empty() && (filename_.back()=='/' || filename_.back()=='\\');
 	}
 
@@ -1412,7 +1361,7 @@ public:
 		bool all_ok=true;
 		for (const auto& file:files_) {
 			auto target_path=target_dir/file.filepath();
-			if (!extract_to(file, target_path)) {
+			if (!extract_to(file,target_path)) {
 				all_ok = false;
 				continue; // ← 继续解余下文件
 			}
