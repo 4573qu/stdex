@@ -20,8 +20,6 @@
 #include <system_error>
 #include <vector>
 
-#include <bits/stdc++.h>
-
 #include "../integrity/crc.h"//At Least 1.0
 
 namespace stdex {
@@ -40,7 +38,7 @@ private:
 		uint32_t read_bits(int n) {
 			uint32_t val=0;
 			for (int i=0;i<n;i++) {
-				if (bitpos_/8>=size_) throw std::runtime_error("deflate: out of data");
+				if (bitpos_/8>=size_) break;
 				if (data_[bitpos_/8]&(1<<(bitpos_%8))) val|=1u<<i;
 				bitpos_++;
 			}
@@ -55,12 +53,11 @@ private:
 		int decode(bit_reader& br) const {
 			int code=0,len=1;
 			for (;len<=maxbits_;len++) {
-				code=br.read_bits(1)<<(len-1);
+				code|=br.read_bits(1)<<(len-1);
 				for (std::size_t i=0;i<length_.size();i++) {
 					if (length_[i] == len && table_[i]==code) return (int)i;
 				}
 			}
-	printf("[inflate] invalid huffman while decoding code_len tree len=%d code=%d\n",len,code);
 			throw std::runtime_error("invalid huffman code");
 		}
 	};
@@ -239,11 +236,7 @@ public:
 		while (!last) {
 			last=br.read_bits(1);
 			int btype=br.read_bits(2);
-			printf("[inflate] block start last=%d btype=%d\n", (int)last, (int)btype);
 			if (btype==0) {
-				
-				printf("[inflate] stored block\n");
-				
 				br.byte_align();
 				std::size_t byte_pos=offset+(br.bitpos_/8);
 				if (byte_pos+4>compressed.size()) throw std::runtime_error("stored overflow");
@@ -258,27 +251,15 @@ public:
 			}
 			huffman litlen,dist;
 			if (btype==1) {
-				
-				printf("[inflate] fixed huffman\n");
-				
 				litlen=build_fixed_tree_LIT();
 				dist=build_fixed_tree_DIST();
 			} else if (btype==2) {
-				
-				printf("[inflate] dynamic huffman\n");
-				
 				int HLIT=br.read_bits(5)+257;
 				int HDIST=br.read_bits(5)+1;
 				int HCLEN=br.read_bits(4)+4;
 				static const int order[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
 				std::vector<uint8_t> code_len(19,0);
-				for (int i=0;i<HCLEN;i++) code_len[order[i]]=br.read_bits(3);
-				
-				printf("[inflate] HCLEN=%d HLIT=%d HDIST=%d\n",HCLEN,HLIT,HDIST);
-for(int i=0;i<19;i++)
-    printf(" %d",code_len[i]);
-printf("\n");
-				
+				for (int i=0;i<HCLEN;i++) code_len[order[i]]=br.read_bits(3);		
 				huffman code_tree;
 				code_tree.length_=code_len;
 				build_canonical_table(code_tree);
@@ -316,7 +297,7 @@ printf("\n");
 				}
 				if (sym==256) {
 					br.byte_align();
-					break; // end of block
+					break;
 				}
 				if (sym>285) throw std::runtime_error("bad length sym");
 				int len=lens[sym-257];
@@ -329,7 +310,7 @@ printf("\n");
 				std::size_t start=decompressed.size()-distv;
 				for (int i=0;i<len;i++) decompressed.push_back(decompressed[start+i]);
 			}
-			if (br.bitpos_ /8>=(compressed.size()-1)) break;
+			if (last) break;
 		}
 		if (raw) return decompressed;
 		if (compressed.size()<4) throw std::runtime_error("truncated adler");
@@ -586,14 +567,6 @@ public:
 		build_huffman_codes(huffman_tree,"",huffman_codes);
 		std::vector<bool> tree_bit_stream;
 		serialize_huffman_tree(huffman_tree,tree_bit_stream);
-		/*std::string bit_stream;
-		for (uint8_t it:transformed) bit_stream+=huffman_codes[it];
-		while (bit_stream.length()%8!=0) bit_stream+='0';
-		for (std::size_t i=0;i<bit_stream.length();i+=8) {
-			std::string byte_str=bit_stream.substr(i,8);
-			uint8_t byte=static_cast<uint8_t>(std::bitset<8>(byte_str).to_ulong());
-			compressed.push_back(byte);
-		}*/
 		std::vector<bool> data_bit_stream;
 		for (uint8_t it:transformed) {
 			const std::string& code=huffman_codes[it];
@@ -609,10 +582,6 @@ public:
 		std::vector<uint8_t> compressed_data=bits_to_bytes(complete_bit_stream);
 		compressed.insert(compressed.end(),compressed_data.begin(),compressed_data.end());
 		uint32_t crc=integrity::crc32::calculate(data);
-		/*compressed.push_back(static_cast<uint8_t>((crc>>24)&0xFF));
-		compressed.push_back(static_cast<uint8_t>((crc>>16)&0xFF));
-		compressed.push_back(static_cast<uint8_t>((crc>>8)&0xFF));
-		compressed.push_back(static_cast<uint8_t>(crc&0xFF));*/
 		for (int i=3;i>=0;i--) compressed.push_back((crc>>(i*8))&0xFF);
 		uint32_t original_size=(uint32_t)data.size();
 		for (int i=3;i>=0;i--) compressed.push_back((original_size>>(i*8))&0xFF);
@@ -624,26 +593,6 @@ public:
 		int level=compressed[3]-'0';
 		if (level<1 || level>9) throw std::runtime_error("Invalid BZIP2 compression level!");
 		if (compressed.size()<12) throw std::runtime_error("Incomplete BZIP2 data!");
-		/*std::vector<uint8_t> transformed(compressed.begin()+4,compressed.end()-4);
-		std::vector<bool> complete_bit_stream=bytes_to_bits(compressed_data,compressed_data.size() * 8);
-		std::size_t bit_pos=0;
-		uint32_t tree_bit_count=0;
-		for (int i=0;i<32 && bit_pos<complete_bit_stream.size();i++) {
-			if (complete_bit_stream[bit_pos++]) tree_bit_count|=(1<<i);
-		}
-		std::vector<bool> tree_bit_stream(complete_bit_stream.begin()+bit_pos,complete_bit_stream.begin()+bit_pos+tree_bit_count);
-		bit_pos+=tree_bit_count;
-		std::size_t tree_bit_pos=0;
-		auto huffman_tree=deserialize_huffman_tree(tree_bit_stream,tree_bit_pos);
-		if (!huffman_tree) throw std::runtime_error("Failed to deserialize Huffman tree!");
-		uint32_t data_bit_count=0;
-		for (int i=0;i<32 && bit_pos<complete_bit_stream.size();i++) {
-			if (complete_bit_stream[bit_pos++]) data_bit_count|=(1<<i);
-		}
-		std::vector<bool> data_bit_stream(complete_bit_stream.begin()+bit_pos,complete_bit_stream.begin()+bit_pos+data_bit_count);
-        
-		std::size_t estimated_size = compressed_data.size(); 
-        std::vector<uint8_t> transformed = huffman_decode(data_bit_stream, huffman_tree, estimated_size);*/
 		uint32_t expected_crc=((uint32_t)compressed[compressed.size()-8]<<24)|((uint32_t)compressed[compressed.size()-7]<<16)|((uint32_t)compressed[compressed.size()-6]<<8)|(uint32_t)compressed[compressed.size()-5];
 		uint32_t original_size=((uint32_t)compressed[compressed.size()-4]<<24)|((uint32_t)compressed[compressed.size()-3]<<16)|((uint32_t)compressed[compressed.size()-2]<<8)|(uint32_t)compressed[compressed.size()-1];
 		std::vector<uint8_t> compressed_data(compressed.begin()+4,compressed.end()-8);
@@ -987,14 +936,9 @@ private:
 			lfh.flags_=0;
 			if (!std::all_of(file.filename().begin(),file.filename().end(),[](unsigned char c){ return c < 128; })) lfh.flags_|=(1<<11);
 			lfh.compression_method_=static_cast<uint16_t>(file.method());
-			
-	if (file.method() == CM_DEFLATED && !file.data().empty()) {
-    // 检测 data 是否已经解压
-    // 如果 data 看起来是原始文本（CRC 或大小匹配不上），改为 STORED
-    if (file.data().size() == file.uncompressed_size())
-        lfh.compression_method_ = CM_STORED;
-}
-	
+			if (file.method()==CM_DEFLATED && !file.data().empty()) {
+				if (file.data().size()==file.uncompressed_size()) lfh.compression_method_=CM_STORED;
+			}
 			auto [dos_time,dos_date]=file.to_dos_time();
 			lfh.last_mod_time_=dos_time;
 			lfh.last_mod_date_=dos_date;
@@ -1137,34 +1081,22 @@ private:
 			if (!lfh->valid()) continue;
 			const uint8_t* name_start=reinterpret_cast<const uint8_t*>(lfh)+sizeof(local_file_header);
 			const uint8_t* extra_start=name_start+lfh->file_name_length_;
-			/*if (extra_start+lfh->extra_field_length_>reinterpret_cast<const uint8_t*>(data)+size) continue;
-			const uint8_t* data_start=extra_start+lfh->extra_field_length_;
-			uint32_t possible_len=std::min<uint32_t>(lfh->compressed_size_,size-(data_start-reinterpret_cast<const uint8_t*>(data)));
-			if (possible_len==0 && it.compressed_size()>0) possible_len=it.compressed_size();
-			it.compressed_size(possible_len);*/
-			const uint8_t* file_data_start = extra_start + lfh->extra_field_length_;
-			    uint32_t data_len = lfh->compressed_size_;
-    bool has_descriptor = (lfh->flags_ & 0x08) != 0;
-    if (data_len == 0) data_len = it.compressed_size(); // 用 central dir 默认值
-
-    // 如果 descriptor 模式且 header 长度仍为 0，就要扫描下一个 header:
-    if (has_descriptor && data_len == 0) {
-        size_t scan = file_data_start - reinterpret_cast<const uint8_t*>(data);
-        size_t end_data = size;
-        while (scan + 4 < end_data) {
-            uint32_t sig = data[scan] | (data[scan+1]<<8) | (data[scan+2]<<16) | (data[scan+3]<<24);
-            if (sig == 0x04034b50 || sig == 0x02014b50 || sig == 0x08074b50) break;
-            scan++;
-        }
-        data_len = static_cast<uint32_t>(scan - (file_data_start - reinterpret_cast<const uint8_t*>(data)));
-    }
-
-    // --- 安全检查 ---
-    if ((reinterpret_cast<const uint8_t*>(data) + size) < (file_data_start + data_len))
-        continue;
-
-    // --- 实际存储原始压缩流 ---
-    it.data(std::vector<uint8_t>(file_data_start, file_data_start + data_len));
+			const uint8_t* file_data_start=extra_start + lfh->extra_field_length_;
+			uint32_t data_len=lfh->compressed_size_;
+			bool has_descriptor=(lfh->flags_&0x08)!=0;
+			if (data_len==0) data_len=it.compressed_size();
+			if (has_descriptor && data_len==0) {
+				std::size_t scan=file_data_start-reinterpret_cast<const uint8_t*>(data);
+				std::size_t end_data=size;
+				while (scan+4<end_data) {
+					uint32_t sig=data[scan]|(data[scan+1]<<8)|(data[scan+2]<<16)|(data[scan+3]<<24);
+					if (sig==0x04034b50 || sig==0x02014b50 || sig==0x08074b50) break;
+					scan++;
+				}
+				data_len=static_cast<uint32_t>(scan-(file_data_start-reinterpret_cast<const uint8_t*>(data)));
+			}
+			if ((reinterpret_cast<const uint8_t*>(data)+size)<(file_data_start+data_len)) continue;
+			it.data(std::vector<uint8_t>(file_data_start,file_data_start+data_len));
 		}
 		return true;
 	}
@@ -1251,125 +1183,39 @@ public:
 		return parse_central_directory(data,size,&eocd_tmp);
 	}
 	std::vector<uint8_t> extract(const file_info& file) const {
-		
-	
-		
-
-    if (file.local_header_offset() >= data_.size())
-        throw std::runtime_error("invalid local header offset");
-
-    const uint8_t* lfh_ptr = data_.data() + file.local_header_offset();
-    const local_file_header* lfh = reinterpret_cast<const local_file_header*>(lfh_ptr);
-    if (!lfh->valid())
-        throw std::runtime_error("invalid local file header");
-        
-        		printf(
-    "[extract] file='%s' local_off=%u method=%u flags=%04x "
-    "lfh_csize=%u lfh_usize=%u crc=%08x\n",
-    file.filename().c_str(),
-    (unsigned)file.local_header_offset(),
-    (unsigned)file.method(),
-    (unsigned)lfh->flags_,
-    (unsigned)lfh->compressed_size_,
-    (unsigned)lfh->uncompressed_size_,
-    (unsigned)lfh->crc32_);
-        
-  const uint8_t* file_data_start = lfh_ptr + sizeof(local_file_header)
-                                   + lfh->file_name_length_
-                                   + lfh->extra_field_length_;
-    size_t start_off = file_data_start - data_.data();
-    size_t end_of_compressed = 0; // 最终我们会找到压缩数据的结束位置
-
-    // 1️⃣ 如果 local header 给了 csize
-    if (lfh->compressed_size_ != 0) {
-        end_of_compressed = start_off + lfh->compressed_size_;
-    }
-    // 2️⃣ 否则用 central dir 信息
-    else if (file.compressed_size() != 0) {
-        end_of_compressed = start_off + file.compressed_size();
-    }
-    // 3️⃣ 否则看是否使用了 Data Descriptor（flags bit 3）
-    else if (lfh->flags_ & 0x08) {
-        // 扫描直到找到描述符或下一个 header
-        size_t scan = start_off;
-        end_of_compressed = data_.size();
-        while (scan + 4 <= data_.size()) {
-            uint32_t sig = data_[scan]
-                         | (data_[scan+1] << 8)
-                         | (data_[scan+2] << 16)
-                         | (data_[scan+3] << 24);
-            if (sig == 0x08074b50   // data descriptor
-             || sig == 0x04034b50   // next local header
-             || sig == 0x02014b50)  // central dir header
-            {
-                end_of_compressed = scan;
-                break;
-            }
-            ++scan;
-        }
-    }
-    // 4️⃣ 其它情况（兜底）
-    else {
-        end_of_compressed = start_off + lfh->compressed_size_;
-        if (end_of_compressed > data_.size())
-            end_of_compressed = data_.size();
-    }
-
-    // 安全检查
-    if (end_of_compressed <= start_off || end_of_compressed > data_.size())
-        throw std::runtime_error("bad compressed range");
-
-    // 📣 调试输出，确认我们找到的范围正确
-    printf("[extract] compressed region start=%zu end=%zu len=%zu\n",
-           start_off, end_of_compressed, end_of_compressed - start_off);
-
-    // 正确拷贝压缩数据（⚠️注意：不再 +64）
-    std::vector<uint8_t> compressed_data(
-        data_.begin() + start_off,
-        data_.begin() + end_of_compressed);
-
-    switch (file.method()) {
-        case CM_STORED:
-            return compressed_data;
-        case CM_DEFLATED:
-        	try {
-            return deflate_compressor::decompress(compressed_data, true);
-        } catch (const std::exception& e) {
-        	printf(
-        "[extract] decompress failed: %s (data size=%zu)\n",
-        e.what(), compressed_data.size());
-		}
-        default:
-            throw std::runtime_error("unsupported compression method");
-    }
-		
-		
-		
-		
-		
-	/*	
-		
-		if (file.local_header_offset()>=data_.size()) return {};
-		const auto* lfh_ptr=data_.data()+file.local_header_offset();
-		const auto* lfh=reinterpret_cast<const local_file_header*>(lfh_ptr);
-		bool has_descriptor=(lfh->flags_&0x08)!=0;
-		if (!lfh->valid() || lfh_ptr+sizeof(local_file_header)>data_.data()+data_.size()) return {};
+		if (file.local_header_offset()>=data_.size()) throw std::runtime_error("invalid local header offset");
+		const uint8_t* lfh_ptr=data_.data()+file.local_header_offset();
+		const local_file_header* lfh=reinterpret_cast<const local_file_header*>(lfh_ptr);
+		if (!lfh->valid()) throw std::runtime_error("invalid local file header");
 		const uint8_t* file_data_start=lfh_ptr+sizeof(local_file_header)+lfh->file_name_length_+lfh->extra_field_length_;
-		uint32_t size=lfh->compressed_size_;
-		if (size==0) size=file.compressed_size();
-		if (file_data_start+size>data_.data()+data_.size()) throw std::runtime_error("invalid ZIP entry size");
-		std::vector<uint8_t> compressed_data(file_data_start,file_data_start+size);
-		try {
-			switch (file.method()) {
-				case CM_STORED: return compressed_data;
-				case CM_DEFLATED: return deflate_compressor::decompress(compressed_data);
-				case CM_BZIP2: return bzip2_compressor::decompress(compressed_data);
-				default: throw std::runtime_error("Unsupported compression method!");
+		std::size_t start_off=file_data_start-data_.data();
+		std::size_t end_of_compressed=0;
+		if (lfh->compressed_size_!=0) end_of_compressed=start_off+lfh->compressed_size_;
+		else if (file.compressed_size()!=0) end_of_compressed=start_off+file.compressed_size();
+		else if (lfh->flags_&0x08) {
+			std::size_t scan=start_off;
+			end_of_compressed=data_.size();
+			while (scan+4<=data_.size()) {
+				uint32_t sig=data_[scan]|(data_[scan+1]<<8)|(data_[scan+2]<<16)|(data_[scan+3]<<24);
+				if (sig==0x08074b50 || sig==0x04034b50 || sig==0x02014b50) {
+					end_of_compressed = scan;
+					break;
+				}
+				scan++;
 			}
-		} catch (const std::exception& e) {
-			return {};
+		} else {
+			end_of_compressed=start_off+lfh->compressed_size_;
+			if (end_of_compressed>data_.size()) end_of_compressed=data_.size();
 		}
-		return {};*/
+		if (lfh->compression_method_==0 && (lfh->flags_&0x08) && lfh->compressed_size_==0) end_of_compressed=start_off;
+		if (end_of_compressed<start_off || end_of_compressed>data_.size()) throw std::runtime_error("bad compressed range");
+		std::vector<uint8_t> compressed_data(data_.begin()+start_off,data_.begin()+end_of_compressed);
+		switch (file.method()) {
+			case CM_STORED: return compressed_data;
+			case CM_DEFLATED: return deflate_compressor::decompress(compressed_data,true);
+			case CM_BZIP2: return bzip2_compressor::decompress(compressed_data);
+			default: throw std::runtime_error("unsupported compression method");
+    	}	
 	}
 	void create() {
 		files_.clear();
@@ -1546,10 +1392,16 @@ public:
 	}
 
 	bool extract_to(const file_info& file,const std::filesystem::path& target_path) const {
-		if (file.is_directory()) return std::filesystem::create_directories(target_path);
-		std::filesystem::create_directories(target_path.parent_path());
+		std::error_code ec;
+		if (file.is_directory()) {
+			std::filesystem::create_directories(target_path,ec);
+			if (ec) return false;
+			return true;
+		}
+		std::filesystem::create_directories(target_path.parent_path(),ec);
+		if (ec) return false;
 		auto data=extract(file);
-		if (data.empty()) return false;
+		//if (data.empty()) return false;
 		std::ofstream out_file(target_path,std::ios::binary);
 		if (!out_file) return false;
 		out_file.write(reinterpret_cast<const char*>(data.data()),data.size());
@@ -1557,11 +1409,15 @@ public:
 	}
 	bool extract_all(const std::filesystem::path& target_dir) const {
 		std::error_code ec;
+		bool all_ok=true;
 		for (const auto& file:files_) {
 			auto target_path=target_dir/file.filepath();
-			if (!extract_to(file,target_path)) return false;
+			if (!extract_to(file, target_path)) {
+				all_ok = false;
+				continue; // ← 继续解余下文件
+			}
 		}
-		return true;
+		return all_ok;//true;
 	}
 	bool verify() const {
 		for (const auto& it:files_) {
