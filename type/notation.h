@@ -1676,32 +1676,22 @@ template<typename KeyType>
                 }
             }
             data_.value_.object->operator[](it.key()) = it.value();
-#if JSON_DIAGNOSTICS
-            data_.value_.object->operator[](it.key()).m_parent = this;
-#endif
         }
     }
 
-    /// @brief exchanges the values
-    /// @sa https://json.nlohmann.me/api/basic_json/swap/
-    void swap(reference other) noexcept (
+    void swap(ref other) noexcept (
         std::is_nothrow_move_constructible<value_t>::value&&
         std::is_nothrow_move_assignable<value_t>::value&&
         std::is_nothrow_move_constructible<json_value>::value&& // NOLINT(cppcoreguidelines-noexcept-swap,performance-noexcept-swap)
         std::is_nothrow_move_assignable<json_value>::value
     )
     {
-        std::swap(data_.type_, other.data_.type_);
-        std::swap(data_.value_, other.data_.value_);
+        std::swap(data_.type_,other.data_.type_);
+        std::swap(data_.value_,other.data_.value_);
 
-        set_parents();
-        other.set_parents();
-        assert_invariant();
     }
 
-    /// @brief exchanges the values
-    /// @sa https://json.nlohmann.me/api/basic_json/swap/
-    friend void swap(reference left, reference right) noexcept (
+    friend void swap(ref left,ref right) noexcept (
         std::is_nothrow_move_constructible<value_t>::value&&
         std::is_nothrow_move_assignable<value_t>::value&&
         std::is_nothrow_move_constructible<json_value>::value&& // NOLINT(cppcoreguidelines-noexcept-swap,performance-noexcept-swap)
@@ -1711,97 +1701,20 @@ template<typename KeyType>
         left.swap(right);
     }
 
-    /// @brief exchanges the values
-    /// @sa https://json.nlohmann.me/api/basic_json/swap/
-    void swap(array_t& other) // NOLINT(bugprone-exception-escape,cppcoreguidelines-noexcept-swap,performance-noexcept-swap)
-    {
-        // swap only works for arrays
-        if (JSON_HEDLEY_LIKELY(data_.type_==NDT_ARRAY))
-        {
-            using std::swap;
-            swap(*(data_.value_.array), other);
-        }
-        else
-        {
-            JSON_THROW(type_error::create(310, detail::concat("cannot use swap(array_t&) with ", type_name()), this));
-        }
-    }
 
-    /// @brief exchanges the values
-    /// @sa https://json.nlohmann.me/api/basic_json/swap/
-    void swap(object_t& other) // NOLINT(bugprone-exception-escape,cppcoreguidelines-noexcept-swap,performance-noexcept-swap)
-    {
-        // swap only works for objects
-        if (JSON_HEDLEY_LIKELY(data_.type_==NDT_OBJECT))
-        {
-            using std::swap;
-            swap(*(data_.value_.object), other);
-        }
-        else
-        {
-            JSON_THROW(type_error::create(310, detail::concat("cannot use swap(object_t&) with ", type_name()), this));
-        }
-    }
+	void swap(array_t& other) {
+		if (data_.type_==NDT_ARRAY) std::swap(*(data_.value_.array_),other);
+		else throw std::invalid_argument("Cannot use swap(array_t&)");
+	}
+	void swap(object_t& other) {
+		if (data_.type_==NDT_OBJECT) std::swap(*(data_.value_.object_),other);
+		else throw std::invalid_argument("Cannot use swap(object_t&)");
+	}
+	void swap(string_t& other)  {
+		if (data_.type_==NDT_STRING) std::swap(*(data_.value_.string_),other);
+		else throw std::invalid_argument("Cannot use swap(string_t&)");
+	}
 
-    /// @brief exchanges the values
-    /// @sa https://json.nlohmann.me/api/basic_json/swap/
-    void swap(string_t& other) // NOLINT(bugprone-exception-escape,cppcoreguidelines-noexcept-swap,performance-noexcept-swap)
-    {
-        // swap only works for strings
-        if (JSON_HEDLEY_LIKELY(is_string()))
-        {
-            using std::swap;
-            swap(*(data_.value_.string), other);
-        }
-        else
-        {
-            JSON_THROW(type_error::create(310, detail::concat("cannot use swap(string_t&) with ", type_name()), this));
-        }
-    }
-
-    /// @brief exchanges the values
-    /// @sa https://json.nlohmann.me/api/basic_json/swap/
-    void swap(binary_t& other) // NOLINT(bugprone-exception-escape,cppcoreguidelines-noexcept-swap,performance-noexcept-swap)
-    {
-        // swap only works for strings
-        if (JSON_HEDLEY_LIKELY(is_binary()))
-        {
-            using std::swap;
-            swap(*(data_.value_.binary), other);
-        }
-        else
-        {
-            JSON_THROW(type_error::create(310, detail::concat("cannot use swap(binary_t&) with ", type_name()), this));
-        }
-    }
-
-    /// @brief exchanges the values
-    /// @sa https://json.nlohmann.me/api/basic_json/swap/
-    void swap(typename binary_t::container_type& other) // NOLINT(bugprone-exception-escape)
-    {
-        // swap only works for strings
-        if (JSON_HEDLEY_LIKELY(is_binary()))
-        {
-            using std::swap;
-            swap(*(data_.value_.binary), other);
-        }
-        else
-        {
-            JSON_THROW(type_error::create(310, detail::concat("cannot use swap(binary_t::container_type&) with ", type_name()), this));
-        }
-    }
-
-    /// @}
-
-    //////////////////////////////////////////
-    // lexicographical comparison operators //
-    //////////////////////////////////////////
-
-    /// @name lexicographical comparison operators
-    /// @{
-
-    // note parentheses around operands are necessary; see
-    // https://github.com/nlohmann/json/issues/1530
 #define JSON_IMPLEMENT_OPERATOR(op, null_result, unordered_result, default_result)                       \
     const auto lhs_type = lhs.type();                                                                    \
     const auto rhs_type = rhs.type();                                                                    \
@@ -1874,11 +1787,6 @@ template<typename KeyType>
     return (default_result);
 
   JSON_PRIVATE_UNLESS_TESTED:
-    // returns true if:
-    // - any operand is NaN and the other operand is of number type
-    // - any operand is discarded
-    // in legacy mode, discarded values are considered ordered if
-    // an operation is computed as an odd number of inverses of others
     static bool compares_unordered(const_reference lhs, const_reference rhs, bool inverse = false) noexcept
     {
         if ((lhs.is_number_float() && std::isnan(lhs.data_.value_.number_float) && rhs.is_number())
@@ -1887,10 +1795,10 @@ template<typename KeyType>
             return true;
         }
 #if JSON_USE_LEGACY_DISCARDED_VALUE_COMPARISON
-        return (lhs.is_discarded() || rhs.is_discarded()) && !inverse;
+        return false;
 #else
         static_cast<void>(inverse);
-        return lhs.is_discarded() || rhs.is_discarded();
+        return false;
 #endif
     }
 
@@ -1902,8 +1810,6 @@ template<typename KeyType>
 
   public:
 #if JSON_HAS_THREE_WAY_COMPARISON
-    /// @brief comparison: equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_eq/
     bool operator==(const_reference rhs) const noexcept
     {
 #ifdef __GNUC__
@@ -1917,8 +1823,6 @@ template<typename KeyType>
 #endif
     }
 
-    /// @brief comparison: equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_eq/
     template<typename ScalarType>
     requires std::is_scalar_v<ScalarType>
     bool operator==(ScalarType rhs) const noexcept
@@ -1926,8 +1830,6 @@ template<typename KeyType>
         return *this == basic_json(rhs);
     }
 
-    /// @brief comparison: not equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_ne/
     bool operator!=(const_reference rhs) const noexcept
     {
         if (compares_unordered(rhs, true))
@@ -1937,8 +1839,6 @@ template<typename KeyType>
         return !operator==(rhs);
     }
 
-    /// @brief comparison: 3-way
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_spaceship/
     std::partial_ordering operator<=>(const_reference rhs) const noexcept // *NOPAD*
     {
         const_reference lhs = *this;
@@ -1950,8 +1850,6 @@ template<typename KeyType>
                                 lhs_type <=> rhs_type) // *NOPAD*
     }
 
-    /// @brief comparison: 3-way
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_spaceship/
     template<typename ScalarType>
     requires std::is_scalar_v<ScalarType>
     std::partial_ordering operator<=>(ScalarType rhs) const noexcept // *NOPAD*
@@ -1960,11 +1858,6 @@ template<typename KeyType>
     }
 
 #if JSON_USE_LEGACY_DISCARDED_VALUE_COMPARISON
-    // all operators that are computed as an odd number of inverses of others
-    // need to be overloaded to emulate the legacy comparison behavior
-
-    /// @brief comparison: less than or equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_le/
     JSON_HEDLEY_DEPRECATED_FOR(3.11.0, undef JSON_USE_LEGACY_DISCARDED_VALUE_COMPARISON)
     bool operator<=(const_reference rhs) const noexcept
     {
@@ -1975,8 +1868,6 @@ template<typename KeyType>
         return !(rhs < *this);
     }
 
-    /// @brief comparison: less than or equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_le/
     template<typename ScalarType>
     requires std::is_scalar_v<ScalarType>
     bool operator<=(ScalarType rhs) const noexcept
@@ -1984,8 +1875,6 @@ template<typename KeyType>
         return *this <= basic_json(rhs);
     }
 
-    /// @brief comparison: greater than or equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_ge/
     JSON_HEDLEY_DEPRECATED_FOR(3.11.0, undef JSON_USE_LEGACY_DISCARDED_VALUE_COMPARISON)
     bool operator>=(const_reference rhs) const noexcept
     {
@@ -1996,8 +1885,6 @@ template<typename KeyType>
         return !(*this < rhs);
     }
 
-    /// @brief comparison: greater than or equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_ge/
     template<typename ScalarType>
     requires std::is_scalar_v<ScalarType>
     bool operator>=(ScalarType rhs) const noexcept
@@ -2006,8 +1893,6 @@ template<typename KeyType>
     }
 #endif
 #else
-    /// @brief comparison: equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_eq/
     friend bool operator==(const_reference lhs, const_reference rhs) noexcept
     {
 #ifdef __GNUC__
@@ -2029,8 +1914,6 @@ template<typename KeyType>
         return lhs == basic_json(rhs);
     }
 
-    /// @brief comparison: equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_eq/
     template<typename ScalarType, typename std::enable_if<
                  std::is_scalar<ScalarType>::value, int>::type = 0>
     friend bool operator==(ScalarType lhs, const_reference rhs) noexcept
@@ -2038,8 +1921,6 @@ template<typename KeyType>
         return basic_json(lhs) == rhs;
     }
 
-    /// @brief comparison: not equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_ne/
     friend bool operator!=(const_reference lhs, const_reference rhs) noexcept
     {
         if (compares_unordered(lhs, rhs, true))
@@ -2049,8 +1930,6 @@ template<typename KeyType>
         return !(lhs == rhs);
     }
 
-    /// @brief comparison: not equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_ne/
     template<typename ScalarType, typename std::enable_if<
                  std::is_scalar<ScalarType>::value, int>::type = 0>
     friend bool operator!=(const_reference lhs, ScalarType rhs) noexcept
@@ -2058,8 +1937,6 @@ template<typename KeyType>
         return lhs != basic_json(rhs);
     }
 
-    /// @brief comparison: not equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_ne/
     template<typename ScalarType, typename std::enable_if<
                  std::is_scalar<ScalarType>::value, int>::type = 0>
     friend bool operator!=(ScalarType lhs, const_reference rhs) noexcept
@@ -2067,18 +1944,11 @@ template<typename KeyType>
         return basic_json(lhs) != rhs;
     }
 
-    /// @brief comparison: less than
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_lt/
     friend bool operator<(const_reference lhs, const_reference rhs) noexcept
     {
-        // default_result is used if we cannot compare values. In that case,
-        // we compare types. Note we have to call the operator explicitly,
-        // because MSVC has problems otherwise.
         JSON_IMPLEMENT_OPERATOR( <, false, false, operator<(lhs_type, rhs_type))
     }
 
-    /// @brief comparison: less than
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_lt/
     template<typename ScalarType, typename std::enable_if<
                  std::is_scalar<ScalarType>::value, int>::type = 0>
     friend bool operator<(const_reference lhs, ScalarType rhs) noexcept
@@ -2086,8 +1956,6 @@ template<typename KeyType>
         return lhs < basic_json(rhs);
     }
 
-    /// @brief comparison: less than
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_lt/
     template<typename ScalarType, typename std::enable_if<
                  std::is_scalar<ScalarType>::value, int>::type = 0>
     friend bool operator<(ScalarType lhs, const_reference rhs) noexcept
@@ -2095,8 +1963,6 @@ template<typename KeyType>
         return basic_json(lhs) < rhs;
     }
 
-    /// @brief comparison: less than or equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_le/
     friend bool operator<=(const_reference lhs, const_reference rhs) noexcept
     {
         if (compares_unordered(lhs, rhs, true))
@@ -2105,18 +1971,12 @@ template<typename KeyType>
         }
         return !(rhs < lhs);
     }
-
-    /// @brief comparison: less than or equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_le/
     template<typename ScalarType, typename std::enable_if<
                  std::is_scalar<ScalarType>::value, int>::type = 0>
     friend bool operator<=(const_reference lhs, ScalarType rhs) noexcept
     {
         return lhs <= basic_json(rhs);
     }
-
-    /// @brief comparison: less than or equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_le/
     template<typename ScalarType, typename std::enable_if<
                  std::is_scalar<ScalarType>::value, int>::type = 0>
     friend bool operator<=(ScalarType lhs, const_reference rhs) noexcept
@@ -2124,8 +1984,6 @@ template<typename KeyType>
         return basic_json(lhs) <= rhs;
     }
 
-    /// @brief comparison: greater than
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_gt/
     friend bool operator>(const_reference lhs, const_reference rhs) noexcept
     {
         // double inverse
@@ -2154,8 +2012,6 @@ template<typename KeyType>
         return basic_json(lhs) > rhs;
     }
 
-    /// @brief comparison: greater than or equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_ge/
     friend bool operator>=(const_reference lhs, const_reference rhs) noexcept
     {
         if (compares_unordered(lhs, rhs, true))
@@ -2164,18 +2020,12 @@ template<typename KeyType>
         }
         return !(lhs < rhs);
     }
-
-    /// @brief comparison: greater than or equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_ge/
     template<typename ScalarType, typename std::enable_if<
                  std::is_scalar<ScalarType>::value, int>::type = 0>
     friend bool operator>=(const_reference lhs, ScalarType rhs) noexcept
     {
         return lhs >= basic_json(rhs);
     }
-
-    /// @brief comparison: greater than or equal
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_ge/
     template<typename ScalarType, typename std::enable_if<
                  std::is_scalar<ScalarType>::value, int>::type = 0>
     friend bool operator>=(ScalarType lhs, const_reference rhs) noexcept
@@ -2186,22 +2036,6 @@ template<typename KeyType>
 
 #undef JSON_IMPLEMENT_OPERATOR
 
-
-#ifndef JSON_NO_IO
-    JSON_HEDLEY_DEPRECATED_FOR(3.0.0, operator>>(std::istream&, basic_json&))
-    friend std::istream& operator<<(basic_json& j, std::istream& i)
-    {
-        return operator>>(i, j);
-    }
-
-    /// @brief deserialize from stream
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_gtgt/
-    friend std::istream& operator>>(std::istream& i, basic_json& j)
-    {
-        parser(detail::input_adapter(i)).parse(false, j);
-        return i;
-    }
-#endif  // JSON_NO_IO
     JSON_HEDLEY_RETURNS_NON_NULL
 	virtual const char* type_name() const noexcept {
 		switch (data_.type_) {
@@ -2273,415 +2107,174 @@ template<typename KeyType>
         return result;
     }
 
-    notation unflatten() const
-    {
+	notation unflatten() const {
         return json_pointer::unflatten(*this);
     }
-    void patch_inplace(const basic_json& json_patch)
-    {
-        basic_json& result = *this;
-        // the valid JSON Patch operations
-        enum class patch_operations {add, remove, replace, move, copy, test, invalid};
-
-        const auto get_op = [](const std::string & op)
-        {
-            if (op == "add")
-            {
-                return patch_operations::add;
-            }
-            if (op == "remove")
-            {
-                return patch_operations::remove;
-            }
-            if (op == "replace")
-            {
-                return patch_operations::replace;
-            }
-            if (op == "move")
-            {
-                return patch_operations::move;
-            }
-            if (op == "copy")
-            {
-                return patch_operations::copy;
-            }
-            if (op == "test")
-            {
-                return patch_operations::test;
-            }
-
-            return patch_operations::invalid;
-        };
-
-        // wrapper for "add" operation; add value at ptr
-        const auto operation_add = [&result](json_pointer & ptr, basic_json val)
-        {
-            // adding to the root of the target document means replacing it
-            if (ptr.empty())
-            {
-                result = val;
-                return;
-            }
-
-            // make sure the top element of the pointer exists
-            json_pointer const top_pointer = ptr.top();
-            if (top_pointer != ptr)
-            {
-                result.at(top_pointer);
-            }
-
-            // get reference to parent of JSON pointer ptr
-            const auto last_path = ptr.back();
-            ptr.pop_back();
-            // parent must exist when performing patch add per RFC6902 specs
-            basic_json& parent = result.at(ptr);
-
-            switch (parent.data_.type_)
-            {
-                case value_t::null:
-                case value_t::object:
-                {
-                    // use operator[] to add value
-                    parent[last_path] = val;
-                    break;
-                }
-
-                case value_t::array:
-                {
-                    if (last_path == "-")
-                    {
-                        // special case: append to back
-                        parent.push_back(val);
-                    }
-                    else
-                    {
-                        const auto idx = json_pointer::template array_index<basic_json_t>(last_path);
-                        if (JSON_HEDLEY_UNLIKELY(idx > parent.size()))
-                        {
-                            // avoid undefined behavior
-                            JSON_THROW(out_of_range::create(401, detail::concat("array index ", std::to_string(idx), " is out of range"), &parent));
-                        }
-
-                        // default case: insert add offset
-                        parent.insert(parent.begin() + static_cast<difference_type>(idx), val);
-                    }
-                    break;
-                }
-
-                // if there exists a parent it cannot be primitive
-                case value_t::string: // LCOV_EXCL_LINE
-                case value_t::boolean: // LCOV_EXCL_LINE
-                case value_t::number_integer: // LCOV_EXCL_LINE
-                case value_t::number_unsigned: // LCOV_EXCL_LINE
-                case value_t::number_float: // LCOV_EXCL_LINE
-                case value_t::binary: // LCOV_EXCL_LINE
-                case value_t::discarded: // LCOV_EXCL_LINE
-                default:            // LCOV_EXCL_LINE
-                    JSON_ASSERT(false); // NOLINT(cert-dcl03-c,hicpp-static-assert,misc-static-assert) LCOV_EXCL_LINE
-            }
-        };
-
-        // wrapper for "remove" operation; remove value at ptr
-        const auto operation_remove = [this, & result](json_pointer & ptr)
-        {
-            // get reference to parent of JSON pointer ptr
-            const auto last_path = ptr.back();
-            ptr.pop_back();
-            basic_json& parent = result.at(ptr);
-
-            // remove child
-            if (parent.data_.type_==NDT_OBJECT)
-            {
-                // perform range check
-                auto it = parent.find(last_path);
-                if (JSON_HEDLEY_LIKELY(it != parent.end()))
-                {
-                    parent.erase(it);
-                }
-                else
-                {
-                    JSON_THROW(out_of_range::create(403, detail::concat("key '", last_path, "' not found"), this));
-                }
-            }
-            else if (parent.data_.type_==NDT_ARRAY)
-            {
-                // note erase performs range check
-                parent.erase(json_pointer::template array_index<basic_json_t>(last_path));
-            }
-        };
-
-        // type check: top level value must be an array
-        if (JSON_HEDLEY_UNLIKELY(!json_patch.data_.type_==NDT_ARRAY))
-        {
-            JSON_THROW(parse_error::create(104, 0, "JSON patch must be an array of objects", &json_patch));
-        }
-
-        // iterate and apply the operations
-        for (const auto& val : json_patch)
-        {
-            // wrapper to get a value for an operation
-            const auto get_value = [&val](const std::string & op,
-                                          const std::string & member,
-                                          bool string_type) -> basic_json &
-            {
-                // find value
-                auto it = val.data_.value_.object->find(member);
-
-                // context-sensitive error message
-                const auto error_msg = (op == "op") ? "operation" : detail::concat("operation '", op, '\'');
-
-                // check if desired value is present
-                if (JSON_HEDLEY_UNLIKELY(it == val.data_.value_.object->end()))
-                {
-                    // NOLINTNEXTLINE(performance-inefficient-string-concatenation)
-                    JSON_THROW(parse_error::create(105, 0, detail::concat(error_msg, " must have member '", member, "'"), &val));
-                }
-
-                // check if result is of type string
-                if (JSON_HEDLEY_UNLIKELY(string_type && !it->second.is_string()))
-                {
-                    // NOLINTNEXTLINE(performance-inefficient-string-concatenation)
-                    JSON_THROW(parse_error::create(105, 0, detail::concat(error_msg, " must have string member '", member, "'"), &val));
-                }
-
-                // no error: return value
-                return it->second;
-            };
-
-            // type check: every element of the array must be an object
-            if (JSON_HEDLEY_UNLIKELY(!val.data_.type_==NDT_OBJECT))
-            {
-                JSON_THROW(parse_error::create(104, 0, "JSON patch must be an array of objects", &val));
-            }
-
-            // collect mandatory members
-            const auto op = get_value("op", "op", true).template get<std::string>();
-            const auto path = get_value(op, "path", true).template get<std::string>();
-            json_pointer ptr(path);
-
-            switch (get_op(op))
-            {
-                case patch_operations::add:
-                {
-                    operation_add(ptr, get_value("add", "value", false));
-                    break;
-                }
-
-                case patch_operations::remove:
-                {
-                    operation_remove(ptr);
-                    break;
-                }
-
-                case patch_operations::replace:
-                {
-                    // the "path" location must exist - use at()
-                    result.at(ptr) = get_value("replace", "value", false);
-                    break;
-                }
-
-                case patch_operations::move:
-                {
-                    const auto from_path = get_value("move", "from", true).template get<std::string>();
-                    json_pointer from_ptr(from_path);
-
-                    // the "from" location must exist - use at()
-                    basic_json const v = result.at(from_ptr);
-
-                    // The move operation is functionally identical to a
-                    // "remove" operation on the "from" location, followed
-                    // immediately by an "add" operation at the target
-                    // location with the value that was just removed.
-                    operation_remove(from_ptr);
-                    operation_add(ptr, v);
-                    break;
-                }
-
-                case patch_operations::copy:
-                {
-                    const auto from_path = get_value("copy", "from", true).template get<std::string>();
-                    const json_pointer from_ptr(from_path);
-
-                    // the "from" location must exist - use at()
-                    basic_json const v = result.at(from_ptr);
-
-                    // The copy is functionally identical to an "add"
-                    // operation at the target location using the value
-                    // specified in the "from" member.
-                    operation_add(ptr, v);
-                    break;
-                }
-
-                case patch_operations::test:
-                {
-                    bool success = false;
-                    JSON_TRY
-                    {
-                        // check if "value" matches the one at "path"
-                        // the "path" location must exist - use at()
-                        success = (result.at(ptr) == get_value("test", "value", false));
-                    }
-                    JSON_INTERNAL_CATCH (out_of_range&)
-                    {
-                        // ignore out of range errors: success remains false
-                    }
-
-                    // throw an exception if test fails
-                    if (JSON_HEDLEY_UNLIKELY(!success))
-                    {
-                        JSON_THROW(other_error::create(501, detail::concat("unsuccessful: ", val.dump()), &val));
-                    }
-
-                    break;
-                }
-
-                case patch_operations::invalid:
-                default:
-                {
-                    // op must be "add", "remove", "replace", "move", "copy", or
-                    // "test"
-                    JSON_THROW(parse_error::create(105, 0, detail::concat("operation value '", op, "' is invalid"), &val));
-                }
-            }
-        }
-    }
+	virtual void patch_inplace(const notation& notation_patch) {
+		notation& result=*this;
+		enum  patch_operations {
+			PO_ADD,
+			PO_REMOVE,
+			PO_REPLACE,
+			PO_MOVE,
+			PO_COPY,
+			PO_TEST,
+			PO_INVALID,
+		};
+		const auto get_op=[](const std::string& op){
+			if (op=="add") return PO_ADD;
+			if (op=="remove") return PO_REMOVE;
+			if (op=="replace") return PO_REPLACE;
+			if (op=="move") return PO_MOVE;
+			if (op=="copy") return PO_COPY;
+			if (op=="test") return PO_TEST;
+			return PO_INVALID;
+		};
+		const auto operation_add=[&result](json_pointer & ptr,notation val) {
+			if (ptr.empty()) {
+				result=val;
+				return;
+			}
+			json_pointer const top_pointer=ptr.top();
+			if (top_pointer!=ptr) result.at(top_pointer);
+			const auto last_path=ptr.back();
+			ptr.pop_back();
+			notation& parent=result.at(ptr);
+			switch (parent.data_.type_) {
+				case NDT_NULL:
+				case NDT_OBJECT: parent[last_path]=val;break;
+				case NDT_ARRAY: {
+					if (last_path=="-") parent.push_back(val);
+					else {
+						const auto index=json_pointer::template array_index<basic_json_t>(last_path);
+						if (index>parent.size())) throw std::out_of_range("array index is out of range");
+						parent.insert(parent.begin()+static_cast<difference_type>(index),val);
+					}
+					break;
+				}
+				case NDT_STRING:
+				case NDT_BOOL:
+				case NDT_INT:
+				case NDT_FLOAT:
+				default: break;
+			}
+		};
+		const auto operation_remove=[this,& result](json_pointer & ptr) {
+			const auto last_path=ptr.back();
+			ptr.pop_back();
+			notation& parent=result.at(ptr);
+			if (parent.data_.type_==NDT_OBJECT) {
+				auto it=parent.find(last_path);
+				if (it!=parent.end()) parent.erase(it);
+				else throw std::out_of_range("key not found");
+			} else if (parent.data_.type_==NDT_ARRAY) parent.erase(json_pointer::template array_index<basic_json_t>(last_path));
+		};
+		if (notation_patch.data_.type_!=NDT_ARRAY) throw std::invalid_argument("JSON patch must be an array of objects");
+		for (const auto& it:json_patch) {
+			const auto get_value=[&it](const std::string& op,const std::string& member,bool string_type)->notation&{
+				auto jt=it.data_.value_.object_->find(member);
+				const auto error_msg=(op=="op")?"operation":(std::string("operation '")+op+std::string('\''));
+				if (jt==it.data_.value_.object_->end())) throw std::invalid_argument(error_msg+std::string(" must have member"));
+				if (string_type && !jt->second.data_.type_==NDT_STRING)) throw std::invalid_argument(error_msg+std::string(" must have string member"));
+				return jt->second;
+			};
+			if (val.data_.type_!=NDT_OBJECT) throw std::invalid_argument("JSON patch must be an array of objects");
+			const auto op=get_value("op","op",true).template get<std::string>();
+			const auto path=get_value(op,"path",true).template get<std::string>();
+			json_pointer ptr(path);
+			switch (get_op(op)) {
+				case PO_ADD: operation_add(ptr, get_value("add","value",false));break;
+				case PO_REMOVE: operation_remove(ptr);break;
+				case PO_REPLACE: result.at(ptr)=get_value("replace","value",false);break;
+				case PO_MOVE: {
+					const auto from_path=get_value("move","from",true).template get<std::string>();
+					json_pointer from_ptr(from_path);
+					notation const v=result.at(from_ptr);
+					operation_remove(from_ptr);
+					operation_add(ptr,v);
+					break;
+				}
+				case PO_COPY: {
+					const auto from_path=get_value("copy","from",true).template get<std::string>();
+					const json_pointer from_ptr(from_path);
+					notation const v=result.at(from_ptr);
+					operation_add(ptr,v);
+					break;
+				}
+				case PO_TEST: {
+					bool success=false;
+					try {
+						success=(result.at(ptr)==get_value("test","value",false));
+					} catch (std::out_of_range&) {
+					}
+					if (!success) std::runtime_error("Unsuccessful: "+it.dump());
+					break;
+				}
+				case PO_INVALID:
+				default: throw std::invalid_argument("Operation value is invalid");
+			}
+		}
+	}
 	notation patch(const notation& notation_patch) const {
 		notation result=*this;
 		result.patch_inplace(notation_patch);
 		return result;
 	}
     JSON_HEDLEY_WARN_UNUSED_RESULT
-    static basic_json diff(const basic_json& source, const basic_json& target,
-                           const std::string& path = "")
-    {
-        // the patch
-        basic_json result(value_t::array);
-
-        // if the values are the same, return empty patch
-        if (source == target)
-        {
-            return result;
-        }
-
-        if (source.type() != target.type())
-        {
-            // different types: replace value
-            result.push_back(
-            {
-                {"op", "replace"}, {"path", path}, {"value", target}
-            });
-            return result;
-        }
-
-        switch (source.type())
-        {
-            case value_t::array:
-            {
-                // first pass: traverse common elements
-                std::size_t i = 0;
-                while (i < source.size() && i < target.size())
-                {
-                    // recursive call to compare array values at index i
-                    auto temp_diff = diff(source[i], target[i], detail::concat(path, '/', std::to_string(i)));
-                    result.insert(result.end(), temp_diff.begin(), temp_diff.end());
-                    ++i;
-                }
-
-                // We now reached the end of at least one array
-                // in a second pass, traverse the remaining elements
-
-                // remove my remaining elements
-                const auto end_index = static_cast<difference_type>(result.size());
-                while (i < source.size())
-                {
-                    // add operations in reverse order to avoid invalid
-                    // indices
-                    result.insert(result.begin() + end_index, object(
-                    {
-                        {"op", "remove"},
-                        {"path", detail::concat(path, '/', std::to_string(i))}
-                    }));
-                    ++i;
-                }
-
-                // add other remaining elements
-                while (i < target.size())
-                {
-                    result.push_back(
-                    {
-                        {"op", "add"},
-                        {"path", detail::concat(path, "/-")},
-                        {"value", target[i]}
-                    });
-                    ++i;
-                }
-
-                break;
-            }
-
-            case value_t::object:
-            {
-                // first pass: traverse this object's elements
-                for (auto it = source.cbegin(); it != source.cend(); ++it)
-                {
-                    // escape the key name to be used in a JSON patch
-                    const auto path_key = detail::concat(path, '/', detail::escape(it.key()));
-
-                    if (target.find(it.key()) != target.end())
-                    {
-                        // recursive call to compare object values at key it
-                        auto temp_diff = diff(it.value(), target[it.key()], path_key);
-                        result.insert(result.end(), temp_diff.begin(), temp_diff.end());
-                    }
-                    else
-                    {
-                        // found a key that is not in o -> remove it
-                        result.push_back(object(
-                        {
-                            {"op", "remove"}, {"path", path_key}
-                        }));
-                    }
-                }
-
-                // second pass: traverse other object's elements
-                for (auto it = target.cbegin(); it != target.cend(); ++it)
-                {
-                    if (source.find(it.key()) == source.end())
-                    {
-                        // found a key that is not in this -> add it
-                        const auto path_key = detail::concat(path, '/', detail::escape(it.key()));
-                        result.push_back(
-                        {
-                            {"op", "add"}, {"path", path_key},
-                            {"value", it.value()}
-                        });
-                    }
-                }
-
-                break;
-            }
-
-            case value_t::null:
-            case value_t::string:
-            case value_t::boolean:
-            case value_t::number_integer:
-            case value_t::number_unsigned:
-            case value_t::number_float:
-            case value_t::binary:
-            case value_t::discarded:
-            default:
-            {
-                // both primitive type: replace value
-                result.push_back(
-                {
-                    {"op", "replace"}, {"path", path}, {"value", target}
-                });
-                break;
-            }
-        }
-
-        return result;
-    }
+	static notation diff(const notation& source,const notation& target,const std::string& path="") {
+		notation result(NDT_ARRAY);
+		if (source==target) return result;
+		if (source.type()!=target.type()) {
+			result.push_back({{"op","replace"}, {"path",path}, {"value",target}});
+			return result;
+		}
+		switch (source.type()) {
+			case NDT_ARRAY: {
+				std::size_t i=0;
+				while (i<source.size() && i<target.size()) {
+					auto temp_diff=diff(source[i],target[i],path+std::string('/')+std::to_string(i)));
+					result.insert(result.end(),temp_diff.begin(),temp_diff.end());
+					i++;
+				}
+				const auto end_index=static_cast<difference_type>(result.size());
+				while (i<source.size()) {
+					result.insert(result.begin()+end_index,object({{"op","remove"},{"path",path+std::string('/')+std::to_string(i))}}));
+					i++;
+				}
+				while (i<target.size()) {
+					result.push_back({{"op","add"},{"path",path+std::string("/-"))},{"value",target[i]}});
+					i++;
+				}
+				break;
+			}
+			case NDT_OBJECT: {
+				for (auto it=source.cbegin();it!=source.cend();it++) {
+					const auto path_key=path+std::string('/')+detail::escape(it.key()));
+					if (target.find(it.key())!=target.end()) {
+						auto temp_diff=diff(it.value(),target[it.key()],path_key);
+						result.insert(result.end(),temp_diff.begin(),temp_diff.end());
+					} else result.push_back(object({{"op","remove"}, {"path",path_key}}));
+				}
+				for (auto it=target.cbegin();it!=target.cend();it++) {
+					if (source.find(it.key())==source.end()) {
+						const auto path_key=path+std::string('/')+detail::escape(it.key()));
+						result.push_back({{"op","add"}, {"path",path_key},{"value",it.value()}});
+					}
+				}
+				break;
+			}
+			case NDT_NULL:
+			case NDT_STRING:
+			case NDT_BOOL:
+			case NDT_INT:
+			case NDT_FLOAT:
+			default: {
+				result.push_back({{"op","replace"}, {"path",path}, {"value",target}});
+				break;
+			}
+		}
+		return result;
+	}
 	void merge_patch(const notation& apply_patch) {
 		if (apply_patch.data_.type_==NDT_OBJECT) {
 			if (data_.type_!=NDT_OBJECT) *this=object();
@@ -2709,3 +2302,5 @@ template<typename KeyType>
 
 #endif
 //1346 754
+//detail::escape是啥
+//json::pointer
