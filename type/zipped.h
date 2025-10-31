@@ -1,7 +1,7 @@
 //Last Modified At 2025/10/31
 //@Version 1.0.0.0
-#ifndef _STDEX_TYPE_ZIP_H_
-#define _STDEX_TYPE_ZIP_H_ 1
+#ifndef _STDEX_TYPE_ZIPPED_H_
+#define _STDEX_TYPE_ZIPPED_H_ 1
 
 #include <algorithm>
 #include <chrono>
@@ -25,7 +25,7 @@ namespace stdex {
 
 namespace type {
 
-namespace zip {
+namespace zipped {
 
 class deflate_compressor {
 private:
@@ -1568,6 +1568,8 @@ inline std::vector<uint8_t> write_zip(const archive& arc,const std::string& comm
 
 
 }
+
+using zip=zipped::archive;
 
 }
 

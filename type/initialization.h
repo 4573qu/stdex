@@ -1,18 +1,43 @@
-//Last Modified At 2025/03/13
-//@Version 1.12
-#ifndef _STD4573_TYPE_INI_H_
-#define _STD4573_TYPE_INI_H_ 1
+//Last Modified At 2025/10/31
+//@Version 1.2.0.0
+#ifndef _STDEX_TYPE_INITIALIZATION_H_
+#define _STDEX_TYPE_INITIALIZATION_H_ 1
 
 #include <fstream>
 #include <iostream>
 #include <sstream>
 
-namespace std::type {
+namespace stdex {
 
-class ini {
+namespace type {
+
+class initialization {
 public:
-	using section = std::map<std::string, std::string>;
+	using section=std::map<std::string,std::string>;
 
+private:
+	std::map<std::string,section> sections_;
+
+	void process_line(std::string_view line,std::string& current_section) {
+		line = trim(line);
+		if (line.empty() || line[0]==';' || line[0]=='#') return;
+		if (line.front()=='[' && line.back()==']') {
+			current_section=std::string(line.substr(1,line.size()-2));
+			return;
+		}
+		if (auto eq_pos=line.find('=');eq_pos!=std::string_view::npos) {
+			auto key=trim(line.substr(0,eq_pos));
+			auto val=trim(line.substr(eq_pos+1));
+			if (!current_section.empty() && !key.empty()) sections_[current_section][std::string(key)]=std::string(val);
+		}
+	}
+	static std::string_view trim(std::string_view str) {
+		auto start=str.find_first_not_of(" \t");
+		auto end=str.find_last_not_of(" \t");
+		return (start!=std::string_view::npos)?str.substr(start,end-start+1):"";
+	}
+
+public:
 	bool load(std::ifstream& is) {
 		if (!is.is_open()) return false;
 		std::string aContent((std::istreambuf_iterator<char>(is)),std::istreambuf_iterator<char>());
@@ -73,29 +98,11 @@ public:
 	void clear(const std::string& section,const std::string& key) {
 		sections_[section].erase(key);
 	}
-private:
-	void process_line(std::string_view line,std::string& current_section) {
-		line = trim(line);
-		if (line.empty() || line[0]==';' || line[0]=='#') return;
-		if (line.front()=='[' && line.back()==']') {
-			current_section=std::string(line.substr(1,line.size()-2));
-			return;
-		}
-		if (auto eq_pos=line.find('=');eq_pos!=std::string_view::npos) {
-			auto key=trim(line.substr(0,eq_pos));
-			auto val=trim(line.substr(eq_pos+1));
-			if (!current_section.empty() && !key.empty()) {
-				sections_[current_section][std::string(key)]=std::string(val);
-			}
-		}
-	}
-	static std::string_view trim(std::string_view str) {
-		auto start=str.find_first_not_of(" \t");
-		auto end=str.find_last_not_of(" \t");
-		return (start!=std::string_view::npos)?str.substr(start,end-start+1):"";
-	}
-	std::map<std::string, section> sections_;
 };
+
+using ini=initialization;
+
+}
 
 }
 
