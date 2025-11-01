@@ -777,7 +777,7 @@ public:
 		throw std::invalid_argument("Cannot use operator[]");
 	}
 
-	template <class _Tp,std::enable_if_t<!is_transparent<object_comparator_t>::value &&is_getable<self_t,_Tp>::value &&!std::is_same_v<value_t,uncvref_t<_Tp>>,int> = 0>
+	template <class _Tp,std::enable_if_t<!is_transparent<object_comparator_t>::value &&is_getable<self_t,_Tp>::value &&!std::is_same_v<notation_data_type,uncvref_t<_Tp>>,int> = 0>
 	_Tp value(const typename object_t::key_type& key,const _Tp& default_value) const {
 		if (data_.type_==NDT_OBJECT) {
 			const auto it=find(key);
@@ -787,7 +787,7 @@ public:
 		throw std::invalid_argument("Cannot use value()");
 	}
 
-	template <class _Tp,class _Return=value_return_type<_Tp>,std::enable_if_t<!is_transparent<object_comparator_t>::value && is_getable<self_t,_Return>::value && !std::is_same_v<value_t,uncvref_t<_Tp>>,int> = 0>
+	template <class _Tp,class _Return=value_return_type<_Tp>,std::enable_if_t<!is_transparent<object_comparator_t>::value && is_getable<self_t,_Return>::value && !std::is_same_v<notation_data_type,uncvref_t<_Tp>>,int> = 0>
 	_Return value(const typename object_t::key_type& key,_Tp && default_value) const {
 		if (data_.type_==NDT_OBJECT) {
 			const auto it=find(key);
@@ -798,29 +798,17 @@ public:
 	}
 
 
-    template < class ValueType, class KeyType, detail::enable_if_t <
-                   detail::is_transparent<object_comparator_t>::value
-                   && !detail::is_json_pointer<KeyType>::value
-                   && is_comparable_with_object_key<KeyType>::value
-                   && detail::is_getable<basic_json_t, ValueType>::value
-                   && !std::is_same<value_t, detail::uncvref_t<ValueType>>::value, int > = 0 >
-    ValueType value(KeyType && key, const ValueType& default_value) const
-    {
-        // value only works for objects
-        if (JSON_HEDLEY_LIKELY(data_.type_==NDT_OBJECT))
-        {
-            // if key is found, return value and given default value otherwise
-            const auto it = find(std::forward<KeyType>(key));
-            if (it != end())
-            {
-                return it->template get<ValueType>();
-            }
-
-            return default_value;
-        }
-
-        JSON_THROW(type_error::create(306, detail::concat("cannot use value() with ", type_name()), this));
-    }
+	template <class _Tp,class _Key,std::enable_if_t<is_transparent<object_comparator_t>::value
+                   && !detail::is_json_pointer<Key>::value
+                   && is_comparable_with_object_key<_Key>::value && is_getable<self_t,_Tp>::value && !std::is_same_v<notation_data_type,uncvref_t<_Tp>>,int> = 0>
+	_Tp value(_Key&& key,const _Tp& default_value) const {
+		if (data_.type_==NDT_OBJECT) {
+			const auto it=find(std::forward<_Key>(key));
+			if (it != end()) return it->template get<_Tp>();
+			return default_value;
+		}
+		throw std::invalid_argument("Cannot use value()");
+	}
 
     template < class ValueType, class KeyType, class ReturnType = typename value_return_type<ValueType>::type,
                detail::enable_if_t <
@@ -934,7 +922,7 @@ public:
     IteratorType erase(IteratorType pos)
     {
         // make sure iterator fits the current value
-        if (JSON_HEDLEY_UNLIKELY(this != pos.m_object))
+        if (JSON_HEDLEY_UNLIKELY(this != pos.object_))
         {
             JSON_THROW(invalid_iterator::create(202, "iterator does not fit current value", this));
         }
@@ -1002,7 +990,7 @@ public:
     IteratorType erase(IteratorType first, IteratorType last)
     {
         // make sure iterator fits the current value
-        if (JSON_HEDLEY_UNLIKELY(this != first.m_object || this != last.m_object))
+        if (JSON_HEDLEY_UNLIKELY(this != first.object_ || this != last.object_))
         {
             JSON_THROW(invalid_iterator::create(203, "iterators do not fit current value", this));
         }
@@ -1386,123 +1374,46 @@ public:
 		if (first.object_==this)) throw std::invalid_argument("Passed iterators may not belong to container");
 		return insert_iterator(pos,first.it_.array_iterator_,last.it_.array_iterator_);
 	}
-	iterator insert(const_iterator pos,initializer_list_t init_list)
-    {
-        // insert only works for arrays
-        if (JSON_HEDLEY_UNLIKELY(!data_.type_==NDT_ARRAY))
-        {
-            JSON_THROW(type_error::create(309, detail::concat("cannot use insert() with ", type_name()), this));
-        }
-
-        // check if iterator pos fits to this JSON value
-        if (JSON_HEDLEY_UNLIKELY(pos.m_object != this))
-        {
-            JSON_THROW(invalid_iterator::create(202, "iterator does not fit current value", this));
-        }
-
-        // insert to array and return iterator
-        return insert_iterator(pos, ilist.begin(), ilist.end());
-    }
-
-    /// @brief inserts range of elements into object
-    /// @sa https://json.nlohmann.me/api/basic_json/insert/
-    void insert(const_iterator first, const_iterator last)
-    {
-        // insert only works for objects
-        if (JSON_HEDLEY_UNLIKELY(!data_.type_==NDT_OBJECT))
-        {
-            JSON_THROW(type_error::create(309, detail::concat("cannot use insert() with ", type_name()), this));
-        }
-
-        // check if range iterators belong to the same JSON object
-        if (JSON_HEDLEY_UNLIKELY(first.m_object != last.m_object))
-        {
-            JSON_THROW(invalid_iterator::create(210, "iterators do not fit", this));
-        }
-
-        // passed iterators must belong to objects
-        if (JSON_HEDLEY_UNLIKELY(!first.m_object->data_.type_==NDT_OBJECT))
-        {
-            JSON_THROW(invalid_iterator::create(202, "iterators first and last must point to objects", this));
-        }
-
-        data_.value_.object->insert(first.it_.object_iterator, last.it_.object_iterator);
-    }
-
-    /// @brief updates a JSON object from another object, overwriting existing keys
-    /// @sa https://json.nlohmann.me/api/basic_json/update/
-    void update(const_reference j, bool merge_objects = false)
-    {
-        update(j.begin(), j.end(), merge_objects);
-    }
-
-    /// @brief updates a JSON object from another object, overwriting existing keys
-    /// @sa https://json.nlohmann.me/api/basic_json/update/
-    void update(const_iterator first, const_iterator last, bool merge_objects = false)
-    {
-        // implicitly convert null value to an empty object
-        if (is_null())
-        {
-            data_.type_ = value_t::object;
-            data_.value_.object = create<object_t>();
-            assert_invariant();
-        }
-
-        if (JSON_HEDLEY_UNLIKELY(!data_.type_==NDT_OBJECT))
-        {
-            JSON_THROW(type_error::create(312, detail::concat("cannot use update() with ", type_name()), this));
-        }
-
-        // check if range iterators belong to the same JSON object
-        if (JSON_HEDLEY_UNLIKELY(first.m_object != last.m_object))
-        {
-            JSON_THROW(invalid_iterator::create(210, "iterators do not fit", this));
-        }
-
-        // passed iterators must belong to objects
-        if (JSON_HEDLEY_UNLIKELY(!first.m_object->data_.type_==NDT_OBJECT))
-        {
-            JSON_THROW(type_error::create(312, detail::concat("cannot use update() with ", first.m_object->type_name()), first.m_object));
-        }
-
-        for (auto it = first; it != last; ++it)
-        {
-            if (merge_objects && it.value().data_.type_==NDT_OBJECT)
-            {
-                auto it2 = data_.value_.object->find(it.key());
-                if (it2 != data_.value_.object->end())
-                {
-                    it2->second.update(it.value(), true);
-                    continue;
-                }
-            }
-            data_.value_.object->operator[](it.key()) = it.value();
-        }
-    }
-
-    void swap(ref other) noexcept (
-        std::is_nothrow_move_constructible<value_t>::value&&
-        std::is_nothrow_move_assignable<value_t>::value&&
-        std::is_nothrow_move_constructible<json_value>::value&& // NOLINT(cppcoreguidelines-noexcept-swap,performance-noexcept-swap)
-        std::is_nothrow_move_assignable<json_value>::value
-    )
-    {
-        std::swap(data_.type_,other.data_.type_);
-        std::swap(data_.value_,other.data_.value_);
-
-    }
-
-    friend void swap(ref left,ref right) noexcept (
-        std::is_nothrow_move_constructible<value_t>::value&&
-        std::is_nothrow_move_assignable<value_t>::value&&
-        std::is_nothrow_move_constructible<json_value>::value&& // NOLINT(cppcoreguidelines-noexcept-swap,performance-noexcept-swap)
-        std::is_nothrow_move_assignable<json_value>::value
-    )
-    {
-        left.swap(right);
-    }
-
-
+	iterator insert(const_iterator pos,initializer_list_t init_list) {
+		if (data_.type_!=NDT_ARRAY) throw std::invalid_argument("Cannot use insert()");
+		if (pos.object_!=this)) 
+		return insert_iterator(pos,init_list.begin(),init_list.end());
+	}
+	void insert(const_iterator first,const_iterator last) {
+		if (data_.type_!=NDT_OBJECT) throw std::invalid_argument("Cannot use insert()");
+		if (first.object_!=last.object_) throw std::invalid_argument("Iterators do not fit");
+		if (first.object_->data_.type_!=NDT_OBJECT) throw std::invalid_argument("Iterators first and last must point to objects");
+		data_.value_.object_->insert(first.it_.object_iterator_,last.it_.object_iterator_);
+	}
+	void update(const_ref j,bool merge_objects=false) {
+		update(j.begin(),j.end(),merge_objects);
+	}
+	void update(const_iterator first,const_iterator last,bool merge_objects=false) {
+		if (data_.type_==NDT_NULL) {
+			data_.type_=NDT_OBJECT;
+			data_.value_.object=create<object_t>();
+		}
+		if (data_.type_!=NDT_OBJECT) throw std::invalid_argument("Cannot use update()");
+		if (first.object_!=last.object_) throw std::invalid_argument("Iterators do not fit");
+		if (first.object_->data_.type_!=NDT_OBJECT)) throw std::invalid_argument("Cannot use update()");
+		for (auto it=first;it!=last;it++) {
+			if (merge_objects && it.value().data_.type_==NDT_OBJECT) {
+				auto jt= data_.value_.object_->find(it.key());
+				if (jt!= data_.value_.object_->end()) {
+					jt->second.update(it.value(),true);
+					continue;
+				}
+			}
+			data_.value_.object_->operator [](it.key())=it.value();
+		}
+	}
+	void swap(ref other) noexcept (std::is_nothrow_move_constructible<notation_data_type>::value && std::is_nothrow_move_assignable<notation_data_type>::value && std::is_nothrow_move_constructible<value>::value && std::is_nothrow_move_assignable<value>::value) {
+		std::swap(data_.type_,other.data_.type_);
+		std::swap(data_.value_,other.data_.value_);
+	}
+	friend void swap(ref left,ref right) noexcept (std::is_nothrow_move_constructible<notation_data_type>::value && std::is_nothrow_move_assignable<notation_data_type>::value && std::is_nothrow_move_constructible<value>::value && std::is_nothrow_move_assignable<value>::value) {
+		left.swap(right);
+	}
 	void swap(array_t& other) {
 		if (data_.type_==NDT_ARRAY) std::swap(*(data_.value_.array_),other);
 		else throw std::invalid_argument("Cannot use swap(array_t&)");
@@ -1587,7 +1498,7 @@ public:
     \
     return (default_result);
 
-  JSON_PRIVATE_UNLESS_TESTED:
+private:
     static bool compares_unordered(const_reference lhs, const_reference rhs, bool inverse = false) noexcept
     {
         if ((lhs.is_number_float() && std::isnan(lhs.data_.value_.number_float) && rhs.is_number())
@@ -2120,7 +2031,7 @@ public:
 }
 
 #endif
-//1389 754(virtual) 799(SNIFAE正序修改)
+//1440 754(virtual) 811(SNIFAE正序修改,801的template没改完)
 //detail::escape是path_escape
 //json::pointer
 //iterator_proxy
