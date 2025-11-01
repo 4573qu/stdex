@@ -366,8 +366,11 @@ public:
 	using float_t=_Float;
 	using boolean_t=_Boolean;
 	using string_t=_String;
+	using const_char_t=const typename string_t::value_type*;
+	using char_t=
 	using array_t=_Array;
 	using object_t=_Object;
+	using object_comparator_t=typename object_t::key_compare;
 	using allocator_t=_Allocator;
 	using initializer_list_t=std::initializer_list;
 	template <typename _Vp>
@@ -380,6 +383,7 @@ public:
 	using const_iterator=const notation_iterator<notation>;
 	using reverse_iterator=notation_reverse_iterator<typename notation::iterator>;
 	using const_reverse_iterator=notation_reverse_iterator<typename notation::const_iterator>;
+	using self_t=std::remove_reference_t<decltype(*this)>;//notation<_Int,_Float,_Boolean,_String,_Array,_Object,_Allocator>;
 
 private:
 	template <typename _Tp,typename=void>
@@ -404,6 +408,27 @@ private:
 		std::allocator_traits<allocator_t<_Tp>>::construct(alloc,object.get(),std::forward<_Args>(args)...);
 		return object.release();
 	}
+
+public:
+	template <typename _Comparator,typename _LHS,typename _RHS,typename=void>
+	struct is_comparable : std::false_type { };
+	template <typename _Comparator,typename _LHS,typename _RHS>
+	struct is_comparable<_Comparator,_LHS,_RHS,std::void_t<decltype(std::declval<_Comparator>()(std::declval<_LHS>(), std::declval<_RHS>()))>> : std::true_type { };
+	template <typename _KeyType>
+	using is_comparable_with_object_key=is_comparable<object_comparator_t,const typename object_t::key_type&,_KeyType>;
+
+	template <typename _Tp>
+	using value_return_type=std::conditional_t<std::is_convertible_v<std::decay_t<_Tp>,const_char_t>,string_t,std::decay_t<_Tp>>;
+
+	template <typename _Tp,typename=void>
+	struct is_transparent : std::false_type { };
+	template <typename _Tp>
+	struct is_transparent<_Tp,std::void_t<typename _Tp::is_transparent>> : std::true_type { }
+
+	template <typename _Notation,typename _Tp,typename=void>
+	struct is_getable : std::false_type {};
+	template <typename _Notation,typename _Tp>
+	struct is_getable<_Notation,_Tp,std::void_t<decltype(std::declval<_Notation>().template get<_Tp>())>> : std::true_type { };
 
 public:
 	struct value {
@@ -498,7 +523,6 @@ public:
 	};
 	data data_={};
 
-public:
 	notation(const notation_data_type t) : data_(t) { }
 	notation(std::nullptr_t=nullptr) noexcept : notation(NDT_NULL) { }	
 	template <typename _CompatibleType,typename _Tp=uncvref_t<_Compatible>,std::enable_if_t<!is_notation<_Up>::value && is_compatible_type<_Up>::value,int>=0>
@@ -732,7 +756,7 @@ public:
 	const_ref operator [](_Tp* key) const {
 		return operator [](typename object_t::key_type(key));
 	}
-	template<class _KeyType,std::enable_if_t<std::is_constructible_v<typename basic_json::string_t,_KeyType> || std::is_same_v<typename basic_json::string_t,_KeyType>,int> = 0>
+	template<class _KeyType,std::enable_if_t<std::is_constructible_v<typename self_t::string_t,_KeyType> || std::is_same_v<typename self_t::string_t,_KeyType>,int> = 0>
 	virtual reference operator [](_KeyType && key) {
 		if (data_.type_==NDT_NULL) {
 			data_.type_=NDT_OBJECT;
@@ -744,7 +768,7 @@ public:
 		}
 		throw std::invalid_argument("Cannot use operator[]");
 	}
-	template<class _KeyType,std::enable_if_t<std::is_constructible_v<typename basic_json::string_t,_KeyType> || std::is_same_v<typename basic_json::string_t,_KeyType>,int> = 0>
+	template<class _KeyType,std::enable_if_t<std::is_constructible_v<typename self_t::string_t,_KeyType> || std::is_same_v<typename self_t::string_t,_KeyType>,int> = 0>
 	virtual const_reference operator [](_KeyType && key) const {
 		if (data_.type_==NDT_OBJECT) {
 			auto it=data_.value_.object_->find(std::forward<_KeyType>(key));
@@ -753,64 +777,27 @@ public:
 		throw std::invalid_argument("Cannot use operator[]");
 	}
 
-template<typename KeyType>
-    using is_comparable_with_object_key = detail::is_comparable <
-        object_comparator_t, const typename object_t::key_type&, KeyType >;
+	template <class _Tp,std::enable_if_t<!is_transparent<object_comparator_t>::value &&is_getable<self_t,_Tp>::value &&!std::is_same_v<value_t,uncvref_t<_Tp>>,int> = 0>
+	_Tp value(const typename object_t::key_type& key,const _Tp& default_value) const {
+		if (data_.type_==NDT_OBJECT) {
+			const auto it=find(key);
+			if (it!=end()) return it->template get<_Tp>();
+			return default_value;
+		}
+		throw std::invalid_argument("Cannot use value()");
+	}
 
-    template<typename ValueType>
-    using value_return_type = std::conditional <
-        detail::is_c_string_uncvref<ValueType>::value,
-        string_t, typename std::decay<ValueType>::type >;
+	template <class _Tp,class _Return=value_return_type<_Tp>,std::enable_if_t<!is_transparent<object_comparator_t>::value && is_getable<self_t,_Return>::value && !std::is_same_v<value_t,uncvref_t<_Tp>>,int> = 0>
+	_Return value(const typename object_t::key_type& key,_Tp && default_value) const {
+		if (data_.type_==NDT_OBJECT) {
+			const auto it=find(key);
+			if (it!=end()) return it->template get<_Return>();
+			return std::forward<_Tp>(default_value);
+		}
+		throw std::invalid_argument("Cannot use value()");
+	}
 
-  public:
-   
-    template < class ValueType, detail::enable_if_t <
-                   !detail::is_transparent<object_comparator_t>::value
-                   && detail::is_getable<basic_json_t, ValueType>::value
-                   && !std::is_same<value_t, detail::uncvref_t<ValueType>>::value, int > = 0 >
-    ValueType value(const typename object_t::key_type& key, const ValueType& default_value) const
-    {
-        // value only works for objects
-        if (JSON_HEDLEY_LIKELY(data_.type_==NDT_OBJECT))
-        {
-            // if key is found, return value and given default value otherwise
-            const auto it = find(key);
-            if (it != end())
-            {
-                return it->template get<ValueType>();
-            }
 
-            return default_value;
-        }
-
-        JSON_THROW(type_error::create(306, detail::concat("cannot use value() with ", type_name()), this));
-    }
-
-    template < class ValueType, class ReturnType = typename value_return_type<ValueType>::type,
-               detail::enable_if_t <
-                   !detail::is_transparent<object_comparator_t>::value
-                   && detail::is_getable<basic_json_t, ReturnType>::value
-                   && !std::is_same<value_t, detail::uncvref_t<ValueType>>::value, int > = 0 >
-    ReturnType value(const typename object_t::key_type& key, ValueType && default_value) const
-    {
-        // value only works for objects
-        if (JSON_HEDLEY_LIKELY(data_.type_==NDT_OBJECT))
-        {
-            // if key is found, return value and given default value otherwise
-            const auto it = find(key);
-            if (it != end())
-            {
-                return it->template get<ReturnType>();
-            }
-
-            return std::forward<ValueType>(default_value);
-        }
-
-        JSON_THROW(type_error::create(306, detail::concat("cannot use value() with ", type_name()), this));
-    }
-
-    /// @brief access specified object element with default value
-    /// @sa https://json.nlohmann.me/api/basic_json/value/
     template < class ValueType, class KeyType, detail::enable_if_t <
                    detail::is_transparent<object_comparator_t>::value
                    && !detail::is_json_pointer<KeyType>::value
@@ -835,8 +822,6 @@ template<typename KeyType>
         JSON_THROW(type_error::create(306, detail::concat("cannot use value() with ", type_name()), this));
     }
 
-    /// @brief access specified object element via JSON Pointer with default value
-    /// @sa https://json.nlohmann.me/api/basic_json/value/
     template < class ValueType, class KeyType, class ReturnType = typename value_return_type<ValueType>::type,
                detail::enable_if_t <
                    detail::is_transparent<object_comparator_t>::value
@@ -861,9 +846,6 @@ template<typename KeyType>
 
         JSON_THROW(type_error::create(306, detail::concat("cannot use value() with ", type_name()), this));
     }
-
-    /// @brief access specified object element via JSON Pointer with default value
-    /// @sa https://json.nlohmann.me/api/basic_json/value/
     template < class ValueType, detail::enable_if_t <
                    detail::is_getable<basic_json_t, ValueType>::value
                    && !std::is_same<value_t, detail::uncvref_t<ValueType>>::value, int > = 0 >
@@ -885,9 +867,6 @@ template<typename KeyType>
 
         JSON_THROW(type_error::create(306, detail::concat("cannot use value() with ", type_name()), this));
     }
-
-    /// @brief access specified object element via JSON Pointer with default value
-    /// @sa https://json.nlohmann.me/api/basic_json/value/
     template < class ValueType, class ReturnType = typename value_return_type<ValueType>::type,
                detail::enable_if_t <
                    detail::is_getable<basic_json_t, ReturnType>::value
@@ -1248,39 +1227,12 @@ template<typename KeyType>
 	return const_reverse_iterator(cbegin());
 	}
 
-  public:
-
-    JSON_HEDLEY_DEPRECATED_FOR(3.1.0, items())
-    static iteration_proxy<iterator> iterator_wrapper(reference ref) noexcept
-    {
-        return ref.items();
-    }
-
-    /// @brief wrapper to access iterator member functions in range-based for
-    /// @sa https://json.nlohmann.me/api/basic_json/items/
-    /// @deprecated This function is deprecated since 3.1.0 and will be removed in
-    ///         version 4.0.0 of the library. Please use @ref items() instead;
-    ///         that is, replace `json::iterator_wrapper(j)` with `j.items()`.
-    JSON_HEDLEY_DEPRECATED_FOR(3.1.0, items())
-    static iteration_proxy<const_iterator> iterator_wrapper(const_reference ref) noexcept
-    {
-        return ref.items();
-    }
-
-    /// @brief helper to access iterator member functions in range-based for
-    /// @sa https://json.nlohmann.me/api/basic_json/items/
-    iteration_proxy<iterator> items() noexcept
-    {
-        return iteration_proxy<iterator>(*this);
-    }
-
-    /// @brief helper to access iterator member functions in range-based for
-    /// @sa https://json.nlohmann.me/api/basic_json/items/
-    iteration_proxy<const_iterator> items() const noexcept
-    {
-        return iteration_proxy<const_iterator>(*this);
-    }
-
+	iteration_proxy<iterator> items() noexcept {
+		return iteration_proxy<iterator>(*this);
+	}
+	iteration_proxy<const_iterator> items() const noexcept {
+		return iteration_proxy<const_iterator>(*this);
+	}
 
 	bool empty() const noexcept {
 		switch (data_.type_) {
@@ -1343,249 +1295,98 @@ template<typename KeyType>
 		push_back(std::move(val));
 		return *this;
 	}
-	void push_back(const notation& val)
-    {
-        // push_back only works for null objects or arrays
-        if (JSON_HEDLEY_UNLIKELY(!(is_null() || data_.type_==NDT_ARRAY)))
-        {
-            JSON_THROW(type_error::create(308, detail::concat("cannot use push_back() with ", type_name()), this));
-        }
+	void push_back(const notation& val) {
+		if (!(data_.type_==NDT_NULL || data_.type_==NDT_ARRAY)) throw std::invalid_argument("Cannot use push_back()");
+		if (data_.type_==NDT_NULL) {
+			data_.type_=NDT_ARRAY;
+			data_.value_=NDT_ARRAY;
+		}
+		const auto old_capacity=data_.value_.array_->capacity();
+		data_.value_.array_->push_back(val);
+	}
+	ref operator +=(const notation& val) {
+		push_back(val);
+		return *this;
+	}
+	void push_back(const typename object_t::value_type& val) {
+		if (!(data_.type_==NDT_NULL || data_.type_==NDT_OBJECT)) throw std::invalid_argument("Cannot use push_back()");
+		if (data_.type_==NDT_NULL) {
+			data_.type_=NDT_OBJECT;
+			data_.value_=NDT_OBJECT;
+		}
+		data_.value_.object_->insert(val);
+	}
+	ref operator +=(const typename object_t::value_type& val) {
+		push_back(val);
+		return *this;
+	}
+	void push_back(initializer_list_t init_list) {
+		if (data_.type_==NDT_OBJECT && init_list.size()==2 && (*init_list.begin())->data_.type_==NDT_STRING) {
+			notation&& key=init_list.begin()->moved_or_copied();
+			push_back(typename object_t::value_type( std::move(key.get_ref<string_t&>()),(init_list.begin()+1)->moved_or_copied()));
+		} else push_back(notation(init_list));
+	}
+	ref operator +=(initializer_list_t init_list) {
+		push_back(init_list);
+		return *this;
+	}
+	template <class... _Args>
+	ref emplace_back(_Args&& ... args) {
+		if (!(data_.type_==NDT_NULL || data_.type_==NDT_ARRAY)) throw std::invalid_argument("Cannot use emplace_back()");
+		if (data_.type_==NDT_NULL) {
+			data_.type_=NDT_ARRAY;
+			data_.value_ =NDT_ARRAY;
+		}
+		const auto old_capacity=data_.value_.array_->capacity();
+		data_.value_.array_->emplace_back(std::forward<_Args>(args)...);
+		return data_.value_.array_->back();
+	}
+	template <class... _Args>
+	std::pair<iterator,bool> emplace(_Args&& ... args) {
+		if (!(data_.type_==NDT_NULL || data_.type_==NDT_OBJECT)) throw std::invalid_argument("Cannot use emplace()");
+		if (data_.type_==NDT_NULL) {
+			data_.type_=NDT_OBJECT;
+			data_.value_=NDT_OBJECT;
+		}
+		auto res=data_.value_.object_->emplace(std::forward<_Args>(args)...);
+		auto it=begin();
+		it.it_.object_iterator_=res.first;
+		return {it,res.second};
+	}
 
-        // transform null object into an array
-        if (is_null())
-        {
-            data_.type_ = value_t::array;
-            data_.value_ = value_t::array;
-            assert_invariant();
-        }
-
-        // add element to array
-        const auto old_capacity = data_.value_.array->capacity();
-        data_.value_.array->push_back(val);
-        set_parent(data_.value_.array->back(), old_capacity);
-    }
-
-    /// @brief add an object to an array
-    /// @sa https://json.nlohmann.me/api/basic_json/operator+=/
-    reference operator+=(const basic_json& val)
-    {
-        push_back(val);
-        return *this;
-    }
-
-    /// @brief add an object to an object
-    /// @sa https://json.nlohmann.me/api/basic_json/push_back/
-    void push_back(const typename object_t::value_type& val)
-    {
-        // push_back only works for null objects or objects
-        if (JSON_HEDLEY_UNLIKELY(!(is_null() || data_.type_==NDT_OBJECT)))
-        {
-            JSON_THROW(type_error::create(308, detail::concat("cannot use push_back() with ", type_name()), this));
-        }
-
-        // transform null object into an object
-        if (is_null())
-        {
-            data_.type_ = value_t::object;
-            data_.value_ = value_t::object;
-            assert_invariant();
-        }
-
-        // add element to object
-        auto res = data_.value_.object->insert(val);
-        set_parent(res.first->second);
-    }
-
-    /// @brief add an object to an object
-    /// @sa https://json.nlohmann.me/api/basic_json/operator+=/
-    reference operator+=(const typename object_t::value_type& val)
-    {
-        push_back(val);
-        return *this;
-    }
-
-    /// @brief add an object to an object
-    /// @sa https://json.nlohmann.me/api/basic_json/push_back/
-    void push_back(initializer_list_t init)
-    {
-        if (data_.type_==NDT_OBJECT && init.size() == 2 && (*init.begin())->is_string())
-        {
-            basic_json&& key = init.begin()->moved_or_copied();
-            push_back(typename object_t::value_type(
-                          std::move(key.get_ref<string_t&>()), (init.begin() + 1)->moved_or_copied()));
-        }
-        else
-        {
-            push_back(basic_json(init));
-        }
-    }
-
-    /// @brief add an object to an object
-    /// @sa https://json.nlohmann.me/api/basic_json/operator+=/
-    reference operator+=(initializer_list_t init)
-    {
-        push_back(init);
-        return *this;
-    }
-
-    /// @brief add an object to an array
-    /// @sa https://json.nlohmann.me/api/basic_json/emplace_back/
-    template<class... Args>
-    reference emplace_back(Args&& ... args)
-    {
-        // emplace_back only works for null objects or arrays
-        if (JSON_HEDLEY_UNLIKELY(!(is_null() || data_.type_==NDT_ARRAY)))
-        {
-            JSON_THROW(type_error::create(311, detail::concat("cannot use emplace_back() with ", type_name()), this));
-        }
-
-        // transform null object into an array
-        if (is_null())
-        {
-            data_.type_ = value_t::array;
-            data_.value_ = value_t::array;
-            assert_invariant();
-        }
-
-        // add element to array (perfect forwarding)
-        const auto old_capacity = data_.value_.array->capacity();
-        data_.value_.array->emplace_back(std::forward<Args>(args)...);
-        return set_parent(data_.value_.array->back(), old_capacity);
-    }
-
-    /// @brief add an object to an object if key does not exist
-    /// @sa https://json.nlohmann.me/api/basic_json/emplace/
-    template<class... Args>
-    std::pair<iterator, bool> emplace(Args&& ... args)
-    {
-        // emplace only works for null objects or arrays
-        if (JSON_HEDLEY_UNLIKELY(!(is_null() || data_.type_==NDT_OBJECT)))
-        {
-            JSON_THROW(type_error::create(311, detail::concat("cannot use emplace() with ", type_name()), this));
-        }
-
-        // transform null object into an object
-        if (is_null())
-        {
-            data_.type_ = value_t::object;
-            data_.value_ = value_t::object;
-            assert_invariant();
-        }
-
-        // add element to array (perfect forwarding)
-        auto res = data_.value_.object->emplace(std::forward<Args>(args)...);
-        set_parent(res.first->second);
-
-        // create result iterator and set iterator to the result of emplace
-        auto it = begin();
-        it.it_.object_iterator = res.first;
-
-        // return pair of iterator and boolean
-        return {it, res.second};
-    }
-
-    /// Helper for insertion of an iterator
-    /// @note: This uses std::distance to support GCC 4.8,
-    ///        see https://github.com/nlohmann/json/pull/1257
-    template<typename... Args>
-    iterator insert_iterator(const_iterator pos, Args&& ... args)
-    {
-        iterator result(this);
-        JSON_ASSERT(data_.value_.array != nullptr);
-
-        auto insert_pos = std::distance(data_.value_.array->begin(), pos.it_.array_iterator);
-        data_.value_.array->insert(pos.it_.array_iterator, std::forward<Args>(args)...);
-        result.it_.array_iterator = data_.value_.array->begin() + insert_pos;
-
-        // This could have been written as:
-        // result.it_.array_iterator = data_.value_.array->insert(pos.it_.array_iterator, cnt, val);
-        // but the return value of insert is missing in GCC 4.8, so it is written this way instead.
-
-        set_parents();
-        return result;
-    }
-
-    /// @brief inserts element into array
-    /// @sa https://json.nlohmann.me/api/basic_json/insert/
-    iterator insert(const_iterator pos, const basic_json& val)
-    {
-        // insert only works for arrays
-        if (JSON_HEDLEY_LIKELY(data_.type_==NDT_ARRAY))
-        {
-            // check if iterator pos fits to this JSON value
-            if (JSON_HEDLEY_UNLIKELY(pos.m_object != this))
-            {
-                JSON_THROW(invalid_iterator::create(202, "iterator does not fit current value", this));
-            }
-
-            // insert to array and return iterator
-            return insert_iterator(pos, val);
-        }
-
-        JSON_THROW(type_error::create(309, detail::concat("cannot use insert() with ", type_name()), this));
-    }
-
-    /// @brief inserts element into array
-    /// @sa https://json.nlohmann.me/api/basic_json/insert/
-    iterator insert(const_iterator pos, basic_json&& val)
-    {
-        return insert(pos, val);
-    }
-
-    /// @brief inserts copies of element into array
-    /// @sa https://json.nlohmann.me/api/basic_json/insert/
-    iterator insert(const_iterator pos, size_type cnt, const basic_json& val)
-    {
-        // insert only works for arrays
-        if (JSON_HEDLEY_LIKELY(data_.type_==NDT_ARRAY))
-        {
-            // check if iterator pos fits to this JSON value
-            if (JSON_HEDLEY_UNLIKELY(pos.m_object != this))
-            {
-                JSON_THROW(invalid_iterator::create(202, "iterator does not fit current value", this));
-            }
-
-            // insert to array and return iterator
-            return insert_iterator(pos, cnt, val);
-        }
-
-        JSON_THROW(type_error::create(309, detail::concat("cannot use insert() with ", type_name()), this));
-    }
-
-    /// @brief inserts range of elements into array
-    /// @sa https://json.nlohmann.me/api/basic_json/insert/
-    iterator insert(const_iterator pos, const_iterator first, const_iterator last)
-    {
-        // insert only works for arrays
-        if (JSON_HEDLEY_UNLIKELY(!data_.type_==NDT_ARRAY))
-        {
-            JSON_THROW(type_error::create(309, detail::concat("cannot use insert() with ", type_name()), this));
-        }
-
-        // check if iterator pos fits to this JSON value
-        if (JSON_HEDLEY_UNLIKELY(pos.m_object != this))
-        {
-            JSON_THROW(invalid_iterator::create(202, "iterator does not fit current value", this));
-        }
-
-        // check if range iterators belong to the same JSON object
-        if (JSON_HEDLEY_UNLIKELY(first.m_object != last.m_object))
-        {
-            JSON_THROW(invalid_iterator::create(210, "iterators do not fit", this));
-        }
-
-        if (JSON_HEDLEY_UNLIKELY(first.m_object == this))
-        {
-            JSON_THROW(invalid_iterator::create(211, "passed iterators may not belong to container", this));
-        }
-
-        // insert to array and return iterator
-        return insert_iterator(pos, first.it_.array_iterator, last.it_.array_iterator);
-    }
-
-    /// @brief inserts elements from initializer list into array
-    /// @sa https://json.nlohmann.me/api/basic_json/insert/
-    iterator insert(const_iterator pos, initializer_list_t ilist)
+	template <typename... _Args>
+	iterator insert_iterator(const_iterator pos,_Args&& ... args) {
+		iterator result(this);
+		auto insert_pos=std::distance(data_.value_.array_->begin(),pos.it_.array_iterator_);
+		data_.value_.array_->insert(pos.it_.array_iterator_,std::forward<_Args>(args)...);
+		result.it_.array_iterator_=data_.value_.array_->begin()+insert_pos;
+		return result;
+	}
+	iterator insert(const_iterator pos,const notation& val) {
+		if (data_.type_==NDT_ARRAY) {
+			if (pos.object_!=this) throw std::invalid_argument("Iterator does not fit current value");
+			return insert_iterator(pos,val);
+		}
+		throw std::invalid_argument("Cannot use insert()");
+	}
+	iterator insert(const_iterator pos,notation&& val) {
+		return insert(pos,val);
+	}
+	iterator insert(const_iterator pos,size_type cnt,const notation& val) {
+		if (data_.type_==NDT_ARRAY) {
+			if (pos.object_!=this) throw std::invalid_argument("Iterator does not fit current value");
+			return insert_iterator(pos,cnt,val);
+		}
+		throw std::invalid_argument("Cannot use insert()");
+	}
+	iterator insert(const_iterator pos,const_iterator first,const_iterator last) {
+		if (!data_.type_==NDT_ARRAY) throw std::invalid_argument("Cannot use insert()");
+		if (pos.object_!=this)) throw std::invalid_argument("Iterator does not fit current value");
+		if (first.object_!=last.object_) throw std::invalid_argument("Iterators do not fit");
+		if (first.object_==this)) throw std::invalid_argument("Passed iterators may not belong to container");
+		return insert_iterator(pos,first.it_.array_iterator_,last.it_.array_iterator_);
+	}
+	iterator insert(const_iterator pos,initializer_list_t init_list)
     {
         // insert only works for arrays
         if (JSON_HEDLEY_UNLIKELY(!data_.type_==NDT_ARRAY))
@@ -2110,6 +1911,24 @@ template<typename KeyType>
 	notation unflatten() const {
         return json_pointer::unflatten(*this);
     }
+	template <typename _Tp>
+	inline _Tp path_escape(_Tp s) {
+		auto replace_substring=[](_Tp& s,const _Tp& format,const _Tp& t) {
+			for (auto it=s.find(format);it!=_Tp::npos;s.replace(it,format.size(),t),it=s.find(format,it+t.size())) { }
+		};
+		replace_substring(s,_Tp{"~"},_Tp{"~0"});
+		replace_substring(s,_Tp{"/"},_Tp{"~1"});
+		return s;
+	}
+	template <typename _Tp>
+	inline _Tp path_unescape(_Tp s) {
+		auto replace_substring=[](_Tp& s,const _Tp& format,const _Tp& t) {
+			for (auto it=s.find(format);it!=_Tp::npos;s.replace(it,format.size(),t),it=s.find(format,it+t.size())) { }
+		};
+		replace_substring(s,_Tp{"~0"},_Tp{"~"});
+		replace_substring(s,_Tp{"~1"},_Tp{"/"});
+		return s;
+	}
 	virtual void patch_inplace(const notation& notation_patch) {
 		notation& result=*this;
 		enum  patch_operations {
@@ -2249,7 +2068,7 @@ template<typename KeyType>
 			}
 			case NDT_OBJECT: {
 				for (auto it=source.cbegin();it!=source.cend();it++) {
-					const auto path_key=path+std::string('/')+detail::escape(it.key()));
+					const auto path_key=path+std::string('/')+path_escape(it.key()));
 					if (target.find(it.key())!=target.end()) {
 						auto temp_diff=diff(it.value(),target[it.key()],path_key);
 						result.insert(result.end(),temp_diff.begin(),temp_diff.end());
@@ -2257,7 +2076,7 @@ template<typename KeyType>
 				}
 				for (auto it=target.cbegin();it!=target.cend();it++) {
 					if (source.find(it.key())==source.end()) {
-						const auto path_key=path+std::string('/')+detail::escape(it.key()));
+						const auto path_key=path+std::string('/')+path_escape(it.key()));
 						result.push_back({{"op","add"}, {"path",path_key},{"value",it.value()}});
 					}
 				}
@@ -2301,6 +2120,7 @@ template<typename KeyType>
 }
 
 #endif
-//1346 754
-//detail::escape是啥
+//1389 754(virtual) 799(SNIFAE正序修改)
+//detail::escape是path_escape
 //json::pointer
+//iterator_proxy
