@@ -154,9 +154,9 @@ public:
 	}
 };
 
-using crc32=crc<32,uint32_t,0xEDB88320,0xFFFFFFFF,0xFFFFFFFF,true,true>; // IEEE 802.3
-using crc32c=crc<32,uint32_t,0x82F63B78,0xFFFFFFFF,0xFFFFFFFF,true,true>; // iSCSI, SCTP
-using crc16_ccitt=crc<16,uint16_t, 0x1021,0xFFFF,0x0000, false,false>; // X.25, V.41
+using crc32=crc<32,uint32_t,0xEDB88320,0xFFFFFFFF,0xFFFFFFFF,true,true>; // IEEE802.3
+using crc32c=crc<32,uint32_t,0x82F63B78,0xFFFFFFFF,0xFFFFFFFF,true,true>; // iSCSI,SCTP
+using crc16_ccitt=crc<16,uint16_t,0x1021,0xFFFF,0x0000,false,false>; // X.25,V.41
 
 }
 
