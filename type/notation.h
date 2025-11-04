@@ -1,20 +1,27 @@
-//Last Modified At 2025/10/31
+//Last Modified At 2025/11/04
 //@Version 1.0.0.0
 #ifndef _STDEX_TYPE_NOTATION_H_
 #define _STDEX_TYPE_NOTATION_H_ 1
 
 #include <algorithm>
+#include <cctype>
+#include <cerrno>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "../container/reference.h"//At Least 1.0
@@ -23,13 +30,31 @@
 #include "../macors/cpp_compiler.h"//At Least 1.0
 #endif
 
-#ifndef
-#define _STDEX_RETURNS_NO_NULL
+#if __has_include("../macros/cpp_version.h")
+#include "../macros/cpp_version.h"//At Least 1.0
+#endif
+
+#ifndef _STDEX_RETURNS_NON_NULL
+#if defined(_Ret_notnull_)
+#define _STDEX_RETURNS_NON_NULL _Ret_notnull_
+#else
+#define _STDEX_RETURNS_NON_NULL
+#endif
+#endif
+
+#ifndef _STDEX_CPP20_VERSION
+#define _STDEX_CPP20_VERSION 202002L
 #endif
 
 namespace stdex {
 
 namespace type {
+
+#define _STDEX_NOTATION_DECLARATION template <typename _Int=std::ptr_diff_t,typename _Float=double,typename _Boolean=bool,typename _String=std::string, \
+template <typename _Tp,typename... _Args>class _Array=std::vector, \
+template <typename _Tp,typename _Up,typename... _Args>class _Object=std::map, \
+template <typename _Tp>class _Allocator=std::allocator>
+#define _STDEX_NOTATION_DEF notation<_Int,_Float,_Boolean,_String,_Array,_Object,_Allocator>
 
 enum notation_data_type {
 	NDT_NULL,
@@ -40,6 +65,9 @@ enum notation_data_type {
 	NDT_ARRAY,
 	NDT_OBJECT,
 	//NDT_DISCARDED,
+	//NDT_XML_COMMENT,
+	//NDT_XML_CDATA,
+	//NDT_XML_PROCINST,
 }
 
 class notation;
@@ -348,6 +376,398 @@ public:
 	}
 };
 
+template <typename _RefType>
+class notation_pointer {
+public:
+	using string_t=typename string_t_helper<_RefType>::type;
+
+private:
+	_STDEX_NOTATION_DECLARATION
+	friend class notation;
+	template <typename>
+	friend class notation_pointer;
+
+	std::vector<string_t> ref_tokens_;
+
+	template <typename _Tp>
+	struct string_t_helper {
+		using type=_Tp;
+	};
+	_STDEX_NOTATION_DECLARATION
+	struct string_t_helper<_STDEX_NOTATION_DEF> {
+		using type=_String;
+	};
+
+	template <typename _Tp>
+	static typename _Tp::size_type array_index(const string_t& s) {
+		using size_type=typename _Tp::size_type;
+		if (s.size()>1 && s[0]=='0') throw std::invalid_argument("Array index must not begin with '0'");
+		if (s.size()>1 && !(s[0]>='1' && s[0]<='9')) throw std::invalid_argument("Array index is not a number");
+		const char* p=s.c_str();
+		char* p_end=nullptr;
+		errno=0;
+		const unsigned long long result=std::strtoull(p,&p_end,10);
+		if (p==p_end || errno==ERANGE || static_cast<std::size_t>(p_end-p)!=s.size()) throw std::invalid_argument("Unresolved reference token");
+		if (result>=static_cast<unsigned long long>((std::numeric_limits<size_type>::max)())) throw std::out_of_range("Array index exceeds size_type");
+		return static_cast<size_type>(result);
+	}
+
+	notation_pointer top() const {
+		if (empty()) throw std::out_of_range("Notation pointer has no parent");
+		notation_pointer result=*this;
+		result.ref_tokens_={ref_tokens_[0]};
+		return result;
+	}
+
+	template <typename _Tp>
+	_Tp& get_and_create(_Tp& j) const {
+		auto* result=&j;
+		for (const auto& it:ref_tokens_) {
+			switch (result->type()) {
+				case NDT_NULL: {
+					if (it=="0") result=&result->operator [](0);
+					else result=&result->operator [](it);
+					break;
+				}
+				case NDT_OBJECT: {
+					result=&result->operator [](it);
+					break;
+				}
+				case NDT_ARRAY: {
+					result=&result->operator [](array_index<_Tp>(it));
+					break;
+				}
+				case NDT_STRING:
+				case NDT_BOOL:
+				case NDT_INT:
+				case NDT_FLOAT:
+				default: throw std::invalid_argument("Invalid value to unflatten");
+			}
+		}
+		return *result;
+	}
+
+	template <typename _Tp>
+	_Tp& get_unchecked(_Tp* ptr) const {
+		for (const auto& it:ref_tokens_) {
+			if (ptr->data_.type_==NDT_NULL) {
+				const bool nums=std::all_of(it.begin(),it.end(),[](const typename string_t::value_type x) {
+					return std::isdigit(x);
+				});
+				*ptr=(nums||it=="-")?NDT_ARRAY:NDT_OBJECT;
+			}
+			switch (ptr->type()) {
+				case NDT_OBJECT: {
+					ptr=&ptr->operator [](it);
+					break;
+				}
+				case NDT_ARRAY: {
+					if (it=="-") ptr=&ptr->operator [](ptr->data_.value_.array_->size());
+					else ptr=&ptr->operator [](array_index<_Tp>(it));
+					break;
+				}
+				case NDT_NULL:
+				case NDT_STRING:
+				case NDT_BOOL:
+				case NDT_INT:
+				case NDT_FLOAT:
+				default: throw std::out_of_range("Unresolved reference token");
+			}
+		}
+		return *ptr;
+	}
+
+	template <typename _Tp>
+	_Tp& get_checked(_Tp* ptr) const {
+		for (const auto& it:ref_tokens_) {
+			switch (ptr->type()) {
+				case NDT_OBJECT: {
+					ptr=&ptr->at(it);
+					break;
+				}
+				case NDT_ARRAY: {
+					if (it=="-") throw std::out_of_range("Array index is out of range");
+					ptr=&ptr->at(array_index<_Tp>(it));
+					break;
+				}
+				case NDT_NULL:
+				case NDT_STRING:
+				case NDT_BOOL:
+				case NDT_INT:
+				case NDT_FLOAT:
+				default: throw std::out_of_range("Unresolved reference token");
+			}
+		}
+		return *ptr;
+	}
+
+	template <typename _Tp>
+	const _Tp& get_unchecked(const _Tp* ptr) const {
+		for (const auto& it:ref_tokens_) {
+			switch (ptr->type()) {
+				case NDT_OBJECT: {
+					ptr=&ptr->operator [](it);
+					break;
+				}
+				case NDT_ARRAY: {
+					if (it=="-") throw std::out_of_range("Array index is out of range");
+					ptr=&ptr->operator [](array_index<_Tp>(it));
+					break;
+				}
+				case NDT_NULL:
+				case NDT_STRING:
+				case NDT_BOOL:
+				case NDT_INT:
+				case NDT_FLOAT:
+				default: throw std::out_of_range("Unresolved reference token");
+			}
+		}
+		return *ptr;
+	}
+
+	template <typename _Tp>
+	const _Tp& get_checked(const _Tp* ptr) const {
+		for (const auto& it:ref_tokens_) {
+			switch (ptr->type()) {
+				case NDT_OBJECT: {
+					ptr=&ptr->at(it);
+					break;
+				}
+				case NDT_ARRAY: {
+					if (it=="-") throw std::out_of_range("Array index is out of range");
+					ptr=&ptr->at(array_index<_Tp>(it));
+					break;
+				}
+				case NDT_NULL:
+				case NDT_STRING:
+				case NDT_BOOL:
+				case NDT_INT:
+				case NDT_FLOAT:
+				default: throw std::out_of_range("Unresolved reference token");
+			}
+		}
+		return *ptr;
+	}
+
+	template <typename _Tp>
+	bool contains(const _Tp* ptr) const {
+		for (const auto& it:ref_tokens_) {
+			switch (ptr->type()) {
+				case NDT_OBJECT: {
+					if (!ptr->contains(it)) return false;
+					ptr=&ptr->operator [](it);
+					break;
+				}
+				case NDT_ARRAY: {
+					if (it=="-") return false;
+					if (it.size()==1 && !("0"<=it && it<="9")) return false;
+					if (it.size()>1) {
+						if (!('1'<=it[0] && it[0]<='9')) return false;
+						for (std::size_t i=1;i<it.size();i++) {
+							if (!('0'<=it[i] && it[i]<='9')) return false;
+						}
+					}
+					const auto index=array_index<_Tp>(it);
+					if (index>=ptr->size()) return false;
+					ptr=&ptr->operator [](index);
+					break;
+				}
+				case NDT_NULL:
+				case NDT_STRING:
+				case NDT_BOOL:
+				case NDT_INT:
+				case NDT_FLOAT:
+				default: return false;
+			}
+		}
+		return true;
+	}
+
+	static std::vector<string_t> split(const string_t& ref_string) {
+		std::vector<string_t> result;
+		if (ref_string.empty()) return result;
+		if (ref_string[0]!='/') throw std::invalid_argument("JSON pointer must be empty or begin with '/'");
+		for (std::size_t slash=ref_string.find_first_of('/',1),start=1;start!=0;start=(slash==string_t::npos)?0:slash+1,slash=ref_string.find_first_of('/',start)) {
+			auto ref_token=ref_string.substr(start,slash-start);
+			for (std::size_t pos=ref_token.find_first_of('~');pos!=string_t::npos;pos=ref_token.find_first_of('~',pos+1)) {
+				if (pos==ref_token.size()-1 || (ref_token[pos+1]!='0' && ref_token[pos+1]!='1'))) throw std::invalid_argument("Escape character '~' must be followed with '0' or '1'");
+			}
+			_STDEX_NOTATION_DEF::path_unescape(ref_token);
+			result.push_back(reference_token);
+		}
+		return result;
+	}
+
+	template <typename _Tp>
+	static void flatten(const string_t& ref_string,const _Tp& value,_Tp& result) {
+		switch (value.type()) {
+			case NDT_ARRAY: {
+				if (value.data_.value_.array_->empty()) result[ref_string]=nullptr;
+				else {
+					for (std::size_t i=0;i<value.data_.value_.array_->size();i++) flatten(ref_string+string_t('/')+std::to_string(i),value.data_.value_.array_->operator [](i),result);
+				}
+				break;
+			}
+			case NDT_OBJECT: {
+				if (value.data_.value_.object_->empty()) result[ref_string]=nullptr;
+				else {
+					for (const auto& it:*value.data_.value_.object_) flatten(ref_string+string_t('/')+_STDEX_NOTATION_DEF::path_escape(it.first),it.second,result);
+				}
+				break;
+			}
+			case NDT_NULL:
+          		case NDT_STRING:
+			case NDT_BOOL:
+			case NDT_INT:
+			case NDT_FLOAT:
+			default: {
+				result[ref_string]=value;
+				break;
+			}
+		}
+	}
+
+	template <typename _Tp>
+	static _Tp unflatten(const _Tp& value) {
+		if (value.data_.type_!=NDT_OBJECT) throw std::invalid_argument("Only objects can be unflattened");
+		_Tp result;
+		for (const auto& it:*value.data_.value_.object_) {
+			if (value.data_.type_==NDT_OBJECT || value.data_.type==NDT_ARRAY) throw std::invalid_argument("Values in object must be primitive");
+			notation_pointer(it.first).get_and_create(result)=it.second;
+		}
+		return result;
+	}
+
+	notation_pointer<string_t> convert() const& {
+		notation_pointer<string_t> result;
+		result.ref_tokens_=ref_tokens_;
+		return result;
+	}
+	notation_pointer<string_t> convert()&& {
+		notation_pointer<string_t> result;
+		result.ref_tokens_=std::move(ref_tokens_);
+		return result;
+	}
+
+public:
+	explicit notation_pointer(const string_t& s="") : ref_tokens_(split(s)) { }
+
+	string_t to_string() const {
+		return std::accumulate(ref_tokens_.begin(),ref_tokens_.end(),string_t{},[](const string_t& a,const string_t& b){
+			return a+string_t('/')+_STDEX_NOTATION_DEF::path_escape(b);
+		});
+	}
+
+#ifndef JSON_NO_IO
+    /// @brief write string representation of the JSON pointer to stream
+    /// @sa https://json.nlohmann.me/api/basic_json/operator_ltlt/
+    friend std::ostream& operator<<(std::ostream& o, const json_pointer& ptr)
+    {
+        o << ptr.to_string();
+        return o;
+    }
+#endif
+
+	notation_pointer& operator /=(const notation_pointer& other) {
+		ref_tokens_.insert(ref_tokens_.end(),other.ref_tokens_.begin(),other.ref_tokens_.end());
+		return *this;
+	}
+	notation_pointer& operator /=(string_t token) {
+		push_back(std::move(token));
+		return *this;
+	}
+	notation_pointer& operator /=(std::size_t array_index) {
+		return *this/=std::to_string(array_index);
+	}
+	friend notation_pointer operator /(const notation_pointer& lhs,const notation_pointer& rhs) {
+		return notation_pointer(lhs)/=rhs;
+	}
+	friend notation_pointer operator /(const notation_pointer& lhs,string_t token) {
+		return notation_pointer(lhs)/=std::move(token);
+	}
+	friend notation_pointer operator /(const notation_pointer& lhs,std::size_t array_index) {
+		return notation_pointer(lhs)/=array_index;
+	}
+
+	notation_pointer parent_pointer() const {
+		if (empty()) return *this;
+		notation_pointer result=*this;
+		result.pop_back();
+		return result;
+	}
+
+	void pop_back() {
+		if (empty()) throw std::out_of_range("Notation pointer has no parent");
+		ref_tokens_.pop_back();
+	}
+
+	const string_t& back() const {
+		if (empty()) throw std::out_of_range("Notation pointer has no parent");
+		return ref_tokens_.back();
+	}
+
+	void push_back(const string_t& token) {
+		ref_tokens_.push_back(token);
+	}
+	void push_back(string_t&& token) {
+		ref_tokens_.push_back(std::move(token));
+	}
+
+	bool empty() const noexcept {
+		return ref_tokens_.empty();
+	}
+
+#if __cplusplus>=_STDEX_CPP20_VERSION
+	template <typename _RefTypeRhs>
+	bool operator ==(const notation_pointer<_RefTypeRhs>& rhs) const noexcept {
+		return ref_tokens_==rhs.ref_tokens_;
+	}
+
+	template <typename _RefTypeRhs>
+	std::strong_ordering operator <=>(const json_pointer<_RefTypeRhs>& rhs) const noexcept {
+		return ref_tokens_<=>rhs.ref_tokens_;
+	}
+#else
+	template <typename _RefTypeLhs,typename _RefTypeRhs>
+	friend bool operator ==(const notation_pointer<_RefTypeLhs>& lhs,const notation_pointer<_RefTypeRhs>& rhs) noexcept;
+
+	template <typename _RefTypeLhs,typename _String>
+	friend bool operator ==(const notation_pointer<_RefTypeLhs>& lhs,const _String& rhs);
+
+	template <typename _RefTypeRhs,typename _String>
+	friend bool operator ==(const StringType& lhs,const notation_pointer<_RefTypeRhs>& rhs);
+
+	template <typename _RefTypeLhs,typename _RefTypeRhs>
+	friend bool operator !=(const notation_pointer<_RefTypeLhs>& lhs,const notation_pointer<_RefTypeRhs>& rhs) noexcept;
+
+	template <typename _RefTypeLhs,typename _String>
+	friend bool operator !=(const notation_pointer<_RefTypeLhs>& lhs,const _String& rhs);
+
+	template <typename _RefTypeRhs,typename _String>
+	friend bool operator !=(const _String& lhs,const notation_pointer<_RefTypeRhs>& rhs);
+
+	template <typename _RefTypeLhs,typename _RefTypeRhs>
+	friend bool operator <(const notation_pointer<_RefTypeLhs>& lhs,const notation_pointer<_RefTypeRhs>& rhs) noexcept;
+#endif
+};
+
+#if __cplusplus<_STDEX_CPP20_VERSION
+template <typename _RefTypeLhs,typename _RefTypeRhs>
+inline bool operator ==(const notation_pointer<_RefTypeLhs>& lhs,const notation_pointer<_RefTypeRhs>& rhs) noexcept {
+	return lhs.ref_tokens_==rhs.ref_tokens_;
+}
+
+template <typename _RefTypeLhs,typename _RefTypeRhs>
+inline bool operator !=(const notation_pointer<_RefTypeLhs>& lhs,const notation_pointer<_RefTypeRhs>& rhs) noexcept {
+	return !(lhs==rhs);
+}
+
+template <typename _RefTypeLhs,typename _RefTypeRhs>
+inline bool operator <(const notation_pointer<_RefTypeLhs>& lhs,const notation_pointer<_RefTypeRhs>& rhs) noexcept {
+	return lhs.ref_tokens_<rhs.ref_tokens_;
+}
+#endif
+
 template <typename _Int=std::ptr_diff_t,typename _Float=double,typename _Boolean=bool,typename _String=std::string,
 template <typename _Tp,typename... _Args>class _Array=std::vector,
 template <typename _Tp,typename _Up,typename... _Args>class _Object=std::map,
@@ -383,7 +803,7 @@ public:
 	using const_iterator=const notation_iterator<notation>;
 	using reverse_iterator=notation_reverse_iterator<typename notation::iterator>;
 	using const_reverse_iterator=notation_reverse_iterator<typename notation::const_iterator>;
-	using self_t=std::remove_reference_t<decltype(*this)>;//notation<_Int,_Float,_Boolean,_String,_Array,_Object,_Allocator>;
+	using self_t=std::remove_reference_t<decltype(*this)>;//_STDEX_NOTATION_DEF;
 
 private:
 	template <typename _Tp,typename=void>
@@ -1823,7 +2243,7 @@ private:
         return json_pointer::unflatten(*this);
     }
 	template <typename _Tp>
-	inline _Tp path_escape(_Tp s) {
+	static inline _Tp path_escape(_Tp s) {
 		auto replace_substring=[](_Tp& s,const _Tp& format,const _Tp& t) {
 			for (auto it=s.find(format);it!=_Tp::npos;s.replace(it,format.size(),t),it=s.find(format,it+t.size())) { }
 		};
@@ -1831,7 +2251,7 @@ private:
 		replace_substring(s,_Tp{"/"},_Tp{"~1"});
 		return s;
 	}
-	template <typename _Tp>
+	static template <typename _Tp>
 	inline _Tp path_unescape(_Tp s) {
 		auto replace_substring=[](_Tp& s,const _Tp& format,const _Tp& t) {
 			for (auto it=s.find(format);it!=_Tp::npos;s.replace(it,format.size(),t),it=s.find(format,it+t.size())) { }
@@ -2025,6 +2445,8 @@ private:
 //json_lexer(adapter_type)
 
 //const error_handler_t error_handler=error_handler_t::strict
+#undef _STDEX_NOTATION_DEF
+#undef _STDEX_NOTATION_DECLARATION
 
 }
 
@@ -2035,3 +2457,23 @@ private:
 //detail::escape是path_escape
 //json::pointer
 //iterator_proxy
+//pointer:JSON_NO_IO相关
+//一个扩展notation_data_type的具体实现：提供策略，以及notation::operator =里调用virtual bool support(NDT)，来实现无缝转换。子类重写support函数。
+//子类扩展要加的修改：value_->value*类型，然后多态
+/*xml的词法语法不在此赘述，但是：
+namespace我还没搞懂
+attr就是一个需要检查内部不允许嵌套的object；需要加嵌套检测(notation层)
+procinst就是有特殊标记的不允许嵌套的object；
+cdata和comment都是string_t的翻版，只不过是在dump的时候不一样
+所以：
+struct xml_value : public notation::value {
+//namespace承载的meta信息
+//如果cdata和comment不加新节点，就要标记，否则不需要
+（调整union）
+}
+*/
+//到底要不要改成dom container，而且如何定位stdex::container？
+//上述所有行数记录均失效
+//NDT的注释是gpt给的，适合加入NDT的类型
+//后面还是得把is_null is_object is_array is_primitive之类的加回来，不然继承不好做
+//严重怀疑json_pointer是不是json高相关的，因为这一大堆内容我感觉不是DOM无关的
