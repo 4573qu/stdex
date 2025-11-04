@@ -1229,31 +1229,17 @@ public:
 		}
 		throw std::invalid_argument("Cannot use value()");
 	}
-
-    template < class ValueType, class KeyType, class ReturnType = typename value_return_type<ValueType>::type,
-               detail::enable_if_t <
-                   detail::is_transparent<object_comparator_t>::value
+	template <class _Tp,class _Key,class _Return=typename value_return_type<_Tp>::type,std::enable_if_t<is_transparent<object_comparator_t>::value
                    && !detail::is_json_pointer<KeyType>::value
-                   && is_comparable_with_object_key<KeyType>::value
-                   && detail::is_getable<basic_json_t, ReturnType>::value
-                   && !std::is_same<value_t, detail::uncvref_t<ValueType>>::value, int > = 0 >
-    ReturnType value(KeyType && key, ValueType && default_value) const
-    {
-        // value only works for objects
-        if (JSON_HEDLEY_LIKELY(data_.type_==NDT_OBJECT))
-        {
-            // if key is found, return value and given default value otherwise
-            const auto it = find(std::forward<KeyType>(key));
-            if (it != end())
-            {
-                return it->template get<ReturnType>();
-            }
-
-            return std::forward<ValueType>(default_value);
-        }
-
-        JSON_THROW(type_error::create(306, detail::concat("cannot use value() with ", type_name()), this));
-    }
+                   && is_comparable_with_object_key<KeyType>::value && is_getable<self_t,_Return>::value && !std::is_same_v<notation_data_type,uncvref_t<_Tp>>,int> = 0>
+	_Return value(_Key&& key,_Tp&& default_value) const {
+		if (data_.type_==NDT_OBJECT) {
+			const auto it=find(std::forward<_Key>(key));
+			if (it!=end()) return it->template get<_Return>();
+			return std::forward<_Tp>(default_value);
+		}
+		throw std::invalid_argument("Cannot use value()");
+	}
     template < class ValueType, detail::enable_if_t <
                    detail::is_getable<basic_json_t, ValueType>::value
                    && !std::is_same<value_t, detail::uncvref_t<ValueType>>::value, int > = 0 >
@@ -2438,7 +2424,6 @@ private:
 
 //json_serializer
 //json_parser
-//json_iterator
 //json_sax_dom_parser
 //json_sax_dom_callback_parser
 //json_sax_acceptor
@@ -2455,7 +2440,6 @@ private:
 #endif
 //1440 754(virtual) 811(SNIFAE正序修改,801的template没改完)
 //detail::escape是path_escape
-//json::pointer
 //iterator_proxy
 //pointer:JSON_NO_IO相关
 //一个扩展notation_data_type的具体实现：提供策略，以及notation::operator =里调用virtual bool support(NDT)，来实现无缝转换。子类重写support函数。
@@ -2477,3 +2461,5 @@ struct xml_value : public notation::value {
 //NDT的注释是gpt给的，适合加入NDT的类型
 //后面还是得把is_null is_object is_array is_primitive之类的加回来，不然继承不好做
 //严重怀疑json_pointer是不是json高相关的，因为这一大堆内容我感觉不是DOM无关的
+//全搞完再搜一遍json
+//1243没失效
