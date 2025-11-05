@@ -21,3 +21,27 @@ double_ended_heap
 
 lock_free_queue
 concurrent_hash_map
+
+versioned_map(from ds-persistent*)
+
+bloom_filter
+skip_list
+lru_cache
+circular_array<-ring_buffer?
+binary_heap<-heap?
+rb_tree->segment_tree
+b_tree(->database?)
+sparse_table
+fibonacci_heap
+kd_tree
+persistent_*
+binomial_heap
+pairing_heap
+leftist_heap
+splay_tree
+treap
+double_ended_heap
+可并堆
+
+lock_free_queue
+concurrent_hash_map

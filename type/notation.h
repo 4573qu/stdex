@@ -783,7 +783,7 @@ public:
 	using boolean_t=_Boolean;
 	using string_t=_String;
 	using const_char_t=const typename string_t::value_type*;
-	using char_t=
+	//using char_t=typename string_t::value_type*;
 	using array_t=_Array;
 	using object_t=_Object;
 	using object_comparator_t=typename object_t::key_compare;
