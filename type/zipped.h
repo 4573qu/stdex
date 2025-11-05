@@ -1,9 +1,10 @@
-//Last Modified At 2025/10/31
-//@Version 1.0.0.0
+//Last Modified At 2025/11/06
+//@Version 1.1.0.0
 #ifndef _STDEX_TYPE_ZIPPED_H_
 #define _STDEX_TYPE_ZIPPED_H_ 1
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -13,12 +14,14 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <queue>
 #include <stdexcept>
 #include <string>
 #include <system_error>
 #include <vector>
 
+#include "../bitwise/bit_reader.h"//At Least 1.0
 #include "../integrity/crc.h"//At Least 1.0
 
 namespace stdex {
@@ -29,7 +32,7 @@ namespace zipped {
 
 class deflate_compressor {
 private:
-	struct bit_reader {
+	/*struct bit_reader {
 		const uint8_t* data_;
 		std::size_t size_;
 		std::size_t bitpos_;
@@ -44,15 +47,15 @@ private:
 			return val;
 		}
 		void byte_align() { bitpos_=(bitpos_+7)&~7; }
-	};
+	};*/
 	struct huffman {
 		std::vector<uint16_t> table_;
 		std::vector<uint8_t> length_;
 		int maxbits_;
-		int decode(bit_reader& br) const {
+		int decode(bitwise::bit_reader& br) const {
 			int code=0,len=1;
 			for (;len<=maxbits_;len++) {
-				code|=br.read_bits(1)<<(len-1);
+				code|=br.read_bits<uint8_t>(1)<<(len-1);
 				for (std::size_t i=0;i<length_.size();i++) {
 					if (length_[i] == len && table_[i]==code) return (int)i;
 				}
@@ -79,7 +82,7 @@ private:
 		h.length_.resize(32,5);
 		build_canonical_table(h);
 		return h;
-    }
+	}
 	static void build_canonical_table(huffman& h) {
 		int MAXBITS=0;
 		for (uint8_t it:h.length_) {
@@ -179,15 +182,15 @@ public:
 			if (((cmf<<8)+flg)%31!=0) throw std::runtime_error("zlib FCHECK");
 			offset=2;
 		}
-		bit_reader br(&compressed[offset],compressed.size()-offset);
+		bitwise::bit_reader br(&compressed[offset],compressed.size()-offset,bitwise::bit_reader::BO_LSB);
 		std::vector<uint8_t> decompressed;
 		bool last=false;
 		while (!last) {
-			last=br.read_bits(1);
-			int btype=br.read_bits(2);
+			last=br.read_bits<uint32_t>(1);
+			int btype=br.read_bits<uint32_t>(2);
 			if (btype==0) {
 				br.byte_align();
-				std::size_t byte_pos=offset+(br.bitpos_/8);
+				std::size_t byte_pos=offset+(br.bitpos()/8);
 				if (byte_pos+4>compressed.size()) throw std::runtime_error("stored overflow");
 				uint16_t len=(uint16_t)compressed[byte_pos]|((uint16_t)compressed[byte_pos+1]<<8);
 				uint16_t nlen=(uint16_t)compressed[byte_pos+2]|((uint16_t)compressed[byte_pos+3]<<8);
@@ -195,7 +198,7 @@ public:
 				byte_pos+=4;
 				if (byte_pos+len>compressed.size()) throw std::runtime_error("stored beyond");
 				decompressed.insert(decompressed.end(),&compressed[byte_pos],&compressed[byte_pos+len]);
-				br.bitpos_=(byte_pos+len-offset)*8;
+				br.bitpos()=(byte_pos+len-offset)*8;
 				continue;
 			}
 			huffman litlen,dist;
@@ -203,12 +206,12 @@ public:
 				litlen=build_fixed_tree_LIT();
 				dist=build_fixed_tree_DIST();
 			} else if (btype==2) {
-				int HLIT=br.read_bits(5)+257;
-				int HDIST=br.read_bits(5)+1;
-				int HCLEN=br.read_bits(4)+4;
+				int HLIT=br.read_bits<uint32_t>(5)+257;
+				int HDIST=br.read_bits<uint32_t>(5)+1;
+				int HCLEN=br.read_bits<uint32_t>(4)+4;
 				static const int order[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
 				std::vector<uint8_t> code_len(19,0);
-				for (int i=0;i<HCLEN;i++) code_len[order[i]]=br.read_bits(3);		
+				for (int i=0;i<HCLEN;i++) code_len[order[i]]=br.read_bits<uint32_t>(3);		
 				huffman code_tree;
 				code_tree.length_=code_len;
 				build_canonical_table(code_tree);
@@ -218,14 +221,14 @@ public:
 					int sym=code_tree.decode(br);
 					if (sym<=15) ll_len.push_back(sym);
 					else if (sym==16) {
-						int rep=3+br.read_bits(2);
+						int rep=3+br.read_bits<uint32_t>(2);
 						uint8_t prev=ll_len.empty()?0:ll_len.back();
 						while (rep--) ll_len.push_back(prev);
 					} else if (sym==17) {
-						int rep=3+br.read_bits(3);
+						int rep=3+br.read_bits<uint32_t>(3);
 						while(rep--) ll_len.push_back(0);
 					} else if (sym==18) {
-						int rep=11+br.read_bits(7);
+						int rep=11+br.read_bits<uint32_t>(7);
 						while(rep--) ll_len.push_back(0);
 					}
 				}
@@ -250,11 +253,11 @@ public:
 				}
 				if (sym>285) throw std::runtime_error("bad length sym");
 				int len=lens[sym-257];
-				if (lext[sym-257]) len+=br.read_bits(lext[sym-257]);
+				if (lext[sym-257]) len+=br.read_bits<uint32_t>(lext[sym-257]);
 				int dist_sym=dist.decode(br);
 				if (dist_sym>29) throw std::runtime_error("bad dist sym");
 				int distv=dstbase[dist_sym];
-				if (dstext[dist_sym]) distv+=br.read_bits(dstext[dist_sym]);
+				if (dstext[dist_sym]) distv+=br.read_bits<uint32_t>(dstext[dist_sym]);
 				if ((std::size_t)distv>decompressed.size()) throw std::runtime_error("dist too far");
 				std::size_t start=decompressed.size()-distv;
 				for (int i=0;i<len;i++) decompressed.push_back(decompressed[start+i]);
@@ -272,42 +275,202 @@ public:
 };
 
 class bzip2_compressor {
-	struct huffman_node {
-		int symbol_;
-		int frequency_;
-		std::shared_ptr<huffman_node> left_;
-		std::shared_ptr<huffman_node> right_;
-		huffman_node(int s,int f) : symbol_(s) , frequency_(f) , left_(nullptr) , right_(nullptr) { }
-		huffman_node(std::shared_ptr<huffman_node> l,std::shared_ptr<huffman_node> r) : symbol_(-1) , frequency_(l->frequency_+r->frequency_) , left_(l) , right_(r) { }
-		bool is_leaf() const { return symbol_!=-1; }
+	static constexpr uint64_t block_magic_=0x314159265359ULL;
+	static constexpr uint64_t end_magic_=0x177245385090ULL;
+	struct bz2_block_header {
+		uint32_t crc_;
+		bool randomized_;
+		uint32_t original_ptr_;
 	};
-	struct huffman_compare {
-		bool operator ()(const std::shared_ptr<huffman_node>& a,const std::shared_ptr<huffman_node>& b) {
-			return a->frequency_>b->frequency_;
-		}
-	};
-	static void build_huffman_codes(const std::shared_ptr<huffman_node>& node,const std::string& code,std::vector<std::string>& codes) {
-		if (node->is_leaf()) codes[node->symbol_]=code;
-		else {
-			build_huffman_codes(node->left_,code+"0",codes);
-			build_huffman_codes(node->right_,code+"1",codes);
+	bool next_block(bitwise::bit_reader& br,bz2_block_header& header) {
+		uint64_t marker=br.read_bits<uint64_t>(48);
+		if (marker==end_magic_) return false;
+		if (marker!=block_magic_) throw std::runtime_error("Bad block magic");
+		header.crc_=read_bits<uint32_t>(32);
+		header.randomised_=read_bits<uint8_t>(1);
+		header.original_ptr_=read_bits<uint32_t>(24);
+		return true;
+	}
+	static void read_used_bytes(bitwise::bit_reader& br,std::array<bool,256>& in_use) {
+		in_use.fill(false);
+		std::array<bool,16> in_use_group{};
+		for (int i=0;i<16;i++) in_use_group[i]=br.read_bits<uint8_t>(1);
+		for (int g=0;g<16;g++) {
+			if (in_use_group[g]) {
+				for (int i=0;i<16;i++) in_use[g*16+i]=bits.read_bits<uint8_t>(1);
+			}
 		}
 	}
-	static std::shared_ptr<huffman_node> build_huffman_tree(const std::vector<int>& frequencies) {
-		std::priority_queue<std::shared_ptr<huffman_node>,std::vector<std::shared_ptr<huffman_node>>,huffman_compare> pq;
-		for (std::size_t i=0;i<frequencies.size();i++) {
-			if (frequencies[i]>0) pq.push(std::make_shared<huffman_node>(static_cast<int>(i),frequencies[i]));
+	struct group_table {
+		int min_len_=0;
+		int max_len_=0;
+		std::vector<int> limit_;
+		std::vector<int> base_;
+		std::vector<int> perm_;
+	};
+	struct huffman_tables {
+		int n_groups_{};
+		int n_selectors_{};
+		int alpha_size_{};
+		std::vector<uint8_t> selectors_;
+		std::vector<std::vector<uint8_t>> code_lengths_;
+		std::vector<group_table> groups_;
+	};
+
+	inline huffman_tables read_tables(bitwise::bit_reader& br,const std::array<bool,256>& in_use) {
+		huffman_tables ht;
+		ht.n_groups_=br.read_bits<uint32_t>(3);
+		if (ht.n_groups_<2 || bits.n_groups_>6) throw std::runtime_error("Invalid nGroups");
+		ht.n_selectors_=br.read_bits<uint32_t>(15);
+		ht.selectors_.resize(ht.n_selectors_);
+		std::vector<uint8_t> mtf_list(ht.n_groups);
+		std::iota(mtf_list.begin(),mtf_list.end(),0);
+		for (int i=0;i<ht.n_selectors_;i++) {
+			int cnt=0;
+			while (br.read_bits<uint8_t>(1)) cnt++;
+			uint8_t v=mtf_list[cnt++];
+			ht.selectors_[i]=v;
+			mtf_list.erase(mtf_list.begin()+cnt);
+			mtf_list.insert(mtf_list.begin(),v);
 		}
-		while (pq.size()>1) {
-			auto left=pq.top();
-			pq.pop();
-			auto right=pq.top();
-			pq.pop();
-			pq.push(std::make_shared<huffman_node>(left,right));
+		int in_use_count=0;
+		for(bool it:in_use) {
+			if(it) in_use_count++;
 		}
-		return pq.top();
+		ht.alpha_size_=in_use_count+2;
+		ht.code_lengths.assign(ht.n_groups_,std::vector<uint8_t>(ht.alpha_size_));
+		for (int t=0;t<ht.n_groups;t++) {
+			int curr=br.read_bits<uint32_t>(5);
+			for (int i=0;i<ht.alpha_size;i++) {
+				while (br.read_bits<uint8_t>(1)) curr+=br.read_bits<uint8_t>(1)?-1:1;
+				ht.code_lengths_[t][i]=static_cast<uint8_t>(curr);
+			}
+		}
+		ht.groups_.resize(ht.n_groups_);
+		for (int g=0;g<ht.n_groups_;g++) {
+			auto& len=ht.code_lengths_[g];
+			auto& G=ht.groups_[g];
+			int min_len=32,max_len=0;
+			for (uint8_t it:len) {
+				if (it>0) {
+					min_len=std::min(min_len,(int)it);
+					max_len=std::max(max_len,(int)it);
+				}
+			}
+			G.min_len_=min_len;
+			G.max_len_=max_len;
+			G.limit_.assign(max_len+2,0);
+			G.base_.assign(max_len+2,0);
+			for (int l=min_len;l<=max_len;l++) {
+				for (int i=0;i<ht.alpha_size_;i++) {
+					if (len[i]==l) G.perm_.push_back(i);
+				}
+			}
+			int vec=0;
+			for (int l=min_len;l<=max_len;l++) {
+				int n=std::count(len.begin(),len.end(),l);
+				vec=(vec+n)<<1;
+				G.limit_[l]=vec-1;
+				G.base_[l+1]=vec;
+			}
+		}
+		return ht;
 	}
-	static void serialize_huffman_tree(const std::shared_ptr<huffman_node>& node,std::vector<bool>& bit_stream) {
+	static int alphabet_size(const std::array<bool,256>& in_use) {
+		int n=0;
+		for(bool it:in_use) {
+			if(it) n++;
+		}
+		return n+2;
+	}
+	static int decode_symbol(bitwise::bit_reader& bits,const group_table& H) {
+		int length=H.min_len_;
+		int code=bits.read_bits<int>(length);
+		while (length<=H.max_len_ && code>H.limit_[length]) {
+			length++;
+			code=(code<<1) | bits.read_bits<uint8_t>(1);
+		}
+		if (length>H.max_len_) throw std::runtime_error("Huffman decode overflow");
+		int index=code-H.base_[length];
+		if (index<0 || index>=(int)H.perm_.size()) throw std::runtime_error("Huffman decode index out of range");
+		return H.perm_[index];
+	}
+	static std::vector<uint8_t> decode_huffman_data(bitwise::bit_reader& bits,const huffman_tables& ht,const std::array<bool,256>& in_use) {
+		const int alpha_size=alphabet_size(in_use);
+		const int group_switch=50;
+		const std::size_t buf_limit=100000 * 9;
+		std::vector<uint8_t> result;
+		result.reserve(buf_limit);
+		int sel_index=0,group_pos=0;
+		group_table const* H=&ht.groups_[ht.selectors_[0]];
+		int run_count=0;
+		int repeat_count=0;
+		while (1) {
+			if (group_pos==0) {
+				H=&ht.groups_[ht.selectors_[sel_index++]];
+				group_pos=group_switch;
+			}
+			group_pos--;
+			int next_sym=decode_symbol(br,*H);
+			if (next_sym==0 || next_sym==1) {
+				repeat_count=(repeat_count<<1)|next_sym;
+				continue;
+			}
+			if (repeat_count>0) {
+				int reps=repeat_count+1;
+				repeat_count=0;
+				uint8_t value=result.back();
+				result.insert(result.end(),reps,value);
+				continue;
+			}
+			if (next_sym-2==alpha_size-1) break;
+			result.push_back(static_cast<uint8_t>(next_sym-2));
+		}
+		return result;
+	}
+	static std::vector<uint8_t> inverse_bwt(const std::vector<uint8_t>& last,uint32_t original_ptr) {
+		const std::size_t n=last.size();
+		std::array<int,256> freq{};
+		for (uint8_t it:last) freq[it]++;
+		std::array<int,256> cum{};
+		int sum=0;
+		for (int i=0;i<256;i++) {
+			cum[i]=sum;
+			sum+=freq[i];
+		}
+		std::vector<int> next(n);
+		std::array<int,256> occ{};
+		for (std::size_t i=0;i<n;i++) {
+			uint8_t c=last[i];
+			next[cum[c]+occ[c]++]=i;
+		}
+		std::vector<uint8_t> result(n);
+		std::size_t j=original_ptr;
+		for (std::size_t i=0;i<n;i++) {
+			j=next[j];
+			result[i]=last[j];
+		}
+		return result;
+	}
+	static std::vector<uint8_t> undo_rle2(const std::vector<uint8_t>& data) {
+		std::vector<uint8_t> result;
+		result.reserve(data.size()*2);
+		std::size_t i=0;
+		while (i<data.size()) {
+			uint8_t v=data[i];
+			if (i+4<data.size() && data[i+1]==v && data[i+2]==v && data[i+3]==v) {
+				uint8_t count=data[i+4];
+				result.insert(result.end(),count+4,v);
+				i+=5;
+			} else {
+				result.push_back(v);
+				i++;
+			}
+		}
+		return out;
+	}
+
+	/*static void serialize_huffman_tree(const std::shared_ptr<huffman_node>& node,std::vector<bool>& bit_stream) {
 		if (node->is_leaf()) {
 			bit_stream.push_back(true);
 			for (int i=0;i<8;i++) bit_stream.push_back((node->symbol_>>i)&1);
@@ -332,7 +495,7 @@ class bzip2_compressor {
 			if (!left || !right) return nullptr;
 			return std::make_shared<huffman_node>(left,right);
 		}
-	}
+	}*/
 	static std::vector<uint8_t> inverse_bwt(const std::vector<uint8_t>& data) {
 		if (data.empty()) return data;
 		if (data.size()<4) throw std::runtime_error("Invalid BWT data!");
@@ -537,37 +700,33 @@ public:
 		return compressed;
 	}
 	static std::vector<uint8_t> decompress(const std::vector<uint8_t>& compressed) {
-		if (compressed.size()<10) throw std::runtime_error("Invalid BZIP2 data!");
-		if (compressed[0]!='B' || compressed[1]!='Z' || compressed[2]!='h') throw std::runtime_error("Invalid BZIP2 header!");
-		int level=compressed[3]-'0';
-		if (level<1 || level>9) throw std::runtime_error("Invalid BZIP2 compression level!");
-		if (compressed.size()<12) throw std::runtime_error("Incomplete BZIP2 data!");
-		uint32_t expected_crc=((uint32_t)compressed[compressed.size()-8]<<24)|((uint32_t)compressed[compressed.size()-7]<<16)|((uint32_t)compressed[compressed.size()-6]<<8)|(uint32_t)compressed[compressed.size()-5];
-		uint32_t original_size=((uint32_t)compressed[compressed.size()-4]<<24)|((uint32_t)compressed[compressed.size()-3]<<16)|((uint32_t)compressed[compressed.size()-2]<<8)|(uint32_t)compressed[compressed.size()-1];
-		std::vector<uint8_t> compressed_data(compressed.begin()+4,compressed.end()-8);
-		auto complete_bit_stream=bytes_to_bits(compressed_data,compressed_data.size()*8);
-		std::size_t bit_pos=0;
-		uint32_t tree_bit_count=0;
-		for (int i=0;i<32 && bit_pos<complete_bit_stream.size();i++) {
-			if (complete_bit_stream[bit_pos++]) tree_bit_count|=(1<<i);
+		bitwise::bit_reader br(compressed,bitwise::bit_reader::BO_MSB);
+		char header[4];
+		if (compressed.size()<4) throw std::runtime_error("Invalid BZIP2 header");
+		header[0]=br.read_u8();
+		header[1]=br.read_u8();
+		header[2]=br.read_u8();
+		header[3]=br.read_u8();
+		if (header[0]!='B' || header[1]!='Z' || header[2]!='h' || header[3]<'1' || header[3]>'9') throw std::runtime_error("Invalid BZIP2 header");
+		//int level=hdr[3]-'0';
+		std::vector<uint8_t> result;
+		uint32_t stream_crc=0;
+		while (1) {
+			bz2_block_header blk{};
+			if (!next_block(br,blk)) break;
+			std::array<bool,256> in_use;
+			read_used_bytes(br,in_use);
+			huffman_tables hts=read_huffman_tables(br,in_use);
+			auto last_column=decode_huffman_data(br,hts,in_use);
+			auto bwt_undo=inverse_bwt(last_column,blk.original_ptr_);
+			auto expanded =undo_rle2(bwt_undo);
+			uint32_t computed_crc=integrity::crc32.calculate(expanded);
+			if (computed_crc!=blk.crc_) throw std::runtime_error("Block CRC mismatch");
+			stream_crc=((stream_crc<<1)|(stream_crc>>31))^computed_crc;//stream_crc^=computed_crc;
+			result.insert(result.end(),expanded.begin(),expanded.end());
 		}
-		std::vector<bool> tree_bit_stream(complete_bit_stream.begin()+bit_pos,complete_bit_stream.begin()+bit_pos+tree_bit_count);
-		std::size_t tree_bit_pos=0;
-		auto huffman_tree=deserialize_huffman_tree(tree_bit_stream,tree_bit_pos);
-		if (!huffman_tree) throw std::runtime_error("Failed to deserialize Huffman tree!");
-		uint32_t data_bit_count=0;
-		for (int i=0;i<32 && bit_pos<complete_bit_stream.size();i++) {
-			if (complete_bit_stream[bit_pos++]) data_bit_count|=(1<<i);
-		}
-		std::vector<bool> data_bit_stream(complete_bit_stream.begin()+bit_pos,complete_bit_stream.begin()+bit_pos+data_bit_count);
-		std::vector<uint8_t> transformed=huffman_decode(data_bit_stream,huffman_tree,original_size);
-		std::vector<uint8_t> result=transformed;
-		result=inverse_rle(result);
-		result=inverse_mtf(result);
-		result=inverse_bwt(result);
-		//uint32_t expected_crc=(static_cast<uint32_t>(compressed[compressed.size()-4])<<24)|(static_cast<uint32_t>(compressed[compressed.size()-3])<<16)|(static_cast<uint32_t>(compressed[compressed.size()-2])<<8)|static_cast<uint32_t>(compressed[compressed.size()-1]);
-		uint32_t actual_crc=integrity::crc32::calculate(result);
-		if (expected_crc!=actual_crc) throw std::runtime_error("BZIP2 CRC32 mismatch!");
+		uint32_t stored_stream_crc=br.read_u32();
+		if (stored_stream_crc!=stream_crc) throw std::runtime_error("Stream CRC mismatch");
 		return result;
 	}
 };
@@ -639,27 +798,27 @@ struct data_descriptor {
 };
 
 struct zip64_end_of_central_directory {
-    uint32_t signature_;
-    uint64_t size_of_record_;
-    uint16_t version_made_by_;
-    uint16_t version_needed_;
-    uint32_t disk_number_;
-    uint32_t disk_number_start_;
-    uint64_t num_entries_on_disk_;
-    uint64_t total_entries_;
-    uint64_t central_dir_size_;
-    uint64_t central_dir_offset_;
-    static constexpr uint32_t expected_signature_=0x06064B50;
-    bool valid() const noexcept { return signature_==expected_signature_; }
+	uint32_t signature_;
+	uint64_t size_of_record_;
+	uint16_t version_made_by_;
+	uint16_t version_needed_;
+	uint32_t disk_number_;
+	uint32_t disk_number_start_;
+	uint64_t num_entries_on_disk_;
+	uint64_t total_entries_;
+	uint64_t central_dir_size_;
+	uint64_t central_dir_offset_;
+	static constexpr uint32_t expected_signature_=0x06064B50;
+	bool valid() const noexcept { return signature_==expected_signature_; }
 };
 
 struct zip64_end_of_central_directory_locator {
-    uint32_t signature_;
-    uint32_t disk_with_eocd_;
-    uint64_t offset_of_eocd_;
-    uint32_t total_disks_;
-    static constexpr uint32_t expected_signature_=0x07064B50;
-    bool valid() const noexcept { return signature_==expected_signature_; }
+	uint32_t signature_;
+	uint32_t disk_with_eocd_;
+	uint64_t offset_of_eocd_;
+	uint32_t total_disks_;
+	static constexpr uint32_t expected_signature_=0x07064B50;
+	bool valid() const noexcept { return signature_==expected_signature_; }
 };
 #pragma pack(pop)
 
@@ -671,6 +830,7 @@ enum compression_method : uint16_t {
 	//CM_REDUCED_3=4,
 	//CM_REDUCED_4=5,
 	//CM_IMPLODED=6,
+	//CM_RESERVED_FOR_TOKENIZING=7,
 	CM_DEFLATED=8,
 	//CM_ENHANCED_DEFLATED=9,
 	//CM_PKWARE_DCL_IMPLODED=10,
@@ -678,6 +838,11 @@ enum compression_method : uint16_t {
 	//CM_LZMA=14,
 	//CM_IBM_TERSE=18,
 	//CM_IBM_LZ77=19,
+	//CM_ZSTD=93,
+	//CM_XZ=95,
+	//CM_JPEG_RECOMPRESSION=96,
+	//CM_WAV_PACK=97,
+	//CM_PPMD=98,
 };
 
 enum compression_level : int {
@@ -833,11 +998,19 @@ public:
 		if (method_==CM_STORED || data_.empty()) return;
 		switch (method_) {
 			case CM_DEFLATED: {
-				data_=deflate_compressor::decompress(data_,true);
+				try {
+					data_=deflate_compressor::decompress(data_,true);
+				} catch (const std::exception& e) {
+					throw std::runtime_error("Deflated decompression failed:"+e.what());
+				}
 				break;
 			}
 			case CM_BZIP2: {
-				data_=bzip2_compressor::decompress(data_);
+				try {
+					data_=bzip2_compressor::decompress(data_);
+				} catch (const std::exception& e) {
+					throw std::runtime_error("BZIP2 decompression failed:"+e.what());
+				}
 				break;
 			}
 			default: throw std::runtime_error("Unsupported compression method for decompression!");
@@ -1278,19 +1451,7 @@ public:
 		//return parse_central_directory(data,size,&eocd_tmp);
 	}
 	std::vector<uint8_t> extract(const file_info& file) const {
-		
-		
 		size_t off = static_cast<size_t>(file.local_header_offset());
-printf("[extract-debug] %s  lhoff=%zu  data_size=%zu  files_buf=%zu\n",
-       file.filename().c_str(),
-       off,
-       data_.size(),
-       files_.size());
-if (off >= data_.size()) {
-    printf("[extract-debug] ERROR off >= data size!\n");
-    throw std::runtime_error("invalid local header offset");
-}
-		
 		if (file.local_header_offset()>=data_.size()) throw std::runtime_error("invalid local header offset");
 		std::size_t lhoff=static_cast<std::size_t>(file.local_header_offset());
 		if (lhoff>=data_.size()) throw std::runtime_error("invalid local header offset");
@@ -1325,7 +1486,7 @@ if (off >= data_.size()) {
 			case CM_DEFLATED: return deflate_compressor::decompress(compressed_data,true);
 			case CM_BZIP2: return bzip2_compressor::decompress(compressed_data);
 			default: throw std::runtime_error("unsupported compression method");
-    	}	
+		}	
 	}
 	void create() {
 		files_.clear();
