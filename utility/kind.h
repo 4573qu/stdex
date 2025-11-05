@@ -72,8 +72,12 @@ struct name : stdex::utility::kind_derived<name,base> { \
 	__VA_ARGS__ \
 };
 
-#define _STDEX_KIND_VALUE(name,value) static constexpr name name{value};
-#define _STDEX_KIND_VALUE_AUTO(name) static constexpr name name{stdex::utility::kind_derived<std::decay_t<decltype(name)>,std::decay_t<decltype(name)>>::auto_start_};
+#define _STDEX_KIND_VALUE(name,value) \
+static_assert(std::is_base_of<stdex::utility::kind<decltype(*this),typename decltype(*this)::value_type>,decltype(*this)>::value,"Cannot use _STDEX_KIND_VALUE outside _STDEX_KIND") \
+static constexpr name name{value};
+#define _STDEX_KIND_VALUE_AUTO(name) \
+static_assert(std::is_base_of<stdex::utility::kind<decltype(*this),typename decltype(*this)::value_type>,decltype(*this)>::value,"Cannot use _STDEX_KIND_VALUE outside _STDEX_KIND") \
+static constexpr name name{stdex::utility::kind_derived<std::decay_t<decltype(name)>,std::decay_t<decltype(name)>>::auto_start_};
 #define _STDEX_KIND_AUTO_START stdex::utility::kind_derived<std::decay_t<decltype(*this)>,std::decay_t<decltype(*this)>>::AUTO_START
 
 #endif
