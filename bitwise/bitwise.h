@@ -1,5 +1,6 @@
 #include "bit_field.h"
 #include "bit_iterator.h"
+#include "bit_reader.h"
 #include "bit_ref.h"
 #include "bits.h"
 #include "dynamic_bitset.h"
