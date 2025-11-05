@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "../container/reference.h"//At Least 1.0
+#include "../utility/kind.h"//At Least 1.0
 
 #if __has_include("../macros/cpp_compiler.h")
 #include "../macors/cpp_compiler.h"//At Least 1.0
@@ -56,19 +57,19 @@ template <typename _Tp,typename _Up,typename... _Args>class _Object=std::map, \
 template <typename _Tp>class _Allocator=std::allocator>
 #define _STDEX_NOTATION_DEF notation<_Int,_Float,_Boolean,_String,_Array,_Object,_Allocator>
 
-enum notation_data_type {
-	NDT_NULL,
-	NDT_INT,
-	NDT_FLOAT,
-	NDT_BOOL,
-	NDT_STRING,
-	NDT_ARRAY,
-	NDT_OBJECT,
+_STDEX_KIND(notation_data_type,int,
+	_STDEX_KIND_VALUE_AUTO(NDT_NULL)
+	_STDEX_KIND_VALUE_AUTO(NDT_INT)
+	_STDEX_KIND_VALUE_AUTO(NDT_FLOAT)
+	_STDEX_KIND_VALUE_AUTO(NDT_BOOL)
+	_STDEX_KIND_VALUE_AUTO(NDT_STRING)
+	_STDEX_KIND_VALUE_AUTO(NDT_ARRAY)
+	_STDEX_KIND_VALUE_AUTO(NDT_OBJECT)
 	//NDT_DISCARDED,
 	//NDT_XML_COMMENT,
 	//NDT_XML_CDATA,
 	//NDT_XML_PROCINST,
-}
+)
 
 class notation;
 
@@ -102,9 +103,9 @@ private:
 	internal_iterator<typename std::remove_const<_Tp>::type> it_ {};
 
 	virtual void set_begin() noexcept {
-		switch (object_->data_.type_) {
-			case NDT_OBJECT: it_.object_iterator_=object_->data_.value_.object_->begin();break;
-			case NDT_ARRAY: it_.array_iterator_=object_->data_.value_.array_->begin();break;
+		switch (object_->type()) {
+			case NDT_OBJECT: it_.object_iterator_=object_->value().object_->begin();break;
+			case NDT_ARRAY: it_.array_iterator_=object_->value().array_->begin();break;
 			case NDT_NULL: it_.primitive_iterator_.set_end();break;
 			case NDT_STRING:
 			case NDT_BOOL:
@@ -114,9 +115,9 @@ private:
 		}
 	}
 	virtual void set_end() noexcept {
-		switch (object_->data_.type_) {
-			case NDT_OBJECT: it_.object_iterator_=object_->data_.value_.object_->end();break;
-			case NDT_ARRAY: it_.array_iterator_=object_->data_.value_.array_->end();break;
+		switch (object_->type()) {
+			case NDT_OBJECT: it_.object_iterator_=object_->value().object_->end();break;
+			case NDT_ARRAY: it_.array_iterator_=object_->value().array_->end();break;
 			case NDT_NULL:
 			case NDT_STRING:
 			case NDT_BOOL:
@@ -132,7 +133,7 @@ public:
 	notation_iterator(notation_iterator&&) noexcept=default;
 	notation_iterator& operator =(notation_iterator&&) noexcept=default;
 	explicit notation_iterator(pointer object) noexcept : object_(object) {
-		switch (object_->data_.type_) {
+		switch (object_->type()) {
 			case NDT_OBJECT: it_.object_iterator_=typename object_t::iterator();break;
 			case NDT_ARRAY: it_.array_iterator_=typename array_t::iterator();break;
 			case NDT_NULL:
@@ -158,7 +159,7 @@ public:
 		return *this;
 	}
 	virtual ref operator *() const {
-		switch (object_->data_.type_) {
+		switch (object_->type()) {
 			case NDT_OBJECT: return it_.object_iterator_->second;
 			case NDT_ARRAY: return *it_.array_iterator_;
 			case NDT_NULL: throw std::runtime_error("Cannot get value");
@@ -173,7 +174,7 @@ public:
 		}
 	}
 	virtual pointer operator ->() const {
-		switch (object_->data_.type_) {
+		switch (object_->type()) {
 			case NDT_OBJECT: return &(it_.object_iterator_->second);
 			case NDT_ARRAY: return &*it_.array_iterator_;
 			case NDT_NULL:
@@ -188,7 +189,7 @@ public:
 		}
 	}
 	virtual notation_iterator& operator ++() {
-		switch (object_->data_.type_) {
+		switch (object_->type()) {
 			case NDT_OBJECT: std::advance(it_.object_iterator_,1);break;
 			case NDT_ARRAY: std::advance(it_.array_iterator_,1);break;
 			case NDT_NULL:
@@ -206,7 +207,7 @@ public:
 		return result;
 	}
 	virtual notation_iterator& operator --() {
-		switch (object_->data_.type_) {
+		switch (object_->type()) {
 			case NDT_OBJECT: std::advance(it_.object_iterator_,-1);break;
 			case NDT_ARRAY: std::advance(it_.array_iterator_,-1);break;
 			case NDT_NULL:
@@ -227,7 +228,7 @@ public:
 		static_assert(std::is_same<_Iterator,notation_iterator>::value || std::is_same<_Iterator,other_notation_iterator>::value,"You can only compare json iterators or const_iterators.");
 
 		if (object_!=other.object_)) throw std::invalid_argument("Cannot compare iterators of different containers");
-		switch (object_->data_.type_) {
+		switch (object_->type()) {
 			case NDT_OBJECT: return (it_.object_iterator_==other.it_.object_iterator_);
 			case NDT_ARRAY: return (it_.array_iterator_==other.it_.array_iterator_);
 			case NDT_NULL:
@@ -243,7 +244,7 @@ public:
 	}
 	virtual bool operator <(const notation_iterator& other) const {
 		if (object_!=other.object_)) throw std::invalid_argument("Cannot compare iterators of different containers");
-		switch (object_->data_.type_) {
+		switch (object_->type()) {
 			case NDT_OBJECT: throw std::invalid_argument("Cannot compare orders of object iterators");
 			case NDT_ARRAY: return (it_.array_iterator_<other.it_.array_iterator_);
 			case NDT_NULL:
@@ -264,7 +265,7 @@ public:
 		return !operator<(other);
 	}
 	virtual notation_iterator& operator +=(difference_type i) {
-		switch (object_->data_.type_) {
+		switch (object_->type()) {
 			case NDT_OBJECT: throw std::invalid_argument("Cannot use offsets with object iterators");
 			case NDT_ARRAY: std::advance(it_.array_iterator_,i);break;
 			case NDT_NULL:
@@ -295,7 +296,7 @@ public:
 		return result;
 	}
 	virtual difference_type operator -(const notation_iterator& other) const {
-		switch (object_->data_.type_) {
+		switch (object_->type()) {
 			case NDT_OBJECT: throw std::invalid_argument("Cannot use offsets with object iterators");
 			case NDT_ARRAY: return it_.array_iterator_-other.it_.array_iterator_;
 			case NDT_NULL:
@@ -307,7 +308,7 @@ public:
 		}
 	}
 	virtual ref operator [](difference_type n) const {
-		switch (object_->data_.type_) {
+		switch (object_->type()) {
 			case NDT_OBJECT: throw std::invalid_argument("Cannot use operator[] for object iterators");
 			case NDT_ARRAY: return *std::next(it_.array_iterator_,n);
 			case NDT_NULL: throw std::runtime_error("Cannot get value");
@@ -322,7 +323,7 @@ public:
 		}
 	}
 	const typename object_t::key_type& key() const {
-		if (object_->data_.type_==NDT_OBJECT) return it_.object_iterator_->first;
+		if (object_->is_object()) return it_.object_iterator_->first;
 		throw std::runtime_error("Cannot use key() for non-object iterators");
 	}
 	ref value() const {
@@ -450,7 +451,7 @@ private:
 	template <typename _Tp>
 	_Tp& get_unchecked(_Tp* ptr) const {
 		for (const auto& it:ref_tokens_) {
-			if (ptr->data_.type_==NDT_NULL) {
+			if (ptr->is_null()) {
 				const bool nums=std::all_of(it.begin(),it.end(),[](const typename string_t::value_type x) {
 					return std::isdigit(x);
 				});
@@ -462,7 +463,7 @@ private:
 					break;
 				}
 				case NDT_ARRAY: {
-					if (it=="-") ptr=&ptr->operator [](ptr->data_.value_.array_->size());
+					if (it=="-") ptr=&ptr->operator [](ptr->value().array_->size());
 					else ptr=&ptr->operator [](array_index<_Tp>(it));
 					break;
 				}
@@ -602,16 +603,16 @@ private:
 	static void flatten(const string_t& ref_string,const _Tp& value,_Tp& result) {
 		switch (value.type()) {
 			case NDT_ARRAY: {
-				if (value.data_.value_.array_->empty()) result[ref_string]=nullptr;
+				if (value.value().array_->empty()) result[ref_string]=nullptr;
 				else {
-					for (std::size_t i=0;i<value.data_.value_.array_->size();i++) flatten(ref_string+string_t('/')+std::to_string(i),value.data_.value_.array_->operator [](i),result);
+					for (std::size_t i=0;i<value.value().array_->size();i++) flatten(ref_string+string_t('/')+std::to_string(i),value.value().array_->operator [](i),result);
 				}
 				break;
 			}
 			case NDT_OBJECT: {
-				if (value.data_.value_.object_->empty()) result[ref_string]=nullptr;
+				if (value.value().object_->empty()) result[ref_string]=nullptr;
 				else {
-					for (const auto& it:*value.data_.value_.object_) flatten(ref_string+string_t('/')+_STDEX_NOTATION_DEF::path_escape(it.first),it.second,result);
+					for (const auto& it:*value.value().object_) flatten(ref_string+string_t('/')+_STDEX_NOTATION_DEF::path_escape(it.first),it.second,result);
 				}
 				break;
 			}
@@ -629,10 +630,10 @@ private:
 
 	template <typename _Tp>
 	static _Tp unflatten(const _Tp& value) {
-		if (value.data_.type_!=NDT_OBJECT) throw std::invalid_argument("Only objects can be unflattened");
+		if (!value.is_object()) throw std::invalid_argument("Only objects can be unflattened");
 		_Tp result;
-		for (const auto& it:*value.data_.value_.object_) {
-			if (value.data_.type_==NDT_OBJECT || value.data_.type==NDT_ARRAY) throw std::invalid_argument("Values in object must be primitive");
+		for (const auto& it:*value.value().object_) {
+			if (!value.is_primitive()) throw std::invalid_argument("Values in object must be primitive");
 			notation_pointer(it.first).get_and_create(result)=it.second;
 		}
 		return result;
@@ -658,15 +659,10 @@ public:
 		});
 	}
 
-#ifndef JSON_NO_IO
-    /// @brief write string representation of the JSON pointer to stream
-    /// @sa https://json.nlohmann.me/api/basic_json/operator_ltlt/
-    friend std::ostream& operator<<(std::ostream& o, const json_pointer& ptr)
-    {
-        o << ptr.to_string();
-        return o;
-    }
-#endif
+	friend std::ostream& operator <<(std::ostream& o, const notation_pointer& ptr) {
+		o<<ptr.to_string();
+		return o;
+	}
 
 	notation_pointer& operator /=(const notation_pointer& other) {
 		ref_tokens_.insert(ref_tokens_.end(),other.ref_tokens_.begin(),other.ref_tokens_.end());
@@ -904,12 +900,12 @@ public:
 				while (!stack.empty()) {
 					notation current_item(std::move(stack.back()));
 					stack.pop_back();
-					if (current_item.data_.type_==NDT_ARRAY) {
-						std::move(current_item.data_.value_.array_->begin(),current_item.data_.value_.array_->end(),std::back_inserter(stack));
-						current_item.data_.value_.array_->clear();
-					} else if (current_item.data_.type_==NDT_OBJECT) {
-						for (auto&& it:*current_item.data_.value_.object_) stack.push_back(std::move(it.second));
-						current_item.data_.value_.object_->clear();
+					if (current_item.is_array()) {
+						std::move(current_item.value().array_->begin(),current_item.value().array_->end(),std::back_inserter(stack));
+						current_item.value().array_->clear();
+					} else if (current_item.is_object()) {
+						for (auto&& it:*current_item.value().object_) stack.push_back(std::move(it.second));
+						current_item.value().object_->clear();
 					}
 				}
 			}
@@ -927,10 +923,10 @@ public:
 	};
 	struct data {
 		notation_data_type type_=NDT_NULL;
-		value value_={};
-		data(const notation_data_type t) : type_(t) , value_(t) { }
+		std::shared_ptr<value> value_=std::make_shared<value>({});
+		data(const notation_data_type t) : type_(t) , value_(std::make_shared<value>(t)) { }
 		data(size_type cnt,const notation& val) : type_(NDT_ARRAY) {
-			value_.value_.array_=create<array_t>(cnt,val);
+			value_->value_.array_=create<array_t>(cnt,val);
 		}
 		data() noexcept { };
 		data(data_&&) noexcept=default;
@@ -938,56 +934,59 @@ public:
 		data& operator =(data_&&) noexcept=delete;
 		data& operator =(const data_&) noexcept=delete;
 		~data() noexcept {
-			value_.destroy(type_);
+			value_->destroy(type_);
 		}
 	};
-	data data_={};
 
+private:
+	std::make_shared<data> data_={};
+
+public:
 	notation(const notation_data_type t) : data_(t) { }
 	notation(std::nullptr_t=nullptr) noexcept : notation(NDT_NULL) { }	
 	template <typename _CompatibleType,typename _Tp=uncvref_t<_Compatible>,std::enable_if_t<!is_notation<_Up>::value && is_compatible_type<_Up>::value,int>=0>
 	notation(_Compatible&& val) noexcept {
 		if constexpr (std::is_same<_Up,int_t>::value || (std::is_convertible<_Up,int_t>::value && !std::is_same<_Up,float>::value && !std::is_same<_Up,double>::value && !std::is_same<_Up,float_t>::value)) { 
-			data_.type_=NDT_INT;
-			data_.value_.integer_=val;
+			data_().type_=NDT_INT;
+			value().integer_=val;
 		} else if constexpr (std::is_same<_Up,float_t>::value || std::is_same<_Up,float>::value || std::is_same<_Up,double>::value) { 
-			data_.type_=NDT_FLOAT;
-			data_.value_.float_=val;
+			data().type_=NDT_FLOAT;
+			value().float_=val;
 		} else if constexpr (std::is_same<_Up,boolean_t>::value) { 
-			data_.type_=NDT_BOOL;
-			data_.valur_.boolean_=val;
+			data().type_=NDT_BOOL;
+			value().boolean_=val;
 		} else if constexpr (std::is_same<_Up,string_t>::value) { 
-			data_.type_=NDT_STRING;
-			data_.val_.string_=create<string_t>(val);
+			data().type_=NDT_STRING;
+			value().string_=create<string_t>(val);
 		} else if constexpr (std::is_same<_Up,array_t>::value) { 
-			data_.type_=NDT_ARRAY;
-			data_.valur_.array_=create<array_t>(std::move(val));
+			data().type_=NDT_ARRAY;
+			value().array_=create<array_t>(std::move(val));
 		} else if constexpr (std::is_same<_Up,object_t>::value) { 
-			data_.type_=NDT_OBJECT;
-			data_.value_.object_=create<object_t>(std::move(val));
+			data().type_=NDT_OBJECT;
+			value().object_=create<object_t>(std::move(val));
 		} else {
-			data_.type_=NDT_NULL;
-			data_.value_=value_(data_.type_);
+			data().type_=NDT_NULL;
+			value()=value_(type());
 		}
 	}
 	notation(initializer_list_t init_list,bool type_deduction=true,notation_data_type manual_type=NDT_ARRAY) {
 		bool is_an_object=std::all_of(init_list.begin(),init_list.end(),[](const container::ref<notation>& element_ref) {
-			return element_ref->data_.type_==NDT_ARRAY && element_ref->size()==2 && (*element_ref)[static_cast<size_type>(0)].data_.type_==NDT_STRING;
+			return element_ref->is_array() && element_ref->size()==2 && (*element_ref)[static_cast<size_type>(0)].type()==NDT_STRING;
 		});
 		if (!type_deduction) {
 			if (manual_type==NDT_ARRAY) is_an_object=false;
 			if (manual_type==NDT_OBJECT && !is_an_object)) throw std::invalid_argument("Cannot create object from initializer_list");
 		}
 		if (is_an_object) {
-			data_.type_=NDT_OBJECT;
-			data_.value_=NDT_OBJECT;
+			data().type_=NDT_OBJECT;
+			value()=NDT_OBJECT;
 			for (auto& element_ref:init_list) {
 				auto element=element_ref.moved_or_copied();
-				data_.value_.object_->emplace(std::move(*((*element.data_.value_.array_)[0].data_.value_.string_)),std::move((*element.data_.value_.array_)[1]));
+				value().object_->emplace(std::move(*((*element.value().array_)[0].value().string_)),std::move((*element.value().array_)[1]));
 			}
 		} else {	  
-			data_.type_=NDT_ARRAY;
-			data_.value_.array_=create<array_t>(init_list.begin(),init_list.end());
+			data().type_=NDT_ARRAY;
+			value().array_=create<array_t>(init_list.begin(),init_list.end());
 		}
 	}
 	static notation array(initializer_list_t init_list={}) {
@@ -1000,8 +999,8 @@ public:
 	template <class _InputIT,typename std::enable_if<std::is_same<_InputIT,typename notation::iterator>::value || std::is_same<_InputIT,typename notation::const_iterator>::value,int>::type=0>
 	notation(_InputIT first,_InputIT last) {
 		if (first.object_!=last.object_) throw std::invalid_argument("Iterators are not compatible");
-		data_.type_=first.object_->data_.type_;
-		switch (data_.type_) {
+		data().type_=first.object_->type();
+		switch (type()) {
 			case NDT_INT:
 			case NDT_FLOAT:
 			case NDT_BOOL:
@@ -1014,13 +1013,13 @@ public:
 			case NDT_NULL:
 			default: break;
 		}
-		switch (data_.type_) {
-			case NDT_INT: data_.value_.integer_=first.object_->data_.value_.integer_;break;
-			case NDT_FLOAT: data_.value_.float_=first.object_->data_.value_.float_;break;
-			case NDT_BOOL: data_.value_.boolean_=first.object_->data_.value_.boolean_;break;
-			case NDT_STRING: data_.value_=*first.object_->data_.value_.string_;break;
-			case NDT_OBJECT: data_.value_.object_=create<object_t>(first.it_.object_iterator_,last.it_.object_iterator_);break;
-			case NDT_ARRAY: data_.value_.array_=create<array_t>(first.it_.array_iterator_,last.it_.array_iterator_);break;
+		switch (type()) {
+			case NDT_INT: value().integer_=first.object_->value().integer_;break;
+			case NDT_FLOAT: value().float_=first.object_->value().float_;break;
+			case NDT_BOOL: value().boolean_=first.object_->value().boolean_;break;
+			case NDT_STRING: value().string_=*first.object_->value().string_;break;
+			case NDT_OBJECT: value().object_=create<object_t>(first.it_.object_iterator_,last.it_.object_iterator_);break;
+			case NDT_ARRAY: value().array_=create<array_t>(first.it_.array_iterator_,last.it_.array_iterator_);break;
 			case NDT_NULL:
 			default: throw std::invalid_argument("Cannot construct notation with iterators");
 		}
@@ -1029,48 +1028,82 @@ public:
 	template <typename _NotationRef,std::enable_if_t<std::conjunction<is_notation_ref<_NotationRef>,std::is_same<typename _NotationRef::value_type,notation>>::value,int>=0>
 	notation(const _NotationRef& ref) : notation(ref.moved_or_copied()) {}
 	notation(const notation& other) {
-		data_.type_=other.data_.type_;
-		switch (data_.type_) {
-			case NDT_OBJECT: data_.value_=*other.data_.value_.object_;break;
-			case NDT_ARRAY: data_.value_=*other.data_.value_.array_;break;
-			case NDT_STRING: data_.value_=*other.data_.value_.string_;break;
-			case NDT_BOOL: data_.value_.boolean_=other.data_.value_.boolean_;break;
-			case NDT_INT: data_.value_.integer_=other.data_.value_.integer_;break;
-			case NDT_FLOAT: data_.value_.float_=other.data_.value_.float_;break;
+		data().type_=other.type();
+		switch (type()) {
+			case NDT_OBJECT: value()=*other.value().object_;break;
+			case NDT_ARRAY: value()=*other.value().array_;break;
+			case NDT_STRING: value()=*other.value().string_;break;
+			case NDT_BOOL: value()=other.value().boolean_;break;
+			case NDT_INT: value()=other.value().integer_;break;
+			case NDT_FLOAT: value()=other.value().float_;break;
 			case NDT_NULL: 
 			default: break;
 		}
 	}
 	notation(notation&& other) noexcept : data_(std::move(other.data_)) {
-		other.data_.type_=NDT_NULL;
-		other.data_.value_={};
+		other.data().type_=NDT_NULL;
+		other.value()={};
 	}
 	notation& operator =(notation other) noexcept (std::is_nothrow_move_constructible<notation_data_type>::value && std::is_nothrow_move_assignable<notation_data_type>::value && std::is_nothrow_move_constructible<value>::value && std::is_nothrow_move_assignable<value>::value) {
-		std::swap(data_.type_,other.data_.type_);
-		std::swap(data_.value_,other.data_.value_);
+		std::swap(data().type_,other.data().type_);
+		std::swap(value(),other.value());
 		return *this;
 	}
 	~notation() noexcept { }
 
+	data& data() {
+		return *data_;
+	}
+	value& value() {
+		return *(data().value_);
+	}
+
 	//virtual string_t dump(const int indent=-1,const char indent_char=' ',const bool ensure_ascii=false/*, const error_handler_t error_handler=error_handler_t::strict */) const=0;
-	constexpr notation_data_type type() const noexcept { return data_.type_; }
-	constexpr operator notation_data_type() const noexcept { return data_.type_; }
+	constexpr notation_data_type type() const noexcept { return data().type_; }
+	constexpr operator notation_data_type() const noexcept { return data().type_; }
+	virtual bool is_null() {
+		return type()==NDT_NULL;
+	}
+	virtual bool is_boolean() {
+		return type()==NDT_BOOL;
+	}
+	virtual bool is_string() {
+		return type()==NDT_STRING;
+	}
+	virtual bool is_integer() {
+		return type()==NDT_INT;
+	}
+	virtual bool is_float() {
+		return type()==NDT_FLOAT;
+	}
+	virtual bool is_number() {
+		return is_integer() || is_float();
+	}
+	virtual bool is_array() {
+		return type()==NDT_ARRAY;
+	}
+	virtual bool is_object() {
+		return type()==NDT_OBJECT;
+	}
+	virtual bool is_primitive() {
+		return !is_array() && !is_object();
+	}
 
 	boolean_t get_impl(boolean_t*) const {
-		if (data_.type_==NDT_BOOL) return data_.value_.boolean_;
+		if (is_boolean()) return value().boolean_;
 		throw std::invalid_argument("Type must be boolean");
 	}
 	object_t* get_impl_ptr(object_t*) noexcept {
-		return data_.type_==NDT_OBJECT?data_.value_.object_:nullptr;
+		return is_object()?value().object_:nullptr;
 	}
 	constexpr const object_t* get_impl_ptr(const object_t*) const noexcept {
-		return data_.type_==NDT_OBJECT?data_.value_.object_:nullptr;
+		return is_object()?value().object_:nullptr;
 	}
 	array_t* get_impl_ptr(array_t*) noexcept {
-		return data_.type_==NDT_ARRAY?data_.value_.array_:nullptr;
+		return is_array()?value().array_:nullptr;
 	}
 	constexpr const array_t* get_impl_ptr(const array_t*) const noexcept {
-		return data_.type_==NDT_ARRAY?data_.value_.array_:nullptr;
+		return is_array()?value().array_:nullptr;
 	}
 	string_t* get_impl_ptr(string_t*) noexcept {
 		return data_.type_==NDT_STRING?data_.value_.string_:nullptr;
@@ -1197,7 +1230,7 @@ public:
 		throw std::invalid_argument("Cannot use operator[]");
 	}
 
-	template <class _Tp,std::enable_if_t<!is_transparent<object_comparator_t>::value &&is_getable<self_t,_Tp>::value &&!std::is_same_v<notation_data_type,uncvref_t<_Tp>>,int> = 0>
+	template <class _Tp,std::enable_if_t<!is_transparent<object_comparator_t>::value &&is_getable<self_t,_Tp>::value &&!std::is_base_of<notation_data_type,uncvref_t<_Tp>>,int> = 0>
 	_Tp value(const typename object_t::key_type& key,const _Tp& default_value) const {
 		if (data_.type_==NDT_OBJECT) {
 			const auto it=find(key);
@@ -1207,7 +1240,7 @@ public:
 		throw std::invalid_argument("Cannot use value()");
 	}
 
-	template <class _Tp,class _Return=value_return_type<_Tp>,std::enable_if_t<!is_transparent<object_comparator_t>::value && is_getable<self_t,_Return>::value && !std::is_same_v<notation_data_type,uncvref_t<_Tp>>,int> = 0>
+	template <class _Tp,class _Return=value_return_type<_Tp>,std::enable_if_t<!is_transparent<object_comparator_t>::value && is_getable<self_t,_Return>::value && !std::is_base_of<notation_data_type,uncvref_t<_Tp>>,int> = 0>
 	_Return value(const typename object_t::key_type& key,_Tp && default_value) const {
 		if (data_.type_==NDT_OBJECT) {
 			const auto it=find(key);
@@ -1220,7 +1253,7 @@ public:
 
 	template <class _Tp,class _Key,std::enable_if_t<is_transparent<object_comparator_t>::value
                    && !detail::is_json_pointer<Key>::value
-                   && is_comparable_with_object_key<_Key>::value && is_getable<self_t,_Tp>::value && !std::is_same_v<notation_data_type,uncvref_t<_Tp>>,int> = 0>
+                   && is_comparable_with_object_key<_Key>::value && is_getable<self_t,_Tp>::value && !std::is_base_of<notation_data_type,uncvref_t<_Tp>>,int> = 0>
 	_Tp value(_Key&& key,const _Tp& default_value) const {
 		if (data_.type_==NDT_OBJECT) {
 			const auto it=find(std::forward<_Key>(key));
@@ -1231,7 +1264,7 @@ public:
 	}
 	template <class _Tp,class _Key,class _Return=typename value_return_type<_Tp>::type,std::enable_if_t<is_transparent<object_comparator_t>::value
                    && !detail::is_json_pointer<KeyType>::value
-                   && is_comparable_with_object_key<KeyType>::value && is_getable<self_t,_Return>::value && !std::is_same_v<notation_data_type,uncvref_t<_Tp>>,int> = 0>
+                   && is_comparable_with_object_key<KeyType>::value && is_getable<self_t,_Return>::value && !std::is_base_of<notation_data_type,uncvref_t<_Tp>>,int> = 0>
 	_Return value(_Key&& key,_Tp&& default_value) const {
 		if (data_.type_==NDT_OBJECT) {
 			const auto it=find(std::forward<_Key>(key));
@@ -1240,49 +1273,27 @@ public:
 		}
 		throw std::invalid_argument("Cannot use value()");
 	}
-    template < class ValueType, detail::enable_if_t <
-                   detail::is_getable<basic_json_t, ValueType>::value
-                   && !std::is_same<value_t, detail::uncvref_t<ValueType>>::value, int > = 0 >
-    ValueType value(const json_pointer& ptr, const ValueType& default_value) const
-    {
-        // value only works for objects
-        if (JSON_HEDLEY_LIKELY(data_.type_==NDT_OBJECT))
-        {
-            // if pointer resolves a value, return it or use default value
-            JSON_TRY
-            {
-                return ptr.get_checked(this).template get<ValueType>();
-            }
-            JSON_INTERNAL_CATCH (out_of_range&)
-            {
-                return default_value;
-            }
-        }
-
-        JSON_THROW(type_error::create(306, detail::concat("cannot use value() with ", type_name()), this));
-    }
-    template < class ValueType, class ReturnType = typename value_return_type<ValueType>::type,
-               detail::enable_if_t <
-                   detail::is_getable<basic_json_t, ReturnType>::value
-                   && !std::is_same<value_t, detail::uncvref_t<ValueType>>::value, int > = 0 >
-    ReturnType value(const json_pointer& ptr, ValueType && default_value) const
-    {
-        // value only works for objects
-        if (JSON_HEDLEY_LIKELY(data_.type_==NDT_OBJECT))
-        {
-            // if pointer resolves a value, return it or use default value
-            JSON_TRY
-            {
-                return ptr.get_checked(this).template get<ReturnType>();
-            }
-            JSON_INTERNAL_CATCH (out_of_range&)
-            {
-                return std::forward<ValueType>(default_value);
-            }
-        }
-
-        JSON_THROW(type_error::create(306, detail::concat("cannot use value() with ", type_name()), this));
-    }
+	template <class _Tp,std::enable_if_t<is_getable<self_t,_Tp>::value && !std::is_base_of<notation_data_type,uncvref_t<_Tp>>,int> = 0>
+	_Tp value(const notation_pointer& ptr,const _Tp& default_value) const {
+		if (is_object()) {
+            		try {
+				return ptr.get_checked(this).template get<_Tp>();
+			} catch (std::out_of_range&) {
+				return default_value;
+			}
+		}
+		throw std::invalid_argument("Cannot use value()");
+	}
+	template <class _Tp,class _Return=typename value_return_type<_Tp>::type,std::enable_if_t<is_getable<self_t,_Return>::value && !std::is_base_of<notation_data_type,uncvref_t<_Tp>>::value,int> = 0>
+	_Return value(const notation_pointer& ptr,_Tp && default_value) const {
+		if (is_object()) {
+			try {
+				return ptr.get_checked(this).template get<_Return>();
+			} catch (std::out_of_range&) {
+				return std::forward<_Tp>(default_value);
+		}
+		throw std::invalid_argument("Cannot use value()");
+	}
 
     template < class ValueType, class BasicJsonType, detail::enable_if_t <
                    detail::is_basic_json<BasicJsonType>::value
@@ -2441,7 +2452,7 @@ private:
 //1440 754(virtual) 811(SNIFAE正序修改,801的template没改完)
 //detail::escape是path_escape
 //iterator_proxy
-//pointer:JSON_NO_IO相关
+//1106:is_xxx & data() & value()正序修改点
 //一个扩展notation_data_type的具体实现：提供策略，以及notation::operator =里调用virtual bool support(NDT)，来实现无缝转换。子类重写support函数。
 //子类扩展要加的修改：value_->value*类型，然后多态
 /*xml的词法语法不在此赘述，但是：
@@ -2462,4 +2473,4 @@ struct xml_value : public notation::value {
 //后面还是得把is_null is_object is_array is_primitive之类的加回来，不然继承不好做
 //严重怀疑json_pointer是不是json高相关的，因为这一大堆内容我感觉不是DOM无关的
 //全搞完再搜一遍json
-//1243没失效
+//1296没失效
