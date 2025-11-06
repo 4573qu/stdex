@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/14
-//@Version 1.0.0.1
+//Last Modified At 2025/11/06
+//@Version 1.0.1.0
 #ifndef _STDEX_BITWISE_BIT_ITERATOR_H_
 #define _STDEX_BITWISE_BIT_ITERATOR_H_ 1
 
@@ -17,12 +17,20 @@ namespace bitwise {
 
 template <typename _Tp>
 class bit_iterator {
+public:
+	using iterator_category=std::random_access_iterator_tag;
+	using value_type=bool;
+	using difference_type=std::ptrdiff_t;
+	using pointer=bit_ref*;
+	using reference=bit_ref;
+
+private:
 	_Tp* data_;
 	int index_;
 
 public:
 #define _STDEX_BIT_ITERATOR_SIZE (sizeof(_Tp)*CHAR_BIT)
-	bit_iterator() noexcept : data_(nullptr) , index_(0) {}
+	bit_iterator() noexcept : data_(nullptr) , index_(0) { }
 	bit_iterator(_Tp& data,int index_=0) noexcept : data_(&data) , index(index_) {
 		while (index_<0) {
 			index_+=_STDEX_BIT_ITERATOR_SIZE;
@@ -32,10 +40,6 @@ public:
 			index_-=_STDEX_BIT_ITERATOR_SIZE;
 			data_++;
 		}
-	}
-
-	bit_ref operator *() const noexcept {
-		return bit_ref(*data_,index_);
 	}
 
 	bit_iterator& operator ++() noexcept {
@@ -86,7 +90,7 @@ public:
 	bit_iterator operator -(std::ptrdiff_t n) const noexcept {
 		return bit_iterator(*this)-=n;
 	}
-	std::ptrdiff_t operator -(const bit_iterator& other) const noexcept {
+	difference_type operator -(const bit_iterator& other) const noexcept {
 		return (data_-other.data_)*_STDEX_BIT_ITERATOR_SIZE+(index_-other.index_);
 	}
 	bool operator ==(const bit_iterator& other) const noexcept {
@@ -108,6 +112,10 @@ public:
 	bool operator >=(const bit_iterator& other) const noexcept {
 		return !(*this<other);
 	}
+	reference operator *() const noexcept {
+		return bit_ref(*data_,index_);
+	}
+	pointer operator ->() const noexcept=delete;
 #undef _STDEX_BIT_ITERATOR_SIZE
 };
 
