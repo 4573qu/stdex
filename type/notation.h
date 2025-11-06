@@ -76,7 +76,7 @@ class notation;
 template <typename>
 struct is_notation : std::false_type {};
 template <>
-struct is_notation<notation> : std::true_type {};
+struct is_notation<_STDEX_NOTATION_DEF> : std::true_type {};
 
 template <typename _Tp>
 class notation_iterator {
@@ -2474,3 +2474,4 @@ struct xml_value : public notation::value {
 //严重怀疑json_pointer是不是json高相关的，因为这一大堆内容我感觉不是DOM无关的
 //全搞完再搜一遍json
 //1296没失效
+//通篇排查！shared_ptr不能随意等于，要用make_shared拷贝！
