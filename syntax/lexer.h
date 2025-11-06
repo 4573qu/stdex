@@ -1,33 +1,33 @@
-//Last Modified At 2025/04/15
-//@Version 1.42
-#ifndef _STD4573_SYNTAX_LEXER_H_
-#define _STD4573_SYNTAX_LEXER_H_ 1
-#if __cplusplus >= 201703L
-	#include <initializer_list>
-	#include <typeinfo>
-	#include <variant>
-#endif
+//Last Modified At 2025/11/06
+//@Version 1.5.0.0
+#ifndef _STDEX_SYNTAX_LEXER_H_
+#define _STDEX_SYNTAX_LEXER_H_ 1
+
 #include <algorithm>
 #include <climits>
+#include <cstddef>
+#include <initializer_list>
+#include <iomanip>
 #include <map>
 #include <memory>
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <typeinfo>
+#include <utility>
+#include <variant>
 #include <vector>
 
-#ifdef output_lexer
-	#include <iostream>
-#endif
+#include "../structure/disjoint_set.h"//At Least 1.0
 
-namespace std {
+namespace stdex {
 	
 namespace syntax {
 
-template <typename _Tp,typename _Ch=char,typename _Str=std::string>
+template <typename _Tp,typename _Str=std::string>
 struct lexer_node {
-	std::map<_Ch,lexer_node<_Tp,_Ch,_Str>*> edge_;
-	std::vector<lexer_node<_Tp,_Ch,_Str>*> epsilons_;
+	std::map<_Str::value_type,lexer_node<_Tp,_Str>*> edge_;
+	std::vector<lexer_node<_Tp,_Str>*> epsilons_;
 	_Tp token_;
 	bool end_;
 	int fuzzy_;
@@ -38,16 +38,15 @@ struct lexer_node {
 		epsilons_.clear();
 		fuzzy_=-1;
 	}
-	#ifdef output_lexer
-		std::string print() {
-			std::string result=std::to_string((uint64_t)this);
-			result+=" token:"+std::to_string((int)token_)+" end:"+(end_?"true":"false")+"\nedges:\n";
-			for (auto i:edge_) result+="    "+std::string(1,i.first)+" "+std::to_string((uint64_t)i.second)+"\n";
-			result+="epsilons:\n";
-			for (auto i:epsilons_) result+="    ε "+std::to_string((uint64_t)i)+"\n";
-			return result;
-		}
-	#endif
+#ifdef _STDEX_OUTPUT_LEXER
+	void print() {
+		_STDEX_OUTPUT_LEXER<<((std::size_t)this);
+		_STDEX_OUTPUT_LEXER<<" token:"<<((int)token_)<<" end:"<<(end_?"true":"false")<<"\nedges:\n";
+		for (auto& it:edge_) result<<"    "<<it.first<<" "<<((uint64_t)it.second)<<"\n";
+		_STDEX_OUTPUT_LEXER<<"epsilons:\n";
+		for (auto& it:epsilons_) result<<"    ε "<<((uint64_t)it)+"\n";
+	}
+#endif
 	lexer_node(const lexer_node& other) {
 		end_=other.end_;
 		token_=other.token_;
@@ -55,15 +54,51 @@ struct lexer_node {
 		epsilons_=other.epsilons_;
 		fuzzy_=other.fuzzy_;
 	}
+	lexer_node(lexer_node&& other) {
+		if (this!=&other) {
+			end_=other.end_;
+			token_=other.token_;
+			edge_=other.edge_;
+			epsilons_=other.epsilons_;
+			fuzzy_=other.fuzzy_;
+			other.end_=false;
+			other.token_=(_Tp)-1;
+			other.edge_.clear();
+			other.epsilons_.clear();
+			other.fuzzy_=-1;
+		}
+	}
+	bool equal_to(const lexer_node& other,structure::disjoint_set<void*>& equal_set) {
+		if (this==&other) return true;
+		//std::pair<void*,void*> curr_pair;
+		//if ((std::size_t)this<(std::size_t)&other) curr_pair=std::make_pair((void*)this,(void*)&other);
+		//else curr_pair=std::make_pair((void*)&other,(void*)this);
+		//if (equal_map.count(curr_pair)) return equal_map[curr_pair];
+		if (equal_set.is_same((void*)this,(void*)&other) return true;
+		if (token_!=other.token_ || end_!=other.end_) return false;
+		if (edge_.size()!=other.edge_.size() || epsilon_.size()!=other.epsilon_.size()) return false;
+		for (auto& it=edge_.begin(),jt=other.edge_.begin();it!=edge_.end();it++,jt++) {
+			if (!it->second->equal_to(*jt->second,equal_map)) return false;
+		}
+		auto v1=epsilon_,v2=other.epsilon_;
+		std::sort(v1.begin(),v1.end());
+		std::sort(v2.begin(),v2.end());
+		for (int i=0;i<v1.size();i++) {
+			if (!v1[i]->equal_to(*v2[i],equal_map)) return false;
+		}
+		//equal_map[curr_pair]=true;
+		equal_set.merge((void*)this,(void*)&other);
+		return true;
+	}
 };
 
-template <typename _Tp,typename _Ch=char,typename _Str=std::string>
+template <typename _Tp,typename _Str=std::string>
 class lexer_unit {
-	using node=lexer_node<_Tp,_Ch,_Str>;
+	using node=lexer_node<_Tp,_Str>;
 public:
 	_Str word_;
 	_Tp result_;
-	enum EXP_TYPE {
+	enum expression_type {
 		ET_NORMAL,
 		ET_ONCE,
 		ET_TIMES,
@@ -71,26 +106,24 @@ public:
 	};
 	lexer_unit() : word_("") , result_((_Tp)0) { }
 	lexer_unit(_Str word,_Tp result) : word_(word) , result_(result) { }
-	lexer_unit(_Ch* word,_Tp result) : word_(word) , result_(result) { }
-#if __cplusplus >= 201703L
-	lexer_unit(std::initializer_list<std::variant<_Str,_Ch*,_Tp>> init_list) {
+	lexer_unit(_Str::value_type* word,_Tp result) : word_(word) , result_(result) { }
+	lexer_unit(std::initializer_list<std::variant<_Str,_Str::value_type*,_Tp>> init_list) {
 		if (init_list.size()!=2) throw std::invalid_argument("The number of the initializer arguments for lexer_unit must be 2!");
 		auto it=init_list.begin();
-		if (std::holds_alternative<_Ch*>(*it)) word_=_Str(std::get<_Ch*>(*it++));
+		if (std::holds_alternative<_Str::value_type*>(*it)) word_=_Str(std::get<_Str::value_type*>(*it++));
 		else if (std::holds_alternative<_Str>(*it)) word_=std::get<_Str>(*it++);
-		else throw std::invalid_argument(std::string("The first argument for lexer_unit must be _Str(")+std::string(typeid(_Str).name())+std::string(") or _Ch(")+std::string(typeid(_Ch).name())+std::string(")*!"));
-        if (std::holds_alternative<_Tp>(*it)) result_=std::get<_Tp>(*it);
-        else throw std::invalid_argument(std::string("The second argument for lexer_unit must be _Tp(")+std::string(typeid(_Tp).name())+std::string(")!"));
-    }
-#endif
+		else throw std::invalid_argument(std::string("The first argument for lexer_unit must be _Str(")+std::string(typeid(_Str).name())+std::string(") or _Ch(")+std::string(typeid(_Str::value_type).name())+std::string(")*!"));
+		if (std::holds_alternative<_Tp>(*it)) result_=std::get<_Tp>(*it);
+		else throw std::invalid_argument(std::string("The second argument for lexer_unit must be _Tp(")+std::string(typeid(_Tp).name())+std::string(")!"));
+	}
 	struct expression_unit {
 		union unit_detail {
-			std::vector</*std::pair<*/std::shared_ptr<expression_unit>/*,int>*/>* units_;
-			std::vector<_Ch>* letters_;
+			std::vector<std::shared_ptr<expression_unit>>* units_;
+			std::vector<_Str::value_type>* letters_;
 		} word_;
 		bool is_units_;
 		int length_;
-		EXP_TYPE exp_type_;
+		expression_type exp_type_;
 		node* start_node_;
 		std::vector<node*> end_nodes_;
 		lexer_unit* lexer_unit_;
@@ -100,17 +133,14 @@ public:
 			is_units_=is_units;
 			fuzzy_=-1;
 			if (is_units) word_.units_=new std::vector<std::shared_ptr<expression_unit>>();
-			else word_.letters_=new std::vector<_Ch>();
+			else word_.letters_=new std::vector<_Str::value_type>();
 			is_or_=false;
 		}
 		expression_unit(const expression_unit& other) {
 			if (other.is_units_) {
 				word_.units_=new std::vector<std::shared_ptr<expression_unit>>();
 				for (const auto& unit:*other.word_.units_) word_.units_->push_back(std::make_shared<expression_unit>(*unit));
-			} else {
-				word_.letters_=new std::vector<_Ch>(*other.word_.letters_);
-			}
-			//word_=other.word_;
+			} else word_.letters_=new std::vector<_Str::value_type>(*other.word_.letters_);
 			is_units_=other.is_units_;
 			exp_type_=other.exp_type_;
 			length_=other.length_;
@@ -121,17 +151,11 @@ public:
 			is_or_=other.is_or_;
 		}
 		~expression_unit() {
-			//delete start_node_;
-			//for (auto it=end_nodes_.begin();it!=end_nodes_.end();) {
-			//	node* temp=*it;
-			//	it=end_nodes_.erase(it);
-			//	delete temp;
-			//}
 			if (is_units_) delete word_.units_;
 			else delete word_.letters_;
 		}
 	};
-	enum WORD_TYPE {
+	enum word_type {
 		WT_LETTER,
 		WT_PLUS,
 		WT_STAR,
@@ -145,8 +169,8 @@ public:
 		WT_OR,
 	};
 	struct word_unit {
-		_Ch letter_;
-		WORD_TYPE type_;
+		_Str::value_type letter_;
+		word_type type_;
 	};
 	word_unit get_next_char(_Str& str) {
 		word_unit result;
@@ -157,9 +181,7 @@ public:
 			str=str.substr(1);
 			return result;
 		} else {
-			if (str.size()==1) {
-				throw std::invalid_argument("Get invalid \'\\\' at the end of "+word_);
-			}
+			if (str.size()==1) throw std::invalid_argument("Get invalid \'\\\' at the end of "+word_);
 			switch (str[1]) {
 				case '\\': {
 					result.letter_='\\';
@@ -221,7 +243,7 @@ public:
 					for (int i=2;i<str.size()-1;i++) {
 						if (str[i]=='\\' && str[i+1]=='c') {
 							try {
-								result.letter_=(_Ch)std::stoi(str.substr(2,i-2));
+								result.letter_=(_Str::value_type)std::stoi(str.substr(2,i-2));
 							} catch (const std::invalid_argument& e) {
 								throw std::invalid_argument("Get invalid letter with \'\\c\' at "+word_);
 							}
@@ -251,7 +273,6 @@ public:
 		result.lexer_unit_=this;
 		result.length_=0;
 		result.fuzzy_=0;	
-		//check if valid
 		for (int i=0;i<temp_unit.size();i++) {
 			switch (temp_unit[i].type_) {
 				case WT_LETTER: {
@@ -297,17 +318,13 @@ public:
 						if (i==temp_unit.size()-1) throw std::invalid_argument("No ] to fulfill [] at "+word_);
 						if (connect>-2000) {
 							if ((int)(temp_unit[i].letter_)<connect) 
-								throw std::invalid_argument("Invalid "+
-															_Str(1,(_Ch)connect)+
-															"-"+
-															_Str(1,temp_unit[i].letter_)+
-															" at "+word_);
+								throw std::invalid_argument("Invalid "+_Str((_Str::value_type)connect)+"-"+_Str(temp_unit[i].letter_)+" at "+word_);
 							if (!deleted) {
-								for (int j=connect;j<=((int)temp_unit[i].letter_);j++) curr.word_.letters_->push_back((_Ch)j);
+								for (int j=connect;j<=((int)temp_unit[i].letter_);j++) curr.word_.letters_->push_back((_Str::value_type)j);
 							} else {
 								for (auto it=curr.word_.letters_->begin();it!=curr.word_.letters_->end();) {
-									_Ch curr_letter=*it;
-									if (curr_letter>=(_Ch)connect && curr_letter<=temp_unit[i].letter_) it=curr.word_.letters_->erase(it);
+									_Str::value_type curr_letter=*it;
+									if (curr_letter>=(_Str::value_type)connect && curr_letter<=temp_unit[i].letter_) it=curr.word_.letters_->erase(it);
 									else it++;
 								}
 							}
@@ -325,7 +342,7 @@ public:
 									curr.word_.letters_->push_back(temp_unit[i].letter_);
 								} else {
 									for (auto it=curr.word_.letters_->begin();it!=curr.word_.letters_->end();) {
-										_Ch curr_letter=*it;
+										_Str::value_type curr_letter=*it;
 										if (curr_letter==temp_unit[i].letter_) it=curr.word_.letters_->erase(it);
 										else it++;
 									}
@@ -464,9 +481,11 @@ public:
 	}
 };
 
-template <typename _Tp,typename _Ch=char,typename _Str=std::string>
+template <typename _Tp,typename _Str=std::string>
 class lexer {
-	using node=lexer_node<_Tp,_Ch,_Str>;
+	using node=lexer_node<_Tp,_Str>;
+	using unit=lexer_unit<_Tp,_Str>;
+
 public:
 	struct resolution {
 		_Str word_;
@@ -503,19 +522,22 @@ private:
 		~graph() {
 			for (int i=0;i<nodes_.size();i++) delete nodes_[i];
 		}
-		#ifdef output_lexer
-			void print() {
-				std::cout<<"start node:"<<start_node_->print()<<std::endl<<std::endl;
-				for (auto& i:nodes_) printf("%s\n",i->print().c_str());
+#ifdef _STDEX_OUTPUT_LEXER
+		void print() {
+			_STDEX_OUTPUT_LEXER<<"start node:"<<start_node_->print()<<"\n\n";
+			for (auto& it:nodes_) {
+				it->print();
+				_STDEX_OUTPUT_LEXER<<"\n";
 			}
-		#endif
+		}
+#endif
 	};
 public:
 	_Tp temporal_;
 	_Tp error_;
-	std::vector<lexer_unit<_Tp,_Ch,_Str> > units_;
+	std::vector<unit> units_;
 private:
-	std::map<int,std::map<_Ch,int> > jtable_;
+	std::map<int,std::map<_Str::value_type,int>> jtable_;
 	graph* dfa_map_;
 public:
 	lexer() {
@@ -526,7 +548,7 @@ public:
 	lexer(_Tp temporal_token,_Tp error_token=(_Tp)-1) : temporal_(temporal_token) , error_(error_token) {
 		dfa_map_=nullptr;
 	}
-	lexer(_Tp temporal_token,_Tp error_token,std::vector<lexer_unit<_Tp,_Ch,_Str> > units) : temporal_(temporal_token) , error_(error_token) , units_(units) {
+	lexer(_Tp temporal_token,_Tp error_token,std::vector<unit> units) : temporal_(temporal_token) , error_(error_token) , units_(units) {
 		dfa_map_=nullptr;
 	}
 	lexer(const lexer& other) {
@@ -534,7 +556,6 @@ public:
 		error_=other.error_;
 		units_=other.units_;
 		jtable_=other.jtable_;
-		//graph* dfa_map_;
 	}
 	lexer(lexer&& other) noexcept {
 		temporal_=other.temporal_;
@@ -552,7 +573,7 @@ public:
 		delete dfa_map_;
 	}
 private:
-	void generate_single_graph(graph* temp_graph,typename lexer_unit<_Tp,_Ch,_Str>::expression_unit& unit) {
+	void generate_single_graph(graph* temp_graph,typename unit::expression_unit& unit) {
 		if (!unit.is_units_) {
 			node* start=new node(temporal_);
 			node* end1=new node(temporal_);
@@ -565,23 +586,23 @@ private:
 			unit.start_node_=start;
 			unit.end_nodes_.clear();
 			switch (unit.exp_type_) {
-				case lexer_unit<_Tp,_Ch,_Str>::EXP_TYPE::ET_ONCE: {
+				case unit::ET_ONCE: {
 					unit.end_nodes_.push_back(start);
 					unit.end_nodes_.push_back(end1);
 					break;
 				}
-				case lexer_unit<_Tp,_Ch,_Str>::EXP_TYPE::ET_TIMES: {
+				case unit::ET_TIMES: {
 					unit.end_nodes_.push_back(end1);
 					unit.end_nodes_.push_back(end2);
 					break;
 				}
-				case lexer_unit<_Tp,_Ch,_Str>::EXP_TYPE::ET_TIMES_WITH_ZERO: {
+				case unit::ET_TIMES_WITH_ZERO: {
 					unit.end_nodes_.push_back(start);
 					unit.end_nodes_.push_back(end1);
 					unit.end_nodes_.push_back(end2);
 					break;
 				}
-				case lexer_unit<_Tp,_Ch,_Str>::EXP_TYPE::ET_NORMAL:
+				case unit::ET_NORMAL:
 				default: {
 					unit.end_nodes_.push_back(end1);
 					break;
@@ -596,16 +617,15 @@ private:
 			for (int i=0;i<unit.word_.units_->size();i++) {
 				if (!(*unit.word_.units_)[i]->is_or_) generate_single_graph(temp_graph,*((*unit.word_.units_)[i]));
 			}
-			
-			std::vector<std::vector<std::shared_ptr<typename lexer_unit<_Tp,_Ch,_Str>::expression_unit>>> splited_units;
+			std::vector<std::vector<std::shared_ptr<typename unit::expression_unit>>> splited_units;
 			for (int i=0;i<unit.word_.units_->size();i++) {
 				if ((*unit.word_.units_)[i]->is_or_) continue;
 				if (i==unit.word_.units_->size()-1 || !(*unit.word_.units_)[i+1]->is_or_) {
-					std::vector<std::shared_ptr<typename lexer_unit<_Tp,_Ch,_Str>::expression_unit>> temp={(*unit.word_.units_)[i]};
+					std::vector<std::shared_ptr<typename unit::expression_unit>> temp={(*unit.word_.units_)[i]};
 					splited_units.push_back(temp);
 					continue;
 				}
-				std::vector<std::shared_ptr<typename lexer_unit<_Tp,_Ch,_Str>::expression_unit>> temp={(*unit.word_.units_)[i]};
+				std::vector<std::shared_ptr<typename unit::expression_unit>> temp={(*unit.word_.units_)[i]};
 				while (i+2<unit.word_.units_->size()) {
 					i+=2;
 					if (i==unit.word_.units_->size()-1 || !(*unit.word_.units_)[i+1]->is_or_) {
@@ -620,20 +640,13 @@ private:
 			for (int i=0;i<splited_units.size()-1;i++) {
 				for (auto& it:splited_units[i]) {
 					for (int j=0;j<it->end_nodes_.size();j++) {
-						for (auto& jt:splited_units[i+1]) {
-							it->end_nodes_[j]->epsilons_.push_back(jt->start_node_);
-						}
+						for (auto& jt:splited_units[i+1]) it->end_nodes_[j]->epsilons_.push_back(jt->start_node_);
 					}
 				}
-				/*for (int j=0;j<(*unit.word_.units_)[i]->end_nodes_.size();j++) {
-					(*unit.word_.units_)[i]->end_nodes_[j]->epsilons_.push_back((*unit.word_.units_)[i+1]->start_node_);
-				}*/
 			}
 			int end_id=splited_units.size()-1;
 			switch (unit.exp_type_) {
-				case lexer_unit<_Tp,_Ch,_Str>::EXP_TYPE::ET_ONCE: {
-					//for (int i=0;i<(*unit.word_.units_)[end_id]->end_nodes_.size();i++) 
-						//(*unit.word_.units_)[0]->start_node_->epsilons_.push_back((*unit.word_.units_)[end_id]->end_nodes_[i]);
+				case unit::ET_ONCE: {
 					for (auto& it:splited_units[0]) {
 						for (auto& jt:splited_units[end_id]) {
 							for (int i=0;i<jt->end_nodes_.size();i++) {
@@ -643,9 +656,7 @@ private:
 					}
 					break;
 				}
-				case lexer_unit<_Tp,_Ch,_Str>::EXP_TYPE::ET_TIMES: {
-					//for (int i=0;i<(*unit.word_.units_)[end_id]->end_nodes_.size();i++)
-						//(*unit.word_.units_)[end_id]->end_nodes_[i]->epsilons_.push_back((*unit.word_.units_)[0]->start_node_);
+				case unit::ET_TIMES: {
 					for (auto& it:splited_units[0]) {
 						for (auto& jt:splited_units[end_id]) {
 							for (int i=0;i<jt->end_nodes_.size();i++) {
@@ -655,11 +666,7 @@ private:
 					}
 					break;
 				}
-				case lexer_unit<_Tp,_Ch,_Str>::EXP_TYPE::ET_TIMES_WITH_ZERO: {
-					//for (int i=0;i<(*unit.word_.units_)[end_id]->end_nodes_.size();i++) {
-						//(*unit.word_.units_)[0]->start_node_->epsilons_.push_back((*unit.word_.units_)[end_id]->end_nodes_[i]);
-						//(*unit.word_.units_)[end_id]->end_nodes_[i]->epsilons_.push_back((*unit.word_.units_)[0]->start_node_);
-					//}
+				case unit::ET_TIMES_WITH_ZERO: {
 					for (auto& it:splited_units[0]) {
 						for (auto& jt:splited_units[end_id]) {
 							for (int i=0;i<jt->end_nodes_.size();i++) {
@@ -670,20 +677,16 @@ private:
 					}
 					break;
 				}
-				case lexer_unit<_Tp,_Ch,_Str>::EXP_TYPE::ET_NORMAL:
-				default : {
+				case unit::ET_NORMAL:
+				default: {
 					break;
 				}
 			}
 			node* temp_start=new node(temporal_);
 			node* temp_end=new node(temporal_);
-			for (auto& it:splited_units[0]) {
-				temp_start->epsilons_.push_back(it->start_node_);
-			}
+			for (auto& it:splited_units[0]) temp_start->epsilons_.push_back(it->start_node_);
 			for (auto& it:splited_units[end_id]) {
-				for (int i=0;i<it->end_nodes_.size();i++) {
-					it->end_nodes_[i]->epsilons_.push_back(temp_end);
-				}
+				for (int i=0;i<it->end_nodes_.size();i++) it->end_nodes_[i]->epsilons_.push_back(temp_end);
 			}
 			unit.start_node_=temp_start;
 			unit.end_nodes_.clear();
@@ -701,7 +704,7 @@ private:
 	}
 	graph* convert_to_dfa(graph* temp_graph) {
 		graph* result=new graph();
-		std::vector<std::set<node*> > dfa_queue;
+		std::vector<std::set<node*>> dfa_queue;
 		std::set<node*> temp_set;
 		temp_set.clear();
 		get_equivalence(temp_graph->start_node_,temp_set);
@@ -718,7 +721,7 @@ private:
 		int i=0;
 		while (i<dfa_queue.size()) {
 			//Get All Output
-			std::set<_Ch> out_edges;
+			std::set<_Str::value_type> out_edges;
 			for (auto it:dfa_queue[i]) {
 				for (auto jt:it->edge_) {
 					out_edges.insert(jt.first);
@@ -752,18 +755,15 @@ private:
 				}
 			}
 			temp_set.clear();
-			/*for (auto it:dfa_queue[i]) {
-				get_equivalence(it,temp_set);
-			}*/
 			i++;	
 		}
 		return result;
 	}
 	void skip_useless_nodes(graph* dfa_graph) {
 		std::set<node*> delete_list;
-		for (auto it=dfa_graph->nodes_.begin();it!=dfa_graph->nodes_.end();) {
+		for (auto& it=dfa_graph->nodes_.begin();it!=dfa_graph->nodes_.end();) {
 			bool deleted=true;
-			for (auto jt:(*it)->edge_) {
+			for (auto& jt:(*it)->edge_) {
 				if (jt.second!=*it) deleted=false;
 			}
 			if ((*it)->end_) deleted=false;
@@ -773,34 +773,23 @@ private:
 			}
 			else it++;
 		}
-		for (auto it:delete_list) {
-			for (auto jt=dfa_graph->nodes_.begin();jt!=dfa_graph->nodes_.end();jt++) {
-				for (auto kt=(*jt)->edge_.begin();kt!=(*jt)->edge_.end();) {
+		for (auto& it:delete_list) {
+			for (auto& jt=dfa_graph->nodes_.begin();jt!=dfa_graph->nodes_.end();jt++) {
+				for (auto& kt=(*jt)->edge_.begin();kt!=(*jt)->edge_.end();) {
 					if (kt->second==it) kt=(*jt)->edge_.erase(kt);
 					else kt++;	
 				}
 			}	
 		}
 	}
-	bool is_equal_node(node* node1,node* node2) {
-		if (node1->edge_.size()!=node2->edge_.size()) return false;
-		for (auto it=node1->edge_.begin(),jt=node2->edge_.begin();it!=node1->edge_.end();it++,jt++) {
-			if (!node2->edge_.count(it->first)) return false;
-			if (it->second->end_) {
-				if (!jt->second->end_) return false;
-				if (it->second->token_!=jt->second->token_) return false;
-			} else {
-				if (*it!=*jt) return false;
-			}
-		}
-		return true;
-	}
-	void merge_nodes(graph* dfa_graph) {	
+	void merge_nodes(graph* dfa_graph) {
+		//std::map<std::pair<void*,void*>,bool> equal_map;
+		structure::disjoint_set<void*> equal_set;
 		for (int i=0;i<dfa_graph->nodes_.size()-1;i++) {
 			for (int j=i+1;j<dfa_graph->nodes_.size();) {
 				node* node1=dfa_graph->nodes_[i];
 				node* node2=dfa_graph->nodes_[j];
-				if (is_equal_node(node1,node2)) {
+				if (node1->equal_to(*node2,equal_set)) {
 					//adjust j->i
 					for (auto it:dfa_graph->nodes_) {
 						for (auto jt:it->edge_) {
@@ -812,6 +801,37 @@ private:
 				} else j++;
 			}
 		}
+	}
+	void clear_nodes(graph* dfa_graph) {
+		structure::disjoint_set<node*> graph_set;
+		for (auto& it=dfa_graph->nodes_.begin();it!=dfa_graph->nodes_.end();it++) graph_set.emplace(*it);
+		for (auto& it=dfa_graph->nodes_.begin();it!=dfa_graph->nodes_.end();it++) {
+			for (auto& jt:(*it)->edge_) graph_set.merge(*it,jt.second,false);
+		}
+		std::set<node*> delete_list;
+		auto sets=graph_set.sets();
+		for (auto& it:sets) {
+			bool delete=true;
+			for (auto& jt:it) {
+				if (jt==start_node || jt->end_) {
+					delete=false;
+					break;
+				}
+			}
+			if (delete) {
+				for (auto& jt:it) delete_list.insert(jt);
+			}
+		}
+		for (auto& it:delete_list) {
+			delete it;
+			dfa_graph->nodes_.erase(std::remove(dfa_graph->nodes_.begin(),dfa_graph->nodes_.end(),it),dfa_graph->nodes_.end());
+		}
+		for (auto& it:dfa_graph->nodes_) {
+			for (auto jt=it->edges_.begin();jt!=it->edges_.end();) {
+				if (delete_list.count(jt->second)) jt=it->edges_.erase(jt);
+				else jt++;
+			}
+		}	
 	}
 	int get_node_id(graph* dfa_graph,node* the_node) {
 		auto it=std::find(dfa_graph->nodes_.begin(),dfa_graph->nodes_.end(),the_node);
@@ -833,7 +853,7 @@ private:
 			}
 		}
 	}
-	int get_next_state(int curr_state,_Ch letter) {
+	int get_next_state(int curr_state,_Str::value_type letter) {
 		if (!jtable_.count(curr_state)) return -1;
 		if (!jtable_[curr_state].count(letter)) return -1;
 		return jtable_[curr_state][letter];
@@ -849,7 +869,7 @@ private:
 public:
 	void generate_lexer() {
 		delete dfa_map_;
-		std::vector<typename lexer_unit<_Tp,_Ch,_Str>::expression_unit> temp_units;
+		std::vector<typename unit::expression_unit> temp_units;
 		graph* temp_graph=new graph();
 		node* temp_start=new node(temporal_);
 		//temp_start->start_=true;
@@ -874,21 +894,25 @@ public:
 			//merge graphs
 			temp_start->epsilons_.push_back(temp_units[i].start_node_);
 		}
-		#ifdef output_lexer
-			temp_graph->print();
-		#endif
+#ifdef _STDEX_OUTPUT_LEXER
+		_STDEX_OUTPUT_LEXER<<"NFA Map:\n";
+		temp_graph->print();
+#endif
 		//Transform NFA graph to DFA graph
 		graph* result_graph=convert_to_dfa(temp_graph);
 		delete temp_graph;
 		//Delete Useless Nodes in DFA graph
 		skip_useless_nodes(result_graph);
 		//Merge Equal Nodes
-		//merge_nodes(result_graph);////////////////////////////////////
+		merge_nodes(result_graph);
+		//Clear Useless Nodes
+		clear_nodes(result_graph);
 		//Transform DFA graph to JumpTable
 		construct_jtable(result_graph);
-		#ifdef output_lexer
-			result_graph->print();
-		#endif
+#ifdef _STDEX_OUTPUT_LEXER
+		_STDEX_OUTPUT_LEXER<<"DFA Map:\n";
+		result_graph->print();
+#endif
 		dfa_map_=result_graph;
 	}
 	std::vector<resolution> resolve(_Str text) {
@@ -907,22 +931,18 @@ public:
 					_Tp curr_token=get_category(current_state);
 					if (curr_token!=error_) {
 						_Str temp_word=text.substr(start_index,current_index-start_index);
-						#ifdef output_lexer
-							std::cout<<"Detected Word:"<<endl<<"'"<<temp_word;
-						#endif
+#ifdef _STDEX_OUTPUT_LEXER
+						_STDEX_OUTPUT_LEXER<<"Detected Word:\n'"<<temp_word;
+#endif
 						resolution res;
 						res.token_=curr_token;
 						res.word_=temp_word;
 						res.row_=curr_line;
 						res.col_=curr_column;
 						res.status_=0;
-						#ifdef output_lexer_DFA
-							printf("\'\nDFAnodeid=%03d->DFAtokenid=%d at line=%02d/col=%02d\n\n",
-								   current_state,
-								   (int)get_category(current_state),
-								   curr_line,
-								   curr_column);		
-						#endif
+#ifdef _STDEX_OUTPUT_LEXER
+						_STDEX_OUTPUT_LEXER<<"'\nDFAnodeid="<<std::setw(3)<<std::setfill('0')<<current_state<<"->DFAtokenid="<<static_cast<int>(get_category(current_state))<<" at line="<<std::setw(2)<<std::setfill('0')<<curr_line<<"/col="<<std::setw(2)<<std::setfill('0')<<curr_column<<"\n\n";		
+#endif
 						curr_line=line;
 						curr_column=column;
 						result.push_back(res);
@@ -930,9 +950,9 @@ public:
 						current_state=0;
 					} else {
 						_Str temp_word=text.substr(start_index,current_index-start_index);
-						#ifdef output_lexer
-							std::cout<<"Undefined Word!"<<endl<<endl<<"'"<<temp_word<<endl;//if raise_err? Or raise In getCategoryInGraph? I like the first one.
-						#endif
+#ifdef _STDEX_OUTPUT_LEXER
+						#ifdef _STDEX_OUTPUT_PARSER<<"Undefined Word!\n\n'"<<temp_word<<"\n";//if raise_err? Or raise In getCategoryInGraph? I like the first one.
+#endif
 						resolution res;
 						res.token_=curr_token;
 						res.word_=temp_word;
@@ -946,10 +966,10 @@ public:
 					}
 				} else {
 					if (current_index<text.size()) {
-						#ifdef output_lexer
-			    			std::cout<<"Err:State at "<<current_state<<" with word as '"<<text[current_index]<<"' at line "<<line<<" & col "<<column<<endl;
-			    		#endif
-			    		_Str temp_word=text.substr(start_index,current_index-start_index);
+#ifdef _STDEX_OUTPUT_LEXER
+			    			_STDEX_OUTPUT_LEXER<<"Err:State at "<<current_state<<" with word as '"<<text[current_index]<<"' at line "<<line<<" & col "<<column<<"\n";
+#endif
+						_Str temp_word=text.substr(start_index,current_index-start_index);
 						resolution res;
 						res.token_=error_;
 						res.word_=temp_word;
@@ -958,10 +978,8 @@ public:
 						res.status_=2;
 						result.push_back(res);
 						success=false;
-			    		return result;
-			    	} else {
-			    		current_state=0;
-					}
+						return result;
+					} else current_state=0;
 					break;
 				}
 			} else {
@@ -973,8 +991,8 @@ public:
 				current_index++;
 				column++;
 			}
-    	}
-    	return result;
+		}
+		return result;
 	}
 };
 	
