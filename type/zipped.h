@@ -171,16 +171,20 @@ class deflate_compressor {
 			if (!it.is_match_) ll_freq[it.lit_]++;
 			else {
 				int sym=285;
-				for (int s=0;s<29;s++) {
-					if (it.len_<=len_base[s]) {
+				for (int s=0;s<28;s++) {
+					int start=len_base[s];
+					int next=len_base[s+1];
+					if (it.len_>=start && it.len_<next) {
 						sym=257+s;
 						break;
 					}
 				}
 				ll_freq[sym]++;
 				int dsym=29;
-				for (int s=0;s<30;s++) {
-					if (it.dist_<=dist_base[s]) {
+				for (int s=0;s<29;s++) {
+					int start=dist_base[s];
+					int next=dist_base[s+1];
+					if (it.dist_>=start && it.dist_<next) {
 						dsym=s;
 						break;
 					}
@@ -193,36 +197,81 @@ class deflate_compressor {
 	static std::vector<uint8_t> make_bitlengths(const std::vector<uint32_t>& freq,int max_bits) {
 		struct node {
 			uint32_t freq_;
-			int left_,right_;
+			node* left_;
+			node* right_;
+			int sym_;
 			bool operator >(const node& other) const { return freq_>other.freq_; }
+			node(uint32_t f,int s) : freq_(f) , sym_(s) , left_(nullptr) , right_(nullptr) { }
+			node(node* l,node* r) : freq_(l->freq_+r->freq_) , sym_(-1) , left_(l) , right_(r) { }
 		};
-		std::vector<node> nodes;
-		for (std::size_t i=0;i<freq.size();i++) {
-			if (freq[i]!=0) nodes.push_back({freq[i],-1,(int)i});
-		}
-		if (nodes.empty()) nodes.push_back({1,-1,0});
 		auto cmp=[](const node& lhs,const node& rhs){
 			return lhs.freq_>rhs.freq_;
 		};
-		while (nodes.size()>1) {
-			std::sort(nodes.begin(),nodes.end(),cmp);
-			node a=nodes[0],b=nodes[1];
-			nodes.erase(nodes.begin(),nodes.begin()+2);
-			nodes.push_back({a.freq_+b.freq_,(int)nodes.size(),(int)(nodes.size()+1)});
-			nodes.insert(nodes.end(),{a,b});
-			std::sort(nodes.begin(),nodes.end(),cmp);
+		std::priority_queue<node*,std::vector<node*>,cmp> pq;
+		for (std::size_t i=0;i<freq.size();i++) {
+			if (freq[i]>0) pq.push(new node(freq[i],(int)i));
 		}
-		std::vector<uint8_t> lengths(freq.size(),0);
-		std::function<void(const node&,int)> recurse=[&](const node& n,int depth){
-			if (depth>max_bits) depth=max_bits;
-			if (n.left_==-1) lengths[n.right_]=(uint8_t)depth;
-			else {
-				if (n.left_>=0 && n.left_<(int)nodes.size()) recurse(nodes[n.left_],depth+1);
-				if (n.right_>=0 && n.right_<(int)nodes.size()) recurse(nodes[n.right_],depth+1);
+		if (pq.empty()) pq.push(new node(1,0));
+		if (pq.size()==1) pq.push(new node(1,(pq.top()->sym_==0)?1:0));
+		while (pq.size()>1) {
+			node* a=pq.top();
+			pq.pop();
+			node* b=pq.top();
+			pq.pop();
+			pq.push(new node(a,b));
+		}
+		std::vector<uint8_t> length(freq.size(),0);
+		std::function<void(node*,int)> dfs=[&](node* n,int depth){
+			if (!n) return;
+			if (n->sym_>=0) {
+				length[n->sym_]=/*(depth>max_bits)?max_bits:*/(uint8_t)depth;
+				return;
 			}
+			dfs(n->left_,depth+1);
+			dfs(n->right_,depth+1);
 		};
-		recurse(nodes.front(),0);
-		return lengths;
+		dfs(pq.top(),0);
+		std::vector<int> bl_count(max_bits+1,0);
+		for (uint8_t it:length) if (it>0) bl_count[std::min<int>(it,max_bits)]++;
+		while (1) {
+			int left=1<<max_bits;
+			for (int bits=1;bits<=max_bits;bits++) left-=bl_count[bits]<<(max_bits-bits);
+			if (left>=0) break;
+			for (int bits=max_bits-1;bits>0;bits--) {
+				if (bl_count[bits]!=0) {
+					bl_count[bits]--;
+					bl_count[bits+1]+=2;
+					break;
+				}
+			}
+		}
+		struct sympair {
+			uint32_t freq_;
+			int sym_;
+		};
+		std::vector<sympair> syms;
+		syms.reserve(freq.size());
+		for (std::size_t i=0;i<freq.size();i++) {
+			if (freq[i]>0) syms.push_back({freq[i],(int)i});
+		}
+		std::sort(syms.begin(),syms.end(),[](const sympair& lhs,const sympair& rhs){
+			if (lhs.freq_!=rhs.freq_) return lhs.freq_>rhs.freq_; // 频率高者优先
+			return lhs.sym_<rhs.sym_;
+		});
+		std::fill(length.begin(),length.end(),0);
+		std::size_t index=0;
+		for (int bits=1;bits<=max_bits && index<syms.size();bits++) {
+			int n=bl_count[bits];
+			while (n-->0 && index<syms.size()) length[syms[index++].sym_]=(uint8_t)bits;
+		}
+		std::function<void(node*)> destroy=[&](node* n) {
+			if (!n) return;
+			destroy(n->left_);
+			destroy(n->right_);
+			delete n;
+		};
+		destroy(pq.top());
+		return length;
 	}
 	static void build_optimal_trees(const std::vector<lz_token>& toks,huffman& ll_tree,huffman& d_tree) {
 		std::vector<uint32_t> ll_freq,d_freq;
@@ -232,7 +281,7 @@ class deflate_compressor {
 		build_canonical_table(ll_tree);
 		build_canonical_table(d_tree);
 	}
-	static void write_dynamic_block(std::vector<uint8_t>& result,const std::vector<lz_token>& toks,const huffman& ll_tree,const huffman& d_tree) {
+	static void write_dynamic_block(std::vector<uint8_t>& result,const std::vector<lz_token>& toks,const huffman& ll_tree,const huffman& d_tree,bool is_final) {
 		uint32_t bitbuf=0;
 		int bitcnt=0;
 		auto putbits=[&](uint32_t v,int n){
@@ -251,12 +300,15 @@ class deflate_compressor {
 				bitcnt=0;
 			}
 		};
-		putbits(1,1);
+		putbits(is_final?1:0,1);
 		putbits(2,2);
 		std::vector<uint8_t> all=ll_tree.length_;
 		all.insert(all.end(),d_tree.length_.begin(),d_tree.length_.end());
-		int HLIT=(int)ll_tree.length_.size()-257;
+		int HLIT=(int)ll_tree.length_.size()-1;
+		while (HLIT>=257 && ll_tree.length_[HLIT]==0) HLIT--;
+		HLIT-=256;
 		int HDIST=(int)d_tree.length_.size()-1;
+		while (HDIST>=1 && d_tree.length_[HDIST]==0) HDIST--;
 		struct item {
 			uint8_t sym_;
 			int extra_;
@@ -270,14 +322,14 @@ class deflate_compressor {
 			int r_total=run;
 			if (v==0) {
 				 while (run>=11) {
-					int n=std::min(remaining,138);
+					int n=std::min(run,138);
 					seq.push_back({18,n-11,7});
-					remaining-=n;
+					run-=n;
 				}
 				if (run>=3) {
-					int n=std::min(remaining,10);
+					int n=std::min(run,10);
 					seq.push_back({17,n-3,3});
-					remaining-=n;
+					run-=n;
 				}
 				while (run-->0) seq.push_back({0,0,0});
 			} else {
@@ -322,16 +374,23 @@ class deflate_compressor {
 				int L=it.len_;
 				int lsym=0;
 				while (lsym<29 && L>lens[lsym]) lsym++;
+				if (lsym>=29) lsym=28;
 				int sym=257+lsym;
 				int ebits=lext[lsym];
-				int eval=ebits?L-lens[lsym-1]:0;
+				int eval=0;
+				if (ebits>0) {
+					//int base=(lsym==0)?lens[0]:lens[lsym-1];
+					//int base=lens[lsym]-(1<<lext[lsym]);
+					int base=lens[lsym];
+					eval=L-base;
+				}
 				putbits(ll_tree.table_[sym],ll_tree.length_[sym]);
 				if (ebits) putbits(eval,ebits);
 				int D=it.dist_;
 				int dsym=0;
 				while (dsym<30 && D>db[dsym]) dsym++;
 				int dbits=de[dsym];
-				int dval=dbits?D-db[dsym-1]:0;
+				int dval=D-db[dsym];//dbits?D-db[dsym-1]:0;
 				putbits(d_tree.table_[dsym],d_tree.length_[dsym]);
 				if (dbits) putbits(dval,dbits);
 			}
@@ -373,7 +432,8 @@ public:
 			auto toks=lz77_parse(data);
 			huffman ll=build_fixed_tree_LIT();
 			huffman dd=build_fixed_tree_DIST();
-			write_bits(result,bitbuf,bitcnt,1,1);
+			constexpr bool final_block = true;
+			write_bits(result,bitbuf,bitcnt,final_block?1:0,1);
 			write_bits(result,bitbuf,bitcnt,1,2);
 			static const int lens[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
 			static const int lext[29]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
@@ -387,16 +447,23 @@ public:
 					int L=it.len_;
 					int s=0;
 					while (s<29 && L>lens[s]) s++;
+					if (s>=29) s=28;
 					int sym=257+s;
 					int eb=lext[s];
-					int ev=eb?L-lens[s-1]:0;
+					int ev=0;
+					if (eb>0) {
+						//int base=(s==0)?lens[0]:lens[s-1];
+						//int base=lens[s]-(1<<lext[s]);
+						int base=lens[s];
+						ev=L-base;
+					}
 					write_bits(result,bitbuf,bitcnt,ll.table_[sym],ll.length_[sym]);
 					if (eb) write_bits(result,bitbuf,bitcnt,ev,eb);
 					int D=it.dist_;
 					int sd=0;
 					while(sd<30 && D>db[sd]) sd++;
 					int sb=de[sd];
-					int sv=sb?D-db[sd-1]:0;
+					int sv=D-db[sd];//sb?D-db[sd-1]:0;
 					write_bits(result,bitbuf,bitcnt,dd.table_[sd],dd.length_[sd]);
 					if (sb) write_bits(result,bitbuf,bitcnt,sv,sb);
 				}
@@ -407,7 +474,7 @@ public:
 			auto toks=lz77_parse(data);
 			huffman ll_tree,dist_tree;
 			build_optimal_trees(toks,ll_tree,dist_tree);
-			write_dynamic_block(result,toks,ll_tree,dist_tree);
+			write_dynamic_block(result,toks,ll_tree,dist_tree,true);
 		}
 		if (!raw) {
 			uint32_t ad=compute_adler32(data);
