@@ -23,6 +23,10 @@ public:
 	bit_ref(_Tp& data,int index) noexcept : data_(reinterpret_cast<uint8_t*>(&data)) , index_(index) {
 		static_assert(std::is_unsigned_v<_Tp>,"_Tp must be an unsigned type.");
 	}
+	template <typename _Tp>
+	bit_ref(const _Tp& data,int index) noexcept : data_(reinterpret_cast<uint8_t*>(const_cast<_Tp*>(&data))) , index_(index) {
+		static_assert(std::is_unsigned_v<_Tp>, "_Tp must be an unsigned type.");
+	}
 
 	bit_ref& operator =(bool value) noexcept {
 		if (value) *data_|=(1<<index_);
@@ -33,7 +37,7 @@ public:
 		return (*data_&(1<<index_));
 	}
 	bool operator ~() const noexcept {
-		return !static<bool>(*this);
+		return !static_cast<bool>(*this);
 	}
 	void swap(bit_ref other) noexcept {
 		bool temp=static_cast<bool>(*this);

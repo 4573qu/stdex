@@ -1,7 +1,7 @@
 ZIP 缺少：
-deflate压缩
+deflate压缩：lz77_parse 400K卡死；write_dyanamic_block 3.92M卡死；crc校验失败
 BZIP2真正实现
-AES加密（等待crypto）
+传统zip加密和AES加密（等待crypto）
 分卷
 
 container:

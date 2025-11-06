@@ -31,7 +31,7 @@ private:
 public:
 #define _STDEX_BIT_ITERATOR_SIZE (sizeof(_Tp)*CHAR_BIT)
 	bit_iterator() noexcept : data_(nullptr) , index_(0) { }
-	bit_iterator(_Tp& data,int index_=0) noexcept : data_(&data) , index(index_) {
+	bit_iterator(_Tp& data,int index=0) noexcept : data_(&data) , index_(index) {
 		while (index_<0) {
 			index_+=_STDEX_BIT_ITERATOR_SIZE;
 			data_--;
@@ -70,7 +70,7 @@ public:
 		if (n<0) return *this-=(-n);
 		std::ptrdiff_t total_bits=index_+n;
 		data_+=total_bits/_STDEX_BIT_ITERATOR_SIZE;
-		index+=total_bits%_STDEX_BIT_ITERATOR_SIZE;
+		index_+=total_bits%_STDEX_BIT_ITERATOR_SIZE;
 		return *this;
 	}
 	bit_iterator& operator -=(std::ptrdiff_t n) noexcept {
