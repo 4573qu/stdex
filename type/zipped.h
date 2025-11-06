@@ -1,5 +1,5 @@
-//Last Modified At 2025/11/06
-//@Version 1.1.0.0
+//Last Modified At 2025/11/07
+//@Version 1.2.0.0
 #ifndef _STDEX_TYPE_ZIPPED_H_
 #define _STDEX_TYPE_ZIPPED_H_ 1
 
@@ -12,6 +12,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <numeric>
@@ -31,33 +32,29 @@ namespace type {
 namespace zipped {
 
 class deflate_compressor {
-private:
-	/*struct bit_reader {
-		const uint8_t* data_;
-		std::size_t size_;
-		std::size_t bitpos_;
-		bit_reader(const uint8_t* d,std::size_t s) : data_(d) , size_(s) , bitpos_(0) { }
-		uint32_t read_bits(int n) {
-			uint32_t val=0;
-			for (int i=0;i<n;i++) {
-				if (bitpos_/8>=size_) break;
-				if (data_[bitpos_/8]&(1<<(bitpos_%8))) val|=1u<<i;
-				bitpos_++;
-			}
-			return val;
-		}
-		void byte_align() { bitpos_=(bitpos_+7)&~7; }
-	};*/
+	struct lz_token {
+		bool is_match_;
+		int len_;
+		int dist_;
+		uint8_t lit_;
+	};
 	struct huffman {
 		std::vector<uint16_t> table_;
 		std::vector<uint8_t> length_;
 		int maxbits_;
+		std::vector<std::vector<uint16_t>> codes_bl_;
+		std::vector<std::vector<int>> syms_bl_;
 		int decode(bitwise::bit_reader& br) const {
 			int code=0,len=1;
 			for (;len<=maxbits_;len++) {
 				code|=br.read_bits<uint8_t>(1)<<(len-1);
-				for (std::size_t i=0;i<length_.size();i++) {
+				/*for (std::size_t i=0;i<length_.size();i++) {
 					if (length_[i] == len && table_[i]==code) return (int)i;
+				}*/
+				const auto& codes=codes_bl_[len];
+				const auto& syms=syms_bl_[len];
+				for (std::size_t i=0;i<codes.size();i++) {
+					if (codes[i]==code) return syms[i];
 				}
 			}
 			throw std::runtime_error("invalid huffman code");
@@ -100,6 +97,8 @@ private:
 			next_code[bits]=code;
 		}
 		h.table_.assign(h.length_.size(),0);
+		h.codes_bl_.assign(MAXBITS+1,{});
+		h.syms_bl_.assign(MAXBITS+1,{});
 		for (std::size_t n=0;n<h.length_.size();n++) {
 			int len=h.length_[n];
 			if (len!=0) {
@@ -107,6 +106,8 @@ private:
 				int rev=0;
 				for (int i=0;i<len;i++) rev=(rev<<1)|((val>>i)&1);
 				h.table_[n]=rev;
+				h.codes_bl_[len].push_back(h.table_[n]);
+				h.syms_bl_[len].push_back((int)n);
 			}
 		}
 	}
@@ -119,9 +120,9 @@ private:
 			bitcount-=8;
 		}
 	}
-	static void flush_bits(std::vector<uint8_t>& out,uint32_t& bitbuf,int& bitcount) {
+	static void flush_bits(std::vector<uint8_t>& result,uint32_t& bitbuf,int& bitcount) {
 		while (bitcount>0) {
-			out.push_back(bitbuf&0xFF);
+			result.push_back(bitbuf&0xFF);
 			bitbuf>>=8;
 			bitcount-=8;
 		}
@@ -134,44 +135,301 @@ private:
 		}
 		return (b<<16)|a;
 	}
+	static std::vector<lz_token> lz77_parse(const std::vector<uint8_t>& data) {
+		const int WND=32768;
+		std::vector<lz_token> result;
+		for (std::size_t i=0;i<data.size();) {
+			int best_len=0,best_dist=0;
+			int max_l=std::min<int>(258,data.size()-i);
+			int start=(i>WND)?i-WND:0;
+			for (int j=int(i)-1;j>=start;j--) {
+				int l=0;
+				while (l<max_l && data[j+l]==data[i+l]) l++;
+				if (l>best_len) {
+					best_len=l;
+					best_dist=i-j;
+					if (l>=3 && l==max_l) break;
+				}
+			}
+			if (best_len>=3) {
+				result.push_back({true,best_len,best_dist,0});
+				i+=best_len;
+			} else {
+				result.push_back({false,0,0,in[i]});
+				i++;
+			}
+		}
+		return out;
+	}
+	static void count_symbol_freqs(const std::vector<lz_token>& toks,std::vector<uint32_t>& ll_freq,std::vector<uint32_t>& d_freq) {
+		ll_freq.assign(286,0);
+		d_freq.assign(30,0);
+		static const int len_base[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
+		static const int dist_base[30]={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
+		for (auto& it:toks) {
+			if (!it.is_match_) ll_freq[it.lit_]++;
+			else {
+				int sym=285;
+				for (int s=0;s<29;s++) {
+					if (it.len_<=len_base[s]) {
+						sym=257+s;
+						break;
+					}
+				}
+				ll_freq[sym]++;
+				int dsym=29;
+				for (int s=0;s<30;s++) {
+					if (it.dist_<=dist_base[s]) {
+						dsym=s;
+						break;
+					}
+				}
+				d_freq[dsym]++;
+			}
+		}
+		ll_freq[256]++;
+	}
+	static std::vector<uint8_t> make_bitlengths(const std::vector<uint32_t>& freq,int max_bits) {
+		struct node {
+			uint32_t freq_;
+			int left_,right_;
+			bool operator >(const node& other) const { return freq_>other.freq_; }
+		};
+		std::vector<node> nodes;
+		for (std::size_t i=0;i<freq.size();i++) {
+			if (freq[i]!=0) nodes.push_back({freq[i],-1,(int)i});
+		}
+		if (nodes.empty()) nodes.push_back({1,-1,0});
+		auto cmp=[](const node& lhs,const node& rhs){
+			return lhs.freq_>rhs.freq_;
+		};
+		while (nodes.size()>1) {
+			std::sort(nodes.begin(),nodes.end(),cmp);
+			node a=nodes[0],b=nodes[1];
+			nodes.erase(nodes.begin(),nodes.begin()+2);
+			nodes.push_back({a.freq_+b.freq_,(int)nodes.size(),-1});
+		}
+		std::vector<uint8_t> lengths(freq.size(),0);
+		std::function<void(int,int)> mark=[&](int index,int depth){
+			if (depth>max_bits) depth=max_bits;
+			const node& n=nodes[index];
+			if (n.right_>=0 && n.left_>=0) {
+				mark(n.left_,depth+1);
+				mark(n.right_,depth+1);
+			} else if (n.left_==-1) lengths[n.right_]=depth;
+		};
+		mark(int(nodes.size()-1),0);
+		return lengths;
+	}
+	static void build_optimal_trees(const std::vector<lz_token>& toks,huffman& ll_tree,huffman& d_tree) {
+		std::vector<uint32_t> ll_freq,d_freq;
+		count_symbol_freqs(toks,ll_freq,d_freq);
+		ll_tree.length_=make_bitlengths(ll_freq,15);
+		d_tree.length_=make_bitlengths(d_freq,15);
+		build_canonical_table(ll_tree);
+		build_canonical_table(d_tree);
+	}
+	static void write_dynamic_block(std::vector<uint8_t>& result,const std::vector<lz_token>& toks,const huffman& ll_tree,const huffman& d_tree) {
+		uint32_t bitbuf=0;
+		int bitcnt=0;
+		auto putbits=[&](uint32_t v,int n){
+			bitbuf|=(v<<bitcnt);
+			bitcnt+=n;
+			while (bitcnt>=8) {
+				result.push_back(bitbuf&0xFF);
+				bitbuf>>=8;
+				bitcnt-=8;
+			}
+		};
+		auto flush=[&](){
+			if (bitcnt>0) {
+				result.push_back(bitbuf&0xFF);
+				bitbuf=0;
+				bitcnt=0;
+			}
+		};
+		putbits(1,1);
+		putbits(2,2);
+		std::vector<uint8_t> all=ll_tree.length_;
+		all.insert(all.end(),d_tree.length_.begin(),d_tree.length_.end());
+		int HLIT=286-257;
+		int HDIST=30-1;
+		std::vector<uint8_t> code_len_codes;
+		for (std::size_t i=0;i<all.size();) {
+			uint8_t v=all[i];
+			int run=1;
+			while (i+run<all.size() && run<138 && all[i+run]==v) run++;
+			if (v==0) {
+				if (run >= 11) {
+					code_len_codes.push_back(18);
+					code_len_codes.push_back(run-11);
+				} else if (run>=3) {
+					code_len_codes.push_back(17);
+					code_len_codes.push_back(run-3);
+				} else {
+					for (int r=0;r<run;r++) code_len_codes.push_back(0);
+				}
+			} else {
+				code_len_codes.push_back(v);
+				if (run>=4) {
+					code_len_codes.push_back(16);
+					code_len_codes.push_back(run-3);
+				}
+			}
+			i+=run;
+		}
+		std::vector<uint32_t> cl_freq(19,0);
+		for (std::size_t i=0;i<code_len_codes.size();i++) {
+			uint8_t sym=code_len_codes[i];
+			if (sym<19) cl_freq[sym]++;
+		}
+		huffman cl_tree;
+		cl_tree.length_=std::vector<uint8_t>(19,0);
+		std::vector<uint8_t> temp=make_bitlengths(cl_freq,7);
+		if (!temp.empty()) cl_tree.length_=temp;
+		build_canonical_table(cl_tree);
+		static const int order[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
+		int HCLEN=19;
+		while (HCLEN>4 && cl_tree.length_[order[HCLEN-1]]==0) HCLEN--;
+		putbits(HLIT,5);
+		putbits(HDIST,5);
+		putbits(HCLEN-4,4);
+		for (int i=0;i<HCLEN;i++) putbits(cl_tree.length_[order[i]],3);
+		std::size_t p=0;
+		while (p<code_len_codes.size()) {
+			int sym=code_len_codes[p++];
+			putbits(cl_tree.table_[sym],cl_tree.length_[sym]);
+			if (sym==16) putbits(code_len_codes[p++],2);
+			else if (sym==17) putbits(code_len_codes[p++],3);
+			else if (sym==18) putbits(code_len_codes[p++],7);
+		}
+		static const int lens[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
+		static const int lext[29]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
+		static const int db[30]={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
+		static const int de[30]={0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
+		for (auto& it:toks) {
+			if (!it.is_match_) {
+				int sym=it.lit_;
+				putbits(ll_tree.table_[sym],ll_tree.length_[sym]);
+			} else {
+				int L=it.len_;
+				int sym=285,ebits=0,eval=0;
+				for (int s=0;s<29;s++) {
+					if (L<=lens[s]) {
+						sym=257+s;
+						ebits=lext[s];
+						if (ebits) eval=L-lens[s-1];
+						break;
+					}
+				}
+				putbits(ll_tree.table_[sym],ll_tree.length_[sym]);
+				if (ebits) putbits(eval,ebits);
+				int D=it.dist_;
+				int dsym=0,dbits=0,dval=0;
+				for (int s=0;s<30;s++) {
+					if (D<=db[s]) {
+						dsym=s;
+						dbits=de[s];
+						if (dbits) dval=D-db[s-1];
+						break;
+					}
+				}
+				putbits(d_tree.table_[dsym],d_tree.length_[dsym]);
+				if (dbits) putbits(dval,dbits);
+			}
+		}
+		putbits(ll_tree.table_[256], ll_tree.length_[256]);
+		flush();
+	}
 
 public:
 	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,int level=6,bool raw=false) {
-		std::vector<uint8_t> compressed;
-		uint8_t cmf=0x78;
-		uint8_t flg=0x01;
-		if (level>=6) flg=0x9C;
-		else if (level>=3) flg=0x5E;
+		std::vector<uint8_t> result;
 		if (!raw) {
-			compressed.push_back(cmf);
-			compressed.push_back(flg);
+			out.push_back(0x78);
+			out.push_back(0x9C);
 		}
+		int btype=2;
+		if (level<=1) btype=0;
+		else if (level<=3) btype=1;
 		uint32_t bitbuf=0;
-		int bitcount=0;
-		write_bits(compressed,bitbuf,bitcount,1,1);
-		write_bits(compressed,bitbuf,bitcount,1,2);
-		for (uint8_t it:data) {
-			uint16_t code;
-			int len;
-			if (it<=143) {
-				code=0x30+it;
-				len=8;
-			} else {
-				code=0x190+(it-144);
-				len=9;
+		int bitcnt=0;
+		if (btype==0) {
+			write_bits(result,bitbuf,bitcnt,1,1);
+			write_bits(result,bitbuf,bitcnt,0,2);
+			flush_bits(result,bitbuf, bitcnt);
+			uint16_t len=static_cast<uint16_t>(data.size());
+			uint16_t nlen=~len;
+			result.push_back(len & 0xFF);
+			result.push_back(len>>8);
+			result.push_back(nlen&0xFF);
+			result.push_back(nlen>>8);
+			result.insert(out.end(),data.begin(),data.begin()+len);
+		} else if (btype==1) {
+			auto toks=lz77_parse(data);
+			huffman ll=build_fixed_tree_LIT();
+			huffman dd=build_fixed_tree_DIST();
+			write_bits(result,bitbuf,bitcnt,1,1);
+			write_bits(result,bitbuf,bitcnt,1,2);
+			static const int lens[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
+			static const int lext[29]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
+			static const int db[30]={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
+			static const int de[30]={0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
+			for (auto& it:toks) {
+				if (!it.is_match_) {
+					int sym=it.lit_;
+					uint16_t code;
+					int len;
+					if (sym<=143) {
+						code=0x30+sym;
+						len=8;
+					} else {
+						code=0x190+(sym-144);
+						len=9;
+					}
+					write_bits(out,bitbuf,bitcnt,code,len);
+				} else {
+					int L=it.len_,sym=285,ebits=0,eval=0;
+					for (int s=0;s<29;s++) {
+						if (L<=lens[s]) {
+							sym=257+s;
+							ebits=lext[s];
+							if (ebits) eval=L-lens[s-1];
+							break;
+						}
+					}
+					if (sym<=279) write_bits(result,bitbuf,bitcnt,(sym-256+0x100),7);
+					else write_bits(result,bitbuf,bitcnt,(sym-280+0x300),8);
+					if (ebits) write_bits(result,bitbuf,bitcnt,eval,ebits);
+					int D=it.dist_,dsym=29,deb=0,deval=0;
+					for (int s=0;s<30;s++) {
+						if (D<=db[s]) {
+							dsym=s;
+							deb=de[s];
+							if (deb) deval=D-db[s-1];
+							break;
+						}
+					}
+					write_bits(out, bitbuf, bitcnt, dsym, 5);
+					if (deb) write_bits(result,bitbuf,bitcnt,deval,deb);
+				}
 			}
-			write_bits(compressed,bitbuf,bitcount,code,len);
+			write_bits(result,bitbuf,bitcnt,0x00,7);
+			flush_bits(result,bitbuf,bitcnt);
+		} else {
+			auto toks=lz77_parse(data);
+			huffman ll_tree,dist_tree;
+			build_optimal_trees(toks,ll_tree,dist_tree);
+			write_dynamic_block(result,toks,ll_tree,dist_tree);
 		}
-		write_bits(compressed,bitbuf,bitcount,0x00,7);
-		flush_bits(compressed,bitbuf,bitcount);
 		if (!raw) {
-			uint32_t adler=compute_adler32(data);
-			compressed.push_back(static_cast<uint8_t>((adler>>24)&0xFF));
-			compressed.push_back(static_cast<uint8_t>((adler>>16)&0xFF));
-			compressed.push_back(static_cast<uint8_t>((adler>>8)&0xFF));
-			compressed.push_back(static_cast<uint8_t>(adler&0xFF));
+			uint32_t ad=compute_adler32(data);
+			result.push_back(ad>>24);
+			result.push_back((ad>>16)&0xFF);
+			result.push_back((ad>>8)&0xFF);
+			result.push_back(ad&0xFF);
 		}
-		return compressed;
+		return result;
 	}
 	static std::vector<uint8_t> decompress(const std::vector<uint8_t>& compressed,bool raw=false) {
 		std::size_t offset=0;
@@ -217,7 +475,8 @@ public:
 				build_canonical_table(code_tree);
 				std::vector<uint8_t> ll_len;
 				int total=HLIT+HDIST;
-				while ((int)ll_len.size()<total) {
+				int guard=0;
+				while ((int)ll_len.size()<total && guard++<total*3) {
 					int sym=code_tree.decode(br);
 					if (sym<=15) ll_len.push_back(sym);
 					else if (sym==16) {
@@ -226,12 +485,13 @@ public:
 						while (rep--) ll_len.push_back(prev);
 					} else if (sym==17) {
 						int rep=3+br.read_bits<uint32_t>(3);
-						while(rep--) ll_len.push_back(0);
+						while (rep--) ll_len.push_back(0);
 					} else if (sym==18) {
 						int rep=11+br.read_bits<uint32_t>(7);
-						while(rep--) ll_len.push_back(0);
+						while (rep--) ll_len.push_back(0);
 					}
 				}
+				if ((int)ll_len.size()!=total) throw std::runtime_error("bad dynamic code length sequence");
 				litlen.length_.assign(ll_len.begin(),ll_len.begin()+HLIT);
 				dist.length_.assign(ll_len.begin()+HLIT,ll_len.end());
 				build_canonical_table(litlen);
@@ -260,7 +520,11 @@ public:
 				if (dstext[dist_sym]) distv+=br.read_bits<uint32_t>(dstext[dist_sym]);
 				if ((std::size_t)distv>decompressed.size()) throw std::runtime_error("dist too far");
 				std::size_t start=decompressed.size()-distv;
-				for (int i=0;i<len;i++) decompressed.push_back(decompressed[start+i]);
+				//for (int i=0;i<len;i++) decompressed.push_back(decompressed[start+i]);
+				for (int i=0;i<len;i++) {
+					uint8_t b=decompressed[start+(i%distv)];
+					decompressed.push_back(b);
+				}
 			}
 			if (last) break;
 		}
