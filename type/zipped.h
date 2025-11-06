@@ -112,6 +112,7 @@ class deflate_compressor {
 		}
 	}
 	static void write_bits(std::vector<uint8_t>& out,uint32_t& bitbuf,int& bitcount,uint32_t val,int bits) {
+		val &=(bits==32?0xFFFFFFFF:((1u<<bits)-1));
 		bitbuf|=(val<<bitcount);
 		bitcount+=bits;
 		while (bitcount>=8) {
@@ -155,11 +156,11 @@ class deflate_compressor {
 				result.push_back({true,best_len,best_dist,0});
 				i+=best_len;
 			} else {
-				result.push_back({false,0,0,in[i]});
+				result.push_back({false,0,0,data[i]});
 				i++;
 			}
 		}
-		return out;
+		return result;
 	}
 	static void count_symbol_freqs(const std::vector<lz_token>& toks,std::vector<uint32_t>& ll_freq,std::vector<uint32_t>& d_freq) {
 		ll_freq.assign(286,0);
@@ -207,18 +208,20 @@ class deflate_compressor {
 			std::sort(nodes.begin(),nodes.end(),cmp);
 			node a=nodes[0],b=nodes[1];
 			nodes.erase(nodes.begin(),nodes.begin()+2);
-			nodes.push_back({a.freq_+b.freq_,(int)nodes.size(),-1});
+			nodes.push_back({a.freq_+b.freq_,(int)nodes.size(),(int)(nodes.size()+1)});
+			nodes.insert(nodes.end(),{a,b});
+			std::sort(nodes.begin(),nodes.end(),cmp);
 		}
 		std::vector<uint8_t> lengths(freq.size(),0);
-		std::function<void(int,int)> mark=[&](int index,int depth){
+		std::function<void(const node&,int)> recurse=[&](const node& n,int depth){
 			if (depth>max_bits) depth=max_bits;
-			const node& n=nodes[index];
-			if (n.right_>=0 && n.left_>=0) {
-				mark(n.left_,depth+1);
-				mark(n.right_,depth+1);
-			} else if (n.left_==-1) lengths[n.right_]=depth;
+			if (n.left_==-1) lengths[n.right_]=(uint8_t)depth;
+			else {
+				if (n.left_>=0 && n.left_<(int)nodes.size()) recurse(nodes[n.left_],depth+1);
+				if (n.right_>=0 && n.right_<(int)nodes.size()) recurse(nodes[n.right_],depth+1);
+			}
 		};
-		mark(int(nodes.size()-1),0);
+		recurse(nodes.front(),0);
 		return lengths;
 	}
 	static void build_optimal_trees(const std::vector<lz_token>& toks,huffman& ll_tree,huffman& d_tree) {
@@ -252,41 +255,47 @@ class deflate_compressor {
 		putbits(2,2);
 		std::vector<uint8_t> all=ll_tree.length_;
 		all.insert(all.end(),d_tree.length_.begin(),d_tree.length_.end());
-		int HLIT=286-257;
-		int HDIST=30-1;
-		std::vector<uint8_t> code_len_codes;
+		int HLIT=(int)ll_tree.length_.size()-257;
+		int HDIST=(int)d_tree.length_.size()-1;
+		struct item {
+			uint8_t sym_;
+			int extra_;
+			int bits_;
+		};
+		std::vector<item> seq;
 		for (std::size_t i=0;i<all.size();) {
 			uint8_t v=all[i];
 			int run=1;
 			while (i+run<all.size() && run<138 && all[i+run]==v) run++;
+			int r_total=run;
 			if (v==0) {
-				if (run >= 11) {
-					code_len_codes.push_back(18);
-					code_len_codes.push_back(run-11);
-				} else if (run>=3) {
-					code_len_codes.push_back(17);
-					code_len_codes.push_back(run-3);
-				} else {
-					for (int r=0;r<run;r++) code_len_codes.push_back(0);
+				 while (run>=11) {
+					int n=std::min(remaining,138);
+					seq.push_back({18,n-11,7});
+					remaining-=n;
 				}
+				if (run>=3) {
+					int n=std::min(remaining,10);
+					seq.push_back({17,n-3,3});
+					remaining-=n;
+				}
+				while (run-->0) seq.push_back({0,0,0});
 			} else {
-				code_len_codes.push_back(v);
-				if (run>=4) {
-					code_len_codes.push_back(16);
-					code_len_codes.push_back(run-3);
+				seq.push_back({v,0,0});
+				run--;
+				while (run>=3) {
+					int r=std::min(run,6);
+					seq.push_back({16,r-3,2});
+					run-=r;
 				}
+				while (run-->0) seq.push_back({v,0,0});
 			}
-			i+=run;
+			i+=r_total;
 		}
 		std::vector<uint32_t> cl_freq(19,0);
-		for (std::size_t i=0;i<code_len_codes.size();i++) {
-			uint8_t sym=code_len_codes[i];
-			if (sym<19) cl_freq[sym]++;
-		}
+		for (auto& it:seq) cl_freq[it.sym_]++;//<19?
 		huffman cl_tree;
-		cl_tree.length_=std::vector<uint8_t>(19,0);
-		std::vector<uint8_t> temp=make_bitlengths(cl_freq,7);
-		if (!temp.empty()) cl_tree.length_=temp;
+		cl_tree.length_=make_bitlengths(cl_freq,7);
 		build_canonical_table(cl_tree);
 		static const int order[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
 		int HCLEN=19;
@@ -295,13 +304,11 @@ class deflate_compressor {
 		putbits(HDIST,5);
 		putbits(HCLEN-4,4);
 		for (int i=0;i<HCLEN;i++) putbits(cl_tree.length_[order[i]],3);
-		std::size_t p=0;
-		while (p<code_len_codes.size()) {
-			int sym=code_len_codes[p++];
-			putbits(cl_tree.table_[sym],cl_tree.length_[sym]);
-			if (sym==16) putbits(code_len_codes[p++],2);
-			else if (sym==17) putbits(code_len_codes[p++],3);
-			else if (sym==18) putbits(code_len_codes[p++],7);
+		for (auto& it:seq) {
+			putbits(cl_tree.table_[it.sym_],cl_tree.length_[it.sym_]);
+			if (it.sym_==16) putbits(it.extra_,2);
+			else if (it.sym_==17) putbits(it.extra_,3);
+			else if (it.sym_==18) putbits(it.extra_,7);
 		}
 		static const int lens[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
 		static const int lext[29]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
@@ -313,32 +320,23 @@ class deflate_compressor {
 				putbits(ll_tree.table_[sym],ll_tree.length_[sym]);
 			} else {
 				int L=it.len_;
-				int sym=285,ebits=0,eval=0;
-				for (int s=0;s<29;s++) {
-					if (L<=lens[s]) {
-						sym=257+s;
-						ebits=lext[s];
-						if (ebits) eval=L-lens[s-1];
-						break;
-					}
-				}
+				int lsym=0;
+				while (lsym<29 && L>lens[lsym]) lsym++;
+				int sym=257+lsym;
+				int ebits=lext[lsym];
+				int eval=ebits?L-lens[lsym-1]:0;
 				putbits(ll_tree.table_[sym],ll_tree.length_[sym]);
 				if (ebits) putbits(eval,ebits);
 				int D=it.dist_;
-				int dsym=0,dbits=0,dval=0;
-				for (int s=0;s<30;s++) {
-					if (D<=db[s]) {
-						dsym=s;
-						dbits=de[s];
-						if (dbits) dval=D-db[s-1];
-						break;
-					}
-				}
+				int dsym=0;
+				while (dsym<30 && D>db[dsym]) dsym++;
+				int dbits=de[dsym];
+				int dval=dbits?D-db[dsym-1]:0;
 				putbits(d_tree.table_[dsym],d_tree.length_[dsym]);
 				if (dbits) putbits(dval,dbits);
 			}
 		}
-		putbits(ll_tree.table_[256], ll_tree.length_[256]);
+		putbits(ll_tree.table_[256],ll_tree.length_[256]);
 		flush();
 	}
 
@@ -346,8 +344,8 @@ public:
 	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,int level=6,bool raw=false) {
 		std::vector<uint8_t> result;
 		if (!raw) {
-			out.push_back(0x78);
-			out.push_back(0x9C);
+			result.push_back(0x78);
+			result.push_back(0x9C);
 		}
 		int btype=2;
 		if (level<=1) btype=0;
@@ -355,16 +353,22 @@ public:
 		uint32_t bitbuf=0;
 		int bitcnt=0;
 		if (btype==0) {
-			write_bits(result,bitbuf,bitcnt,1,1);
-			write_bits(result,bitbuf,bitcnt,0,2);
-			flush_bits(result,bitbuf, bitcnt);
-			uint16_t len=static_cast<uint16_t>(data.size());
-			uint16_t nlen=~len;
-			result.push_back(len & 0xFF);
-			result.push_back(len>>8);
-			result.push_back(nlen&0xFF);
-			result.push_back(nlen>>8);
-			result.insert(out.end(),data.begin(),data.begin()+len);
+			std::size_t pos=0;
+			while (pos<data.size()) {
+				std::size_t blk_size=std::min<size_t>(65535,data.size()-pos);
+				int last=(pos+blk_size==data.size());
+				write_bits(result,bitbuf,bitcnt,last,1);
+				write_bits(result,bitbuf,bitcnt,0,2);
+				flush_bits(result,bitbuf,bitcnt);
+				uint16_t len=(uint16_t)blk_size;
+				uint16_t nlen=(uint16_t)~len;
+				result.push_back(len&0xFF);
+				result.push_back(len>>8);
+				result.push_back(nlen&0xFF);
+				result.push_back(nlen>>8);
+				result.insert(result.end(),data.begin()+pos,data.begin()+pos+blk_size);
+				pos += blk_size;
+			}
 		} else if (btype==1) {
 			auto toks=lz77_parse(data);
 			huffman ll=build_fixed_tree_LIT();
@@ -378,43 +382,26 @@ public:
 			for (auto& it:toks) {
 				if (!it.is_match_) {
 					int sym=it.lit_;
-					uint16_t code;
-					int len;
-					if (sym<=143) {
-						code=0x30+sym;
-						len=8;
-					} else {
-						code=0x190+(sym-144);
-						len=9;
-					}
-					write_bits(out,bitbuf,bitcnt,code,len);
+					write_bits(result,bitbuf,bitcnt,ll.table_[sym],ll.length_[sym]);
 				} else {
-					int L=it.len_,sym=285,ebits=0,eval=0;
-					for (int s=0;s<29;s++) {
-						if (L<=lens[s]) {
-							sym=257+s;
-							ebits=lext[s];
-							if (ebits) eval=L-lens[s-1];
-							break;
-						}
-					}
-					if (sym<=279) write_bits(result,bitbuf,bitcnt,(sym-256+0x100),7);
-					else write_bits(result,bitbuf,bitcnt,(sym-280+0x300),8);
-					if (ebits) write_bits(result,bitbuf,bitcnt,eval,ebits);
-					int D=it.dist_,dsym=29,deb=0,deval=0;
-					for (int s=0;s<30;s++) {
-						if (D<=db[s]) {
-							dsym=s;
-							deb=de[s];
-							if (deb) deval=D-db[s-1];
-							break;
-						}
-					}
-					write_bits(out, bitbuf, bitcnt, dsym, 5);
-					if (deb) write_bits(result,bitbuf,bitcnt,deval,deb);
+					int L=it.len_;
+					int s=0;
+					while (s<29 && L>lens[s]) s++;
+					int sym=257+s;
+					int eb=lext[s];
+					int ev=eb?L-lens[s-1]:0;
+					write_bits(result,bitbuf,bitcnt,ll.table_[sym],ll.length_[sym]);
+					if (eb) write_bits(result,bitbuf,bitcnt,ev,eb);
+					int D=it.dist_;
+					int sd=0;
+					while(sd<30 && D>db[sd]) sd++;
+					int sb=de[sd];
+					int sv=sb?D-db[sd-1]:0;
+					write_bits(result,bitbuf,bitcnt,dd.table_[sd],dd.length_[sd]);
+					if (sb) write_bits(result,bitbuf,bitcnt,sv,sb);
 				}
 			}
-			write_bits(result,bitbuf,bitcnt,0x00,7);
+			write_bits(result,bitbuf,bitcnt,ll.table_[256],ll.length_[256]);
 			flush_bits(result,bitbuf,bitcnt);
 		} else {
 			auto toks=lz77_parse(data);
@@ -475,8 +462,7 @@ public:
 				build_canonical_table(code_tree);
 				std::vector<uint8_t> ll_len;
 				int total=HLIT+HDIST;
-				int guard=0;
-				while ((int)ll_len.size()<total && guard++<total*3) {
+				while ((int)ll_len.size()<total) {
 					int sym=code_tree.decode(br);
 					if (sym<=15) ll_len.push_back(sym);
 					else if (sym==16) {
