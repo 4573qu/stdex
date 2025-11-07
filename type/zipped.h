@@ -23,6 +23,8 @@
 #include <vector>
 
 #include "../bitwise/bit_reader.h"//At Least 1.0
+#include "../bitwise/bit_writer.h"//At Least 1.0
+#include "../crypto/lz77.h"//At Least 1.0
 #include "../integrity/crc.h"//At Least 1.0
 
 namespace stdex {
