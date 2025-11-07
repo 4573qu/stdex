@@ -17,7 +17,8 @@ namespace stdex {
 
 namespace crypto {
 
-class lz77 {
+template <std::size_t _MaxChain,bool _Lazy>
+class lz77_base {
 public:
 	using byte=uint8_t;
 
@@ -43,7 +44,7 @@ private:
 	}
 
 public:
-	lz77() : head_(hash_size_,-1) , prev_(window_size_,-1) { }
+	explicit lz77_base() : head_(hash_size_,-1) , prev_(window_size_,-1) { }
 
 	std::vector<token> encode(const std::vector<byte>& input) {
 		std::vector<Token> tokens;
@@ -54,16 +55,16 @@ public:
 		auto load3=[&](std::size_t pos)->uint32_t{
 			return (static_cast<uint32_t>(input[pos])<<16)|(static_cast<uint32_t>(input[pos+1])<<8)|(static_cast<uint32_t>(input[pos+2]));
 		};
+		int prev_match_len=0,prev_match_dist=0;
 		while (position+min_match_<input_size) {
 			hash=hash_func(load3(position));
 			int best_len=0;
 			int best_dist=0;
 			int match=head_[hash];
 			head_[hash]=static_cast<int>(position);
-			if (position<prev_.size()) prev_[position%window_size_]=match;
+			prev_[position%window_size_]=match;
 			int chain_count=0;
-			const int MAX_CHAIN=64;
-			while (match>=0 && chain_count++<MAX_CHAIN) {
+			while (match>=0 && chain_count++<_MaxChain) {
 				int dist=static_cast<int>(position-match);
 				if (dist>window_size_) break;
 				int len=0;
@@ -75,12 +76,25 @@ public:
 				}
 				match=prev_[match%window_size_];
 			}
+			if (_Lazy && prev_match_len!=0 && best_len<=prev_match_len) {
+				tokens_.push_back({(uint16_t)prev_match_dist,(uint16_t)prev_match_len,0});
+				pos+=prev_match_len;
+				prev_match_len=prev_match_dist=0;
+				continue;
+			}
 			if (best_len>=min_match_) {
-				tokens.push_back({static_cast<uint16_t>(best_dist),static_cast<uint16_t>(best_len),0});
-				position+=best_len;
+				if (_Lazy) {
+					prev_match_len=best_len;
+					prev_match_dist=best_dist;
+					position++;
+					continue;
+				} else {
+					tokens.push_back({static_cast<uint16_t>(best_dist),static_cast<uint16_t>(best_len),0});
+					position+=best_len;
+				}
 			} else {
 				tokens.push_back({0,0,input[position]});
-				position+=1;
+				position++;
 			}
 		}
 		while (position<input_size) tokens.push_back({0,0,input[position++]});
@@ -100,6 +114,10 @@ public:
 		return output;
 	}
 };
+
+using lz77=lz77_base<64,false>;
+using lz77_fast=lz77_base<16,false>;
+using lz77_highratio=lz77_base<256,true>;
 
 }
 
