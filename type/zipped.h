@@ -34,12 +34,6 @@ namespace type {
 namespace zipped {
 
 class deflate_compressor {
-	struct lz_token {
-		bool is_match_;
-		int len_;
-		int dist_;
-		uint8_t lit_;
-	};
 	struct huffman {
 		std::vector<uint16_t> table_;
 		std::vector<uint8_t> length_;
@@ -50,9 +44,6 @@ class deflate_compressor {
 			int code=0,len=1;
 			for (;len<=maxbits_;len++) {
 				code|=br.read_bits<uint8_t>(1)<<(len-1);
-				/*for (std::size_t i=0;i<length_.size();i++) {
-					if (length_[i] == len && table_[i]==code) return (int)i;
-				}*/
 				const auto& codes=codes_bl_[len];
 				const auto& syms=syms_bl_[len];
 				for (std::size_t i=0;i<codes.size();i++) {
@@ -138,232 +129,7 @@ class deflate_compressor {
 		}
 		return (b<<16)|a;
 	}
-	static std::vector<lz_token> lz77_parse(const std::vector<uint8_t>& data) {
-		    std::vector<lz_token> result;
-    
-    for (uint8_t byte : data) {
-        result.push_back({false, 0, 0, byte});
-    }
-    
-    return result;
-		    const int WND = 32768;
-    const int MIN_MATCH = 3;
-    const int MAX_MATCH = 258;
-    
-    //std::vector<lz_token> result;
-    
-    // 使用哈希表加速匹配查找
-    std::unordered_map<uint32_t, std::vector<size_t>> hash_table;
-    
-    for (std::size_t i = 0; i < data.size();) {
-        int best_len = 0, best_dist = 0;
-        int max_l = std::min<int>(MAX_MATCH, data.size() - i);
-        
-        // 只在有可能找到匹配时才搜索
-        if (i >= MIN_MATCH && max_l >= MIN_MATCH) {
-            // 计算当前3字节的哈希值
-            uint32_t hash = 0;
-            if (i + 2 < data.size()) {
-                hash = (data[i] << 16) | (data[i+1] << 8) | data[i+2];
-            }
-            
-            // 查找可能的匹配位置
-            auto& positions = hash_table[hash];
-            
-            // 从最近的匹配开始检查（距离越短编码效率越高）
-            for (auto it = positions.rbegin(); it != positions.rend() && best_len < max_l; ++it) {
-                size_t j = *it;
-                if (i - j > WND) continue; // 超出窗口范围
-                
-                int l = 0;
-                while (l < max_l && j + l < i && data[j + l] == data[i + l]) {
-                    l++;
-                }
-                
-                if (l > best_len) {
-                    best_len = l;
-                    best_dist = static_cast<int>(i - j);
-                    if (l == max_l) break; // 找到最大匹配，提前退出
-                }
-            }
-            
-            // 更新哈希表，移除过期的位置
-            if (positions.size() > 64) { // 限制每个哈希桶的大小
-                positions.erase(positions.begin(), positions.begin() + positions.size() - 32);
-            }
-        }
-        
-        if (best_len >= MIN_MATCH) {
-            result.push_back({true, best_len, best_dist, 0});
-            
-            // 为匹配中的每个位置更新哈希表（提高后续匹配机会）
-            for (int k = 0; k < best_len && i + k + 2 < data.size(); k++) {
-                uint32_t new_hash = (data[i+k] << 16) | (data[i+k+1] << 8) | data[i+k+2];
-                hash_table[new_hash].push_back(i + k);
-            }
-            
-            i += best_len;
-        } else {
-            result.push_back({false, 0, 0, data[i]});
-            
-            // 更新哈希表
-            if (i + 2 < data.size()) {
-                uint32_t hash = (data[i] << 16) | (data[i+1] << 8) | data[i+2];
-                hash_table[hash].push_back(i);
-            }
-            
-            i++;
-        }
-        
-        // 定期清理哈希表，防止内存无限增长
-        if (i % 10000 == 0) {
-            for (auto& [key, vec] : hash_table) {
-                if (vec.size() > 32) {
-                    vec.erase(vec.begin(), vec.end() - 16);
-                }
-            }
-        }
-    }
-    
-    return result;
-		//const int WND=32768;
-		//std::vector<lz_token> result;
-		for (std::size_t i=0;i<data.size();) {
-			int best_len=0,best_dist=0;
-			int max_l=std::min<int>(258,data.size()-i);
-			int start=(i>WND)?i-WND:0;
-			for (int j=int(i)-1;j>=start;j--) {
-				int l=0;
-				while (l<max_l && data[j+l]==data[i+l]) l++;
-				if (l>best_len) {
-					best_len=l;
-					best_dist=i-j;
-					if (l>=3 && l==max_l) break;
-				}
-			}
-			if (best_len>=3) {
-				result.push_back({true,best_len,best_dist,0});
-				i+=best_len;
-			} else {
-				result.push_back({false,0,0,data[i]});
-				i++;
-			}
-		}
-		return result;
-	}
-	static void count_symbol_freqs(const std::vector<lz_token>& toks,std::vector<uint32_t>& ll_freq,std::vector<uint32_t>& d_freq) {
-		ll_freq.assign(286,0);
-		d_freq.assign(30,0);
-		static const int len_base[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
-		static const int dist_base[30]={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
-		for (auto& it:toks) {
-			if (!it.is_match_) ll_freq[it.lit_]++;
-			else {
-				int sym=285;
-				for (int s=0;s<28;s++) {
-					int start=len_base[s];
-					int next=len_base[s+1];
-					if (it.len_>=start && it.len_<next) {
-						sym=257+s;
-						break;
-					}
-				}
-				ll_freq[sym]++;
-				int dsym=29;
-				for (int s=0;s<29;s++) {
-					int start=dist_base[s];
-					int next=dist_base[s+1];
-					if (it.dist_>=start && it.dist_<next) {
-						dsym=s;
-						break;
-					}
-				}
-				d_freq[dsym]++;
-			}
-		}
-		ll_freq[256]++;
-	}
-	static std::vector<uint8_t> make_bitlengths(const std::vector<uint32_t>& freq,int max_bits) {
-		struct node {
-			uint32_t freq_;
-			node* left_;
-			node* right_;
-			int sym_;
-			bool operator >(const node& other) const { return freq_>other.freq_; }
-			node(uint32_t f,int s) : freq_(f) , sym_(s) , left_(nullptr) , right_(nullptr) { }
-			node(node* l,node* r) : freq_(l->freq_+r->freq_) , sym_(-1) , left_(l) , right_(r) { }
-		};
-		struct cmp {
-			bool operator ()(const node* lhs,const node* rhs) const {
-				return lhs->freq_>rhs->freq_;
-			}
-		};
-		std::priority_queue<node*,std::vector<node*>,cmp> pq;
-		for (std::size_t i=0;i<freq.size();i++) {
-			if (freq[i]>0) pq.push(new node(freq[i],(int)i));
-		}
-		if (pq.empty()) pq.push(new node(1,0));
-		if (pq.size()==1) pq.push(new node(1,(pq.top()->sym_==0)?1:0));
-		while (pq.size()>1) {
-			node* a=pq.top();
-			pq.pop();
-			node* b=pq.top();
-			pq.pop();
-			pq.push(new node(a,b));
-		}
-		std::vector<uint8_t> length(freq.size(),0);
-		std::function<void(node*,int)> dfs=[&](node* n,int depth){
-			if (!n) return;
-			if (n->sym_>=0) {
-				length[n->sym_]=/*(depth>max_bits)?max_bits:*/(uint8_t)depth;
-				return;
-			}
-			dfs(n->left_,depth+1);
-			dfs(n->right_,depth+1);
-		};
-		dfs(pq.top(),0);
-		std::vector<int> bl_count(max_bits+1,0);
-		for (uint8_t it:length) if (it>0) bl_count[std::min<int>(it,max_bits)]++;
-		while (1) {
-			int left=1<<max_bits;
-			for (int bits=1;bits<=max_bits;bits++) left-=bl_count[bits]<<(max_bits-bits);
-			if (left>=0) break;
-			for (int bits=max_bits-1;bits>0;bits--) {
-				if (bl_count[bits]!=0) {
-					bl_count[bits]--;
-					bl_count[bits+1]+=2;
-					break;
-				}
-			}
-		}
-		struct sympair {
-			uint32_t freq_;
-			int sym_;
-		};
-		std::vector<sympair> syms;
-		syms.reserve(freq.size());
-		for (std::size_t i=0;i<freq.size();i++) {
-			if (freq[i]>0) syms.push_back({freq[i],(int)i});
-		}
-		std::sort(syms.begin(),syms.end(),[](const sympair& lhs,const sympair& rhs){
-			if (lhs.freq_!=rhs.freq_) return lhs.freq_>rhs.freq_; // 频率高者优先
-			return lhs.sym_<rhs.sym_;
-		});
-		std::fill(length.begin(),length.end(),0);
-		std::size_t index=0;
-		for (int bits=1;bits<=max_bits && index<syms.size();bits++) {
-			int n=bl_count[bits];
-			while (n-->0 && index<syms.size()) length[syms[index++].sym_]=(uint8_t)bits;
-		}
-		std::function<void(node*)> destroy=[&](node* n) {
-			if (!n) return;
-			destroy(n->left_);
-			destroy(n->right_);
-			delete n;
-		};
-		destroy(pq.top());
-		return length;
-	}
+	
 	static void build_optimal_trees(const std::vector<lz_token>& toks,huffman& ll_tree,huffman& d_tree) {
 		std::vector<uint32_t> ll_freq,d_freq;
 		count_symbol_freqs(toks,ll_freq,d_freq);
@@ -533,7 +299,9 @@ public:
 				pos += blk_size;
 			}
 		} else if (btype==1) {
-			auto toks=lz77_parse(data);
+			crypto::lz77 lz;
+			auto tokens=lz.encode(data);
+
 			huffman ll=build_fixed_tree_LIT();
 			huffman dd=build_fixed_tree_DIST();
 			constexpr bool final_block = true;
@@ -575,7 +343,8 @@ public:
 			write_bits(result,bitbuf,bitcnt,ll.table_[256],ll.length_[256]);
 			flush_bits(result,bitbuf,bitcnt);
 		} else {
-			auto toks=lz77_parse(data);
+			crypto::lz77 lz;
+			auto tokens=lz.encode(data);
 			huffman ll_tree,dist_tree;
 			build_optimal_trees(toks,ll_tree,dist_tree);
 			write_dynamic_block(result,toks,ll_tree,dist_tree,true);
