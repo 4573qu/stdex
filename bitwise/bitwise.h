@@ -2,6 +2,7 @@
 #include "bit_iterator.h"
 #include "bit_reader.h"
 #include "bit_ref.h"
+#include "bit_writer.h"
 #include "bits.h"
 #include "dynamic_bitset.h"
 #include "endianness.h"

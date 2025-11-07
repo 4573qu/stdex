@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/24
-//@Version 1.0.0.2
+//Last Modified At 2025/11/08
+//@Version 1.1.0.0
 #ifndef _STDEX_BITWISE_BITS_H_
 #define _STDEX_BITWISE_BITS_H_ 1
 
@@ -23,6 +23,11 @@
 namespace stdex {
 
 namespace bitwise {
+
+enum bit_order {
+	BO_LSB,
+	BO_MSB,
+};
 
 #define _STDEX_BITS_SIZE (sizeof(_Tp)*CHAR_BIT)
 

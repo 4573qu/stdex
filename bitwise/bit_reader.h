@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "bit_iterator.h"//At Least 1.0.0.1
+#include "bits.h"//At Least 1.1
 #include "endianness.h"//At Least 1.0.0.1
 
 namespace stdex {
@@ -20,11 +21,6 @@ namespace bitwise {
 
 class bit_reader {
 public:
-	enum bit_order {
-		BO_MSB,
-		BO_LSB,
-	};
-
 	using iterator=bit_iterator<const uint8_t>;
 
 private:
