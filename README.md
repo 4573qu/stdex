@@ -1,12 +1,12 @@
-**StdEx** is an extension library for Std. It contains components that may be used across various technical domains.
+**StdEx** is an extension library for std. It contains components that may be used across various technical domains.
 
 For detailed usage instructions, please refer to: [help](/Documents/StdEx.md)
 
 For contributing a new module to STDEX, please refer to: [submitting](/Documents/StdEx_Submitting.md)
 
-//Submitting should contains 哪些模块会被接受 & 编码规范
-
 ---
+
+### General Headers(Currently Unavailable)
 
 For single-file development (non-project mode), use:  
 `#include <cstdex>`
@@ -17,20 +17,28 @@ For project reference development mode, use:
 ---
 
 ### Directory Overview
-- **bitwise**: Bitwise operations  
+- **bitwise**: Bitwise operations
 - **container**: Containers like enhanced any or function
 - **crypto**: Encodings and encryptions
-- **logging**: Logging operations *(Temporarily unavailable)*  
-- **machine**: Machine-level operations *(Currently Windows-only)* *(Temporarily unavailable)* 
-- **macros**: General MACROS for library files and developers 
-- **math**: Mathematical operations  
+- **logging**: Logging operations *(Currently unavailable)*
+- **machine**: Machine-level operations *(Currently unavailable)*
+- **macros**: General MACROS for library files and developers
+- **math**: Mathematical operations
 - **memory**: Operations of memory level
-- **meta**: Metadata operations *(Temporarily unavailable)*  
-- **other**: Uncategorized items *(Includes modified `diff_match_patch` from [Google OSS](https://github.com/google/diff-match-patch))* *(Temporarily unavailable)*  
+- **meta**: Metadata operations *(Currently unavailable)*
 - **profiling**: Profiling tools
-- **structure**: Common data structures *(DisjointSet & NaryTree is Temporarily unavailable)*  
-- **syntax**: Lexical & syntax operations *(Lexer is Temporarily unavailable)*  
-- **type**: Data type operations 
-  *(Currently supports bitmap/ini/json; `json` library modified from [nlohmann OSS](https://github.com/nlohmann/json))* *(Temporarily unavailable)*  
+- **structure**: Common data structures
+- **syntax**: Lexical & syntax operations 
+- **type**: Data type operations*(Currently supports ini)*
 - **utility**: Quick tools like syntactic sugar
-- **vision**: Vision-related operations *(Temporarily unavailable)*  
+- **vision**: Vision-related operations *(Currently unavailable)*  
+
+
+
+### See future features
+
+You can check branch:dev to see which may be added to branch:main next.
+
+The integrity and security of any files not in branch:main are not guaranteed.
+
+The branch:dev can only show that which is in the preparation list and which is not.
