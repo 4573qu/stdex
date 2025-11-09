@@ -42,43 +42,43 @@ private:
 	static uint32_t hash_func(uint32_t val) noexcept {
 		return ((val*2654435761u)>>(32-15))&(hash_size_-1);
 	}
+	static uint32_t load3(const std::vector<byte>& data,std::size_t pos) noexcept {
+		return (static_cast<uint32_t>(data[pos])<<16)|(static_cast<uint32_t>(data[pos+1])<<8)|(static_cast<uint32_t>(data[pos+2]));
+	}
 
 public:
 	explicit lz77_base() : head_(hash_size_,-1) , prev_(window_size_,-1) { }
 
 	std::vector<token> encode(const std::vector<byte>& input) {
-		std::vector<Token> tokens;
+		std::vector<token> tokens;
 		if (input.empty()) return tokens;
 		std::size_t input_size=input.size();
 		uint32_t hash=0;
 		std::size_t position=0;
-		auto load3=[&](std::size_t pos)->uint32_t{
-			return (static_cast<uint32_t>(input[pos])<<16)|(static_cast<uint32_t>(input[pos+1])<<8)|(static_cast<uint32_t>(input[pos+2]));
-		};
 		int prev_match_len=0,prev_match_dist=0;
 		while (position+min_match_<input_size) {
-			hash=hash_func(load3(position));
+			hash=hash_func(load3(input,position));
 			int best_len=0;
 			int best_dist=0;
 			int match=head_[hash];
 			head_[hash]=static_cast<int>(position);
 			prev_[position%window_size_]=match;
 			int chain_count=0;
-			while (match>=0 && chain_count++<_MaxChain) {
+			while (match>=0 && chain_count++<static_cast<int>(_MaxChain)) {
 				int dist=static_cast<int>(position-match);
-				if (dist>window_size_) break;
+				if (dist>static_cast<int>(window_size_)) break;
 				int len=0;
-				while (len<max_match_ && position+len<input_size && input[match+len]==input[position+len]) len++;
+				while (len<static_cast<int>(max_match_) && position+len<input_size && input[match+len]==input[position+len]) len++;
 				if (len>best_len) {
 					best_len=len;
 					best_dist=dist;
-					if (len>=max_match_) break;
+					if (len>=static_cast<int>(max_match_)) break;
 				}
 				match=prev_[match%window_size_];
 			}
 			if (_Lazy && prev_match_len!=0 && best_len<=prev_match_len) {
-				tokens_.push_back({(uint16_t)prev_match_dist,(uint16_t)prev_match_len,0});
-				pos+=prev_match_len;
+				tokens.push_back({(uint16_t)prev_match_dist,(uint16_t)prev_match_len,0});
+				position+=prev_match_len;
 				prev_match_len=prev_match_dist=0;
 				continue;
 			}
@@ -89,7 +89,7 @@ public:
 					position++;
 					continue;
 				} else {
-					tokens.push_back({static_cast<uint16_t>(best_dist),static_cast<uint16_t>(best_len),0});
+					tokens.push_back({(uint16_t)best_dist,(uint16_t)best_len,0});
 					position+=best_len;
 				}
 			} else {
@@ -100,7 +100,6 @@ public:
 		while (position<input_size) tokens.push_back({0,0,input[position++]});
 		return tokens;
 	}
-
 	std::vector<byte> decode(const std::vector<token>& tokens) {
 		std::vector<byte> result;
 		result.reserve(tokens.size()*2);
@@ -111,7 +110,11 @@ public:
 				for (std::size_t i=0;i<it.length_;i++) result.push_back(result[start+i]);
 			}
 		}
-		return output;
+		return result;
+	}
+	void reset() {
+		std::fill(head_.begin(),head_.end(),-1);
+		std::fill(prev_.begin(),prev_.end(),-1);
 	}
 };
 

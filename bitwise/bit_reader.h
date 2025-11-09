@@ -1,5 +1,5 @@
 //Last Modified At 2025/11/05
-//@Version 1.0.0.0
+//@Version 1.1.0.0
 #ifndef _STDEX_BITWISE_BIT_READER_H_
 #define _STDEX_BITWISE_BIT_READER_H_ 1
 
@@ -27,14 +27,14 @@ private:
 	const uint8_t* data_=nullptr;
 	std::size_t bit_size_=0;
 	std::size_t bit_pos_=0;
-	bit_order order_=is_little_endian()?BO_LSB:BO_MSB;
+	bit_order order_=is_little_endian()?BO_LSBYTE:BO_MSBYTE;
 
 public:
-	bit_reader() = default;
-	bit_reader(const void* ptr,std::size_t byte_size,bit_order order=is_little_endian()?BO_LSB:BO_MSB) : data_(reinterpret_cast<const uint8_t*>(ptr)) , bit_size_(byte_size*CHAR_BIT) , order_(order) { }
-	explicit bit_reader(const std::vector<uint8_t>& buf,bit_order order=is_little_endian()?BO_LSB:BO_MSB) : data_(buf.data()) , bit_size_(buf.size()*CHAR_BIT) , order_(order) { }
+	bit_reader()=default;
+	bit_reader(const void* ptr,std::size_t byte_size,bit_order order=is_little_endian()?BO_LSBYTE:BO_MSBYTE) : data_(reinterpret_cast<const uint8_t*>(ptr)) , bit_size_(byte_size*CHAR_BIT) , order_(order) { }
+	explicit bit_reader(const std::vector<uint8_t>& buf,bit_order order=is_little_endian()?BO_LSBYTE:BO_MSBYTE) : data_(buf.data()) , bit_size_(buf.size()*CHAR_BIT) , order_(order) { }
 	template <typename _It,typename=std::enable_if_t<!std::is_integral_v<_It>>>
-	bit_reader(_It first,_It last,bit_order order=is_little_endian()?BO_LSB:BO_MSB) : order_(order) {
+	bit_reader(_It first,_It last,bit_order order=is_little_endian()?BO_LSBYTE:BO_MSBYTE) : order_(order) {
 		std::vector<uint8_t> temp(first,last);
 		data_=temp.data();
 		bit_size_=temp.size()*CHAR_BIT;
@@ -65,10 +65,31 @@ public:
 		if (nbits==0 || nbits>sizeof(_Tp)*CHAR_BIT) throw std::invalid_argument("Invalid bit count");
 		if (bit_pos_+nbits>bit_size_) throw std::runtime_error("Unexpected EOF in bit_reader");
 		_Tp result=0;
+		if (order_ == BO_LSBIT || order_ == BO_MSBIT) {
+			std::size_t start_bit=bit_pos_;
+			std::size_t start_byte=start_bit/CHAR_BIT;
+			std::size_t start_off =start_bit%CHAR_BIT;
+			std::size_t needed_bit_end=start_off+nbits;
+			std::size_t total_bytes=(needed_bit_end+CHAR_BIT-1)/CHAR_BIT;
+			uint8_t temp[sizeof(_Tp)+2]{};
+			for (std::size_t j=0;j<total_bytes;j++) temp[j]=reverse_bits(data_[start_byte+j]);
+			for (std::size_t i=0;i<nbits;i++) {
+				std::size_t abs_bit=start_off+i;
+				std::size_t byte_offset=abs_bit/CHAR_BIT;
+				std::size_t bit_offset=abs_bit%CHAR_BIT;
+				bool bit;
+				if (order_==BO_LSBIT) bit=(temp[byte_offset]>>bit_offset)&1u;
+				else bit=(temp[byte_offset]>>(CHAR_BIT-1-bit_offset))&1u;
+				if (order_==BO_LSBIT) result|=static_cast<_Tp>(bit)<<i;
+				else result=static_cast<_Tp>((result<<1)|static_cast<_Tp>(bit));
+			}
+			bit_pos_+=nbits;
+			return result;
+		}
 		iterator it(data_[bit_pos_/CHAR_BIT],static_cast<int>(bit_pos_%CHAR_BIT));
 		for (std::size_t i=0;i<nbits;i++,it++,bit_pos_++) {
 			bool bit=static_cast<bool>(*it);
-			if (order_==BO_MSB) result=static_cast<_Tp>((result<<1)|bit);
+			if (order_==BO_MSBYTE) result=static_cast<_Tp>((result<<1)|bit);
 			else result=static_cast<_Tp>(result|(static_cast<_Tp>(bit)<<i));
 		}
 		return result;
@@ -88,6 +109,7 @@ public:
 	}
 
 	std::size_t& bit_pos() { return bit_pos_; }
+	bit_order& bit_order() noexcept { return order_; }
 };
 
 }

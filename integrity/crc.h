@@ -39,7 +39,7 @@ private:
 
 	static constexpr value_type reflect(value_type x) noexcept {
 		value_type reflection=0;
-		for (int i=0;i<_Bits;i++) {
+		for (std::size_t i=0;i<_Bits;i++) {
 			if (x&(static_cast<value_type>(1)<<i)) reflection|=static_cast<value_type>(1)<<((_Bits-1)-i);
 		}
 		return reflection;
@@ -53,8 +53,10 @@ private:
 			}
 		}();
 		if constexpr (reflect_input_) {
+			uint8_t idx=static_cast<uint8_t>(value_^byte);
 			value_=(value_>>8)^table_[idx];
 		} else {
+			uint8_t idx=static_cast<uint8_t>(((value_>>(_Bits-8))^byte)&0xFF);
 			value_=(value_<<8)^table_[idx];
 		}
 	}
@@ -95,9 +97,9 @@ public:
 		for (auto it:data) {
 			const auto idx=[it]{
 				if constexpr (reflect_input_) {
-					return static_cast<uint8_t>(it);
+					return static_cast<uint8_t>(std::to_integer<uint8_t>(it))
 				} else {
-					return static_cast<uint8_t>(it)^(value_>>(_Bits-8));
+					return static_cast<uint8_t>(std::to_integer<uint8_t>(it))^(value_>>(_Bits-8));
 				}
 			}();
 			if constexpr (reflect_input_) {

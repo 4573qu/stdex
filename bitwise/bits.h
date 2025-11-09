@@ -16,7 +16,7 @@
 #define _STDEX_CPP20_VERSION 202002L
 #endif
 
-#if __cplusplus >= _STDEX_CPP20_VERSION
+#if __cplusplus>=_STDEX_CPP20_VERSION
 #include <bits>
 #endif
 
@@ -25,19 +25,21 @@ namespace stdex {
 namespace bitwise {
 
 enum bit_order {
-	BO_LSB,
-	BO_MSB,
+	BO_LSBYTE,
+	BO_MSBYTE,
+	BO_LSBIT,
+	BO_MSBIT,
 };
 
 #define _STDEX_BITS_SIZE (sizeof(_Tp)*CHAR_BIT)
 
 template <typename _Tp>
-constexpr _Tp reverse_bits(_Tp value) noexcept {
+constexpr _Tp reverse_bits(_Tp value,std::size_t nbits=_STDEX_BITS_SIZE) noexcept {
 	static_assert(std::is_unsigned_v<_Tp>,"_Tp must be an unsigned type.");
+	
 	_Tp result=0;
-	std::size_t bits=_STDEX_BITS_SIZE;
-	for (std::size_t i=0;i<bits;i++) {
-		if (value&(_Tp(1)<<i)) result|=(_Tp(1)<<(bits-1-i));
+	for (std::size_t i=0;i<nbits;i++) {
+		if (value&(_Tp(1)<<i)) result|=(_Tp(1)<<(nbits-1-i));
 	}
 	return result;
 }

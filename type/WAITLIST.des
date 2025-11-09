@@ -1,6 +1,7 @@
 ZIP 缺少：
-deflate压缩：lz77_parse 400K卡死；write_dyanamic_block 3.92M卡死；crc校验失败
+deflate压缩：btype==1/2
 BZIP2真正实现
+BZIP2的解压验证还早着呢
 传统zip加密和AES加密（等待crypto）
 分卷
 

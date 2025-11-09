@@ -22,8 +22,9 @@
 #include <system_error>
 #include <vector>
 
-#include "../bitwise/bit_reader.h"//At Least 1.0
-#include "../bitwise/bit_writer.h"//At Least 1.0
+#include "../bitwise/bit_reader.h"//At Least 1.1
+#include "../bitwise/bit_writer.h"//At Least 1.1
+#include "../bitwise/bits.h"//At Least 1.1
 #include "../crypto/lz77.h"//At Least 1.0
 #include "../integrity/crc.h"//At Least 1.0
 
@@ -52,6 +53,23 @@ class deflate_compressor {
 			}
 			throw std::runtime_error("invalid huffman code");
 		}
+	};
+	static inline std::pair<int,int> length_codes[29]={
+		{3,0},{4,0},{5,0},{6,0},{7,0},{8,0},{9,0},{10,0},
+		{11,1},{13,1},{15,1},{17,1},
+		{19,2},{23,2},{27,2},{31,2},
+		{35,3},{43,3},{51,3},{59,3},
+		{67,4},{83,4},{99,4},{115,4},
+		{131,5},{163,5},{195,5},{227,5},{258,0}
+	};
+	static inline std::pair<int,int> dist_codes[30]={
+		{1,0},{2,0},{3,0},{4,0},
+		{5,1},{7,1},{9,2},{13,2},
+		{17,3},{25,3},{33,4},{49,4},
+		{65,5},{97,5},{129,6},{193,6},
+		{257,7},{385,7},{513,8},{769,8},
+		{1025,9},{1537,9},{2049,10},{3073,10},
+		{4097,11},{6145,11},{8193,12},{12289,12},{16385,13},{24577,13}
 	};
 	static huffman build_fixed_tree_LIT() {
 		huffman h;
@@ -104,23 +122,6 @@ class deflate_compressor {
 			}
 		}
 	}
-	static void write_bits(std::vector<uint8_t>& out,uint32_t& bitbuf,int& bitcount,uint32_t val,int bits) {
-		val &=(bits==32?0xFFFFFFFF:((1u<<bits)-1));
-		bitbuf|=(val<<bitcount);
-		bitcount+=bits;
-		while (bitcount>=8) {
-			out.push_back(bitbuf&0xFF);
-			bitbuf>>=8;
-			bitcount-=8;
-		}
-	}
-	static void flush_bits(std::vector<uint8_t>& result,uint32_t& bitbuf,int& bitcount) {
-		while (bitcount>0) {
-			result.push_back(bitbuf&0xFF);
-			bitbuf>>=8;
-			bitcount-=8;
-		}
-	}
 	static uint32_t compute_adler32(const std::vector<uint8_t>& data) {
 		uint32_t a=1,b=0;
 		for (uint8_t it:data) {
@@ -129,235 +130,109 @@ class deflate_compressor {
 		}
 		return (b<<16)|a;
 	}
-	
-	static void build_optimal_trees(const std::vector<lz_token>& toks,huffman& ll_tree,huffman& d_tree) {
-		std::vector<uint32_t> ll_freq,d_freq;
-		count_symbol_freqs(toks,ll_freq,d_freq);
-		ll_tree.length_=make_bitlengths(ll_freq,15);
-		d_tree.length_=make_bitlengths(d_freq,15);
-		build_canonical_table(ll_tree);
-		build_canonical_table(d_tree);
+
+	static std::pair<uint16_t,uint16_t> get_litlen(std::size_t index) {
+		if (index<=143) return std::make_pair<uint16_t,uint16_t>(0b00110000+index,8);
+		if (index<=255) return std::make_pair<uint16_t,uint16_t>(0b110010000+index-144,9);
+		if (index<=279) return std::make_pair<uint16_t,uint16_t>(0b0000000+index-256,7);
+		if (index<=287) return std::make_pair<uint16_t,uint16_t>(0b11000000+index-280,8);
+		return std::make_pair<uint16_t,uint16_t>(0,0);
 	}
-	static void write_dynamic_block(std::vector<uint8_t>& result,const std::vector<lz_token>& toks,const huffman& ll_tree,const huffman& d_tree,bool is_final) {
-		uint32_t bitbuf=0;
-		int bitcnt=0;
-	/*	auto putbits=[&](uint32_t v,int n){
-			bitbuf|=(v<<bitcnt);
-			bitcnt+=n;
-			while (bitcnt>=8) {
-				result.push_back(bitbuf&0xFF);
-				bitbuf>>=8;
-				bitcnt-=8;
-			}
-		};*/
-		auto putbits = [&](uint32_t v,int n){
-    v &= (n == 32 ? 0xFFFFFFFFu : ((1u << n) - 1u));
-    bitbuf |= (v << bitcnt);
-    bitcnt += n;
-    while (bitcnt >= 8) {
-        result.push_back(bitbuf & 0xFF);
-        bitbuf >>= 8;
-        bitcnt -= 8;
-    }
-};
-		auto flush=[&](){
-			if (bitcnt>0) {
-				result.push_back(bitbuf&0xFF);
-				bitbuf=0;
-				bitcnt=0;
-			}
-		};
-		putbits(is_final?1:0,1);
-		putbits(2,2);
-		std::vector<uint8_t> all=ll_tree.length_;
-		all.insert(all.end(),d_tree.length_.begin(),d_tree.length_.end());
-		int HLIT=(int)ll_tree.length_.size()-1;
-		while (HLIT>=257 && ll_tree.length_[HLIT]==0) HLIT--;
-		HLIT-=256;
-		int HDIST=(int)d_tree.length_.size()-1;
-		while (HDIST>=1 && d_tree.length_[HDIST]==0) HDIST--;
-		struct item {
-			uint8_t sym_;
-			int extra_;
-			int bits_;
-		};
-		std::vector<item> seq;
-		for (std::size_t i=0;i<all.size();) {
-			
-			fprintf(stderr,"%zu\n",i);
-			
-			uint8_t v=all[i];
-			int run=1;
-			while (i+run<all.size() && run<138 && all[i+run]==v) run++;
-			int r_total=run;
-			if (v==0) {
-				 while (run>=11) {
-					int n=std::min(run,138);
-					seq.push_back({18,n-11,7});
-					run-=n;
-				}
-				if (run>=3) {
-					int n=std::min(run,10);
-					seq.push_back({17,n-3,3});
-					run-=n;
-				}
-				while (run-->0) seq.push_back({0,0,0});
-			} else {
-				seq.push_back({v,0,0});
-				run--;
-				while (run>=3) {
-					int r=std::min(run,6);
-					seq.push_back({16,r-3,2});
-					run-=r;
-				}
-				while (run-->0) seq.push_back({v,0,0});
-			}
-			i+=r_total;
-		}
-		std::vector<uint32_t> cl_freq(19,0);
-		for (auto& it:seq) cl_freq[it.sym_]++;//<19?
-		huffman cl_tree;
-		cl_tree.length_=make_bitlengths(cl_freq,7);
-		build_canonical_table(cl_tree);
-		static const int order[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
-		int HCLEN=19;
-		while (HCLEN>4 && cl_tree.length_[order[HCLEN-1]]==0) HCLEN--;
-		putbits(HLIT,5);
-		putbits(HDIST,5);
-		putbits(HCLEN-4,4);
-		for (int i=0;i<HCLEN;i++) putbits(cl_tree.length_[order[i]],3);
-		for (auto& it:seq) {
-			putbits(cl_tree.table_[it.sym_],cl_tree.length_[it.sym_]);
-			if (it.sym_==16) putbits(it.extra_,2);
-			else if (it.sym_==17) putbits(it.extra_,3);
-			else if (it.sym_==18) putbits(it.extra_,7);
-		}
-		static const int lens[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
-		static const int lext[29]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
-		static const int db[30]={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
-		static const int de[30]={0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
-		for (auto& it:toks) {
-			if (!it.is_match_) {
-				int sym=it.lit_;
-				putbits(ll_tree.table_[sym],ll_tree.length_[sym]);
-			} else {
-				int L=it.len_;
-				int lsym=0;
-				while (lsym<29 && L>lens[lsym]) lsym++;
-				if (lsym>=29) lsym=28;
-				int sym=257+lsym;
-				int ebits=lext[lsym];
-				int eval=0;
-				if (ebits>0) {
-					//int base=(lsym==0)?lens[0]:lens[lsym-1];
-					//int base=lens[lsym]-(1<<lext[lsym]);
-					int base=lens[lsym];
-					eval=L-base;
-				}
-				putbits(ll_tree.table_[sym],ll_tree.length_[sym]);
-				if (ebits) putbits(eval,ebits);
-				int D=it.dist_;
-				int dsym=0;
-				while (dsym<30 && D>db[dsym]) dsym++;
-				int dbits=de[dsym];
-				int dval=D-db[dsym];//dbits?D-db[dsym-1]:0;
-				putbits(d_tree.table_[dsym],d_tree.length_[dsym]);
-				if (dbits) putbits(dval,dbits);
+	static std::pair<uint16_t,uint16_t> get_dist(std::size_t index) {
+		return std::make_pair<uint16_t,uint16_t>(static_cast<uint16_t>(index),5);
+	}
+	static int get_length_code(int len,int& extra_value,int& extra_len) {
+		for (int i=0;i<29;i++) {
+			int next_base=(i+1<29)?length_codes[i+1].first:259;
+			if (len>=length_codes[i].first && len<next_base) {
+				extra_len=length_codes[i].second;
+				extra_value=len-length_codes[i].first;
+				return 257+i;
 			}
 		}
-		putbits(ll_tree.table_[256],ll_tree.length_[256]);
-		flush();
+		return 285;
+	}
+	static int get_dist_code(int dist,int &extra_value,int &extra_len) {
+		for (int i=0;i<30;i++) {
+			int next_base=(i+1<30)?dist_codes[i+1].first:dist_codes[i].first*2;
+			if (dist>=dist_codes[i].first && dist<next_base) {
+            	extra_len=dist_codes[i].second;
+            	extra_value=dist-dist_codes[i].first;
+            	return i;
+			}
+		}
+		return 29;
 	}
 
 public:
-	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,int level=6,bool raw=false) {
-		std::vector<uint8_t> result;
-		if (!raw) {
-			result.push_back(0x78);
-			result.push_back(0x9C);
+	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,int level=6,bool raw=false,int btype=2,bool auto_btype=true) {
+		bitwise::bit_writer bw(bitwise::BO_LSBYTE);
+		if (!raw) bw.write_u16(0x9C78);
+		if (auto_btype) {
+			btype=2;
+			if (level<=1) btype=0;
+			else if (level<=3) btype=1;
 		}
-		int btype=2;
-		if (level<=1) btype=0;
-		else if (level<=3) btype=1;
+btype=1;
 		uint32_t bitbuf=0;
 		int bitcnt=0;
 		if (btype==0) {
 			std::size_t pos=0;
 			while (pos<data.size()) {
 				std::size_t blk_size=std::min<size_t>(65535,data.size()-pos);
-				int last=(pos+blk_size==data.size());
-				write_bits(result,bitbuf,bitcnt,last,1);
-				write_bits(result,bitbuf,bitcnt,0,2);
-				flush_bits(result,bitbuf,bitcnt);
+				bool last=(pos+blk_size==data.size());
+				bw.write_bits<uint8_t>(1,last);
+				bw.write_bits<uint8_t>(2,0);
+				bw.flush_bits();
 				uint16_t len=(uint16_t)blk_size;
 				uint16_t nlen=(uint16_t)~len;
-				result.push_back(len&0xFF);
-				result.push_back(len>>8);
-				result.push_back(nlen&0xFF);
-				result.push_back(nlen>>8);
-				result.insert(result.end(),data.begin()+pos,data.begin()+pos+blk_size);
-				pos += blk_size;
+				bw.write_u16(len);
+				bw.write_u16(nlen);
+				for (auto it=data.begin()+pos;it!=data.begin()+pos+blk_size;it++) bw.write_u8(*it);
+				pos+=blk_size;
 			}
 		} else if (btype==1) {
 			crypto::lz77 lz;
 			auto tokens=lz.encode(data);
-
-			huffman ll=build_fixed_tree_LIT();
-			huffman dd=build_fixed_tree_DIST();
-			constexpr bool final_block = true;
-			write_bits(result,bitbuf,bitcnt,final_block?1:0,1);
-			write_bits(result,bitbuf,bitcnt,1,2);
-			static const int lens[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
-			static const int lext[29]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
-			static const int db[30]={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
-			static const int de[30]={0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
-			for (auto& it:toks) {
-				if (!it.is_match_) {
-					int sym=it.lit_;
-					write_bits(result,bitbuf,bitcnt,ll.table_[sym],ll.length_[sym]);
+			bw.write_bits<uint8_t>(1,1);
+			bw.write_bits<uint8_t>(2,1);
+			//bw.flush_bits();
+			for (auto& it:tokens) {
+				if (it.length_==0) {
+					auto [code,len]=get_litlen(it.literal_);
+					bw.write_bits<uint16_t>(len,bitwise::reverse_bits(code,len));
 				} else {
-					int L=it.len_;
-					int s=0;
-					while (s<29 && L>lens[s]) s++;
-					if (s>=29) s=28;
-					int sym=257+s;
-					int eb=lext[s];
-					int ev=0;
-					if (eb>0) {
-						//int base=(s==0)?lens[0]:lens[s-1];
-						//int base=lens[s]-(1<<lext[s]);
-						int base=lens[s];
-						ev=L-base;
-					}
-					write_bits(result,bitbuf,bitcnt,ll.table_[sym],ll.length_[sym]);
-					if (eb) write_bits(result,bitbuf,bitcnt,ev,eb);
-					int D=it.dist_;
-					int sd=0;
-					while(sd<30 && D>db[sd]) sd++;
-					int sb=de[sd];
-					int sv=D-db[sd];//sb?D-db[sd-1]:0;
-					write_bits(result,bitbuf,bitcnt,dd.table_[sd],dd.length_[sd]);
-					if (sb) write_bits(result,bitbuf,bitcnt,sv,sb);
+					int extra_len_bits=0,extra_len_value=0;
+					int length_code=get_length_code(it.length_,extra_len_value,extra_len_bits);
+					auto [code,len]=get_litlen(length_code);
+					bw.write_bits<uint16_t>(len,bitwise::reverse_bits(code,len));
+					if (extra_len_bits>0) bw.write_bits<uint16_t>(extra_len_bits,bitwise::reverse_bits((uint64_t)extra_len_value,extra_len_bits));
+					int extra_dist_bits=0,extra_dist_value=0;
+					int dist_code=get_dist_code(it.distance_,extra_dist_value,extra_dist_bits);
+					auto [dcode,dlen]=get_dist(dist_code);
+					bw.write_bits<uint16_t>(dlen,bitwise::reverse_bits(dcode,dlen));
+					if (extra_dist_bits>0) bw.write_bits<uint16_t>(extra_dist_bits,bitwise::reverse_bits((uint64_t)extra_dist_value,extra_dist_bits));
 				}
 			}
-			write_bits(result,bitbuf,bitcnt,ll.table_[256],ll.length_[256]);
-			flush_bits(result,bitbuf,bitcnt);
+			auto [endcode,endlen]=get_litlen(256);
+			bw.write_bits<uint16_t>(endlen,bitwise::reverse_bits(endcode,endlen));
+			bw.flush_bits();
 		} else {
 			crypto::lz77 lz;
-			auto tokens=lz.encode(data);
+			/*auto tokens=lz.encode(data);
 			huffman ll_tree,dist_tree;
 			build_optimal_trees(toks,ll_tree,dist_tree);
 			write_dynamic_block(result,toks,ll_tree,dist_tree,true);
-			flush_bits(result,bitbuf,bitcnt);
+			flush_bits(result,bitbuf,bitcnt);*/
 		}
 		if (!raw) {
-			uint32_t ad=compute_adler32(data);
-			result.push_back(ad>>24);
-			result.push_back((ad>>16)&0xFF);
-			result.push_back((ad>>8)&0xFF);
-			result.push_back(ad&0xFF);
+			auto ad=compute_adler32(data);
+			bw.write_u8(ad>>24);
+			bw.write_u8((ad>>16)&255);
+			bw.write_u8((ad>>8)&255);
+			bw.write_u8(ad&255);
 		}
-		return result;
+		return bw.buffer();
 	}
 	static std::vector<uint8_t> decompress(const std::vector<uint8_t>& compressed,bool raw=false) {
 		std::size_t offset=0;
@@ -368,7 +243,7 @@ public:
 			if (((cmf<<8)+flg)%31!=0) throw std::runtime_error("zlib FCHECK");
 			offset=2;
 		}
-		bitwise::bit_reader br(&compressed[offset],compressed.size()-offset,bitwise::bit_reader::BO_LSB);
+		bitwise::bit_reader br(&compressed[offset],compressed.size()-offset,bitwise::BO_LSBYTE);
 		std::vector<uint8_t> decompressed;
 		bool last=false;
 		while (!last) {
@@ -891,7 +766,7 @@ public:
 		return compressed;*/
 	}
 	static std::vector<uint8_t> decompress(const std::vector<uint8_t>& compressed) {
-		bitwise::bit_reader br(compressed,bitwise::bit_reader::BO_MSB);
+		bitwise::bit_reader br(compressed,bitwise::BO_MSBYTE);
 		char header[4];
 		if (compressed.size()<4) throw std::runtime_error("Invalid BZIP2 header");
 		header[0]=br.read_u8();
@@ -1149,7 +1024,7 @@ public:
 		return crc32_==integrity::crc32::calculate(data_);
 	}
 
-	void compress_data(compression_level level=CL_NORMAL) {
+	void compress_data(compression_level level=CL_NORMAL,bool auto_stored=true) {
 		if (method_==CM_STORED || data_.empty()) {
 			compressed_size_=uncompressed_size_;
 			calculate_crc32();
@@ -1177,12 +1052,12 @@ public:
 			}
 		}
 		crc32_=orcc;
-		if (compression_successful) {
+		if (compression_successful || !auto_stored) {
 			std::vector<uint8_t> original_data=std::move(data_);
 			data_=std::move(compressed);
 			compressed_size_=data_.size();
 			uncompressed_size_=original_data.size();
-			crc32_=integrity::crc32::calculate(original_data);
+			//crc32_=integrity::crc32::calculate(original_data);
 		} else {
 			method_=CM_STORED;
 			compressed_size_=uncompressed_size_;
@@ -1231,6 +1106,7 @@ private:
 	std::vector<value_type> files_;
 	std::vector<uint8_t> data_;
 	std::string archive_comment_;
+	bool auto_stored_=true;
 	
 	static void append_le16(std::vector<uint8_t>& buf,uint16_t v) {
 		buf.push_back(v&0xFF);
@@ -1257,7 +1133,7 @@ private:
 		std::vector<uint8_t> zip_data;
 		std::vector<std::pair<std::size_t,uint64_t>> local_header_offsets;
 		for (std::size_t i=0;i<files_.size();i++) {
-			auto& file=files_[i];
+			auto& file=files_[i];			
 			uint64_t local_header_offset=zip_data.size();
 			local_header_offsets.emplace_back(i,local_header_offset);
 			local_file_header lfh{};
@@ -1266,7 +1142,7 @@ private:
 			lfh.flags_=0;
 			if (!std::all_of(file.filename().begin(),file.filename().end(),[](unsigned char c){ return c < 128; })) lfh.flags_|=(1<<11);
 			lfh.compression_method_=static_cast<uint16_t>(file.method());
-			if (file.method()==CM_DEFLATED) {
+			if (file.method()==CM_DEFLATED && auto_stored_) {
 				//if (file.data().size()==file.uncompressed_size()) lfh.compression_method_=CM_STORED;
 				if (file.data().empty() || file.is_directory() || file.compressed_size()==file.uncompressed_size()) lfh.compression_method_=CM_STORED;
 				else lfh.compression_method_=CM_DEFLATED;
@@ -1299,7 +1175,7 @@ private:
 			const uint8_t* filename_ptr=reinterpret_cast<const uint8_t*>(file.filename().data());
 			zip_data.insert(zip_data.end(),filename_ptr,filename_ptr+file.filename().size());
 			zip_data.insert(zip_data.end(),extra.begin(),extra.end());
-			if (!file.is_directory()) zip_data.insert(zip_data.end(), file.data().begin(), file.data().end());
+			if (!file.is_directory()) zip_data.insert(zip_data.end(),file.data().begin(),file.data().end());
 		}
 		uint64_t central_dir_start=zip_data.size();
 		for (const auto& [index,local_offset]:local_header_offsets) {
@@ -1316,7 +1192,7 @@ private:
 			cdh.last_mod_date_=dos_date;
 			cdh.crc32_=file.crc32();
 			cdh.file_name_length_=static_cast<uint16_t>(file.filename().size());
-			std::vector<uint8_t> extra = file.extra_field();
+			std::vector<uint8_t> extra=file.extra_field();
 			if (file.compressed_size()>=0xFFFFFFFFULL || file.uncompressed_size()>=0xFFFFFFFFULL || local_offset>=0xFFFFFFFFULL) {
 				append_le16(extra,0x0001);
 				std::size_t data_len=16;
@@ -1333,7 +1209,7 @@ private:
 				cdh.compressed_size_=static_cast<uint32_t>(file.compressed_size());
 				cdh.local_header_offset_=static_cast<uint32_t>(local_offset);
 			}
-			cdh.extra_field_length_ = static_cast<uint16_t>(extra.size());
+			cdh.extra_field_length_=static_cast<uint16_t>(extra.size());
 			cdh.file_comment_length_=static_cast<uint16_t>(file.comment().size());
 			cdh.disk_number_start_=0;
 			cdh.internal_attributes_=file.internal_attributes();
@@ -1342,7 +1218,7 @@ private:
 			zip_data.insert(zip_data.end(),cdh_ptr,cdh_ptr+sizeof(cdh));
 			const uint8_t* filename_ptr=reinterpret_cast<const uint8_t*>(file.filename().data());
 			zip_data.insert(zip_data.end(),filename_ptr,filename_ptr+file.filename().size());
-			zip_data.insert(zip_data.end(),file.extra_field().begin(),file.extra_field().end());
+			zip_data.insert(zip_data.end(),extra.begin(),extra.end());
 			if (!file.comment().empty()) {
 				const uint8_t* comment_ptr=reinterpret_cast<const uint8_t*>(file.comment().data());
 				zip_data.insert(zip_data.end(),comment_ptr,comment_ptr+file.comment().size());
@@ -1713,7 +1589,7 @@ public:
 		file.data(std::move(file_data));
 		file.method(method);
 		file.calculate_crc32();
-		if (method!=CM_STORED && !file.is_directory()) file.compress_data(level);
+		if (method!=CM_STORED && !file.is_directory()) file.compress_data(level,auto_stored_);
 		auto ftime=std::filesystem::last_write_time(file_path,ec);
 		auto sctp=std::chrono::time_point_cast<std::chrono::system_clock::duration>(ftime-decltype(ftime)::clock::now()+std::chrono::system_clock::now());
 		file.last_write_time(sctp);
@@ -1744,11 +1620,11 @@ public:
 		file.data(data);
 		file.method(method);
 		file.calculate_crc32();
-		if (method!=CM_STORED) file.compress_data(level);
+		if (method!=CM_STORED) file.compress_data(level,auto_stored_);
 		file.last_write_time(std::chrono::system_clock::now());
 		file.comment(comment);
 		file.external_attributes(0x20);
-		file.compress_data(level);
+		//file.compress_data(level);
 		files_.push_back(std::move(file));
 	}
 	void add_directory(const std::string& dirname,const std::string& comment="") {
@@ -1770,11 +1646,11 @@ public:
 		std::vector<uint8_t> zip_data=build_zip_data();
 		return !!out_file.write(reinterpret_cast<const char*>(zip_data.data()),zip_data.size());
 	}
-	
 	std::vector<uint8_t> save_to_memory(const std::string& archive_comment="") {
 		archive_comment_=archive_comment;
 		return build_zip_data();
 	}
+	bool& auto_stored() noexcept { return auto_stored_; }
 	
 	iterator begin() noexcept { return files_.begin(); }
 	iterator end() noexcept { return files_.end(); }
@@ -1882,8 +1758,8 @@ public:
 		for (const auto& file:files_) {
 			auto target_path=target_dir/file.filepath();
 			if (!extract_to(file,target_path)) {
-				all_ok = false;
-				continue; // ← 继续解余下文件
+				all_ok=false;
+				continue;
 			}
 		}
 		return all_ok;//true;
@@ -1926,7 +1802,7 @@ inline std::vector<uint8_t> write_zip(const archive& arc,const std::string& comm
 }
 
 
-}
+};
 
 using zip=zipped::archive;
 
