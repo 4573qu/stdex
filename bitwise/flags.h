@@ -366,7 +366,7 @@ public:
 		flags<_Tp> result;
 		if (check && !check_forbiddens(e)) check=handle_forbidden_failure(e,result);
 		if (check) {
-			exclusive_flags<_Tp,_DefaultExclusionPolicy>::operator<<=(e);
+			exclusive_flags<_Tp,_DefaultExclusionPolicy>::operator <<=(e);
 			result.for_each([this](_Tp e) {
 				this->operator >>=(e);
 			});
