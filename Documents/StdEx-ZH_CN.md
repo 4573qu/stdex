@@ -88,7 +88,7 @@ flags.h旨在提供一个类型安全的位掩码标志管理的标志集功能�
 
 > [!WARNING]
 >
-> `_Tp`：必须是枚举类，否则会触发`static_assert`。**通常\_Tp需要满足其中每个枚举类型满足取值为2的若干次幂或部分标志的集合（即若干枚举值与操作的结果），<span style="color:red">除非你清楚本类会进行的行为</span>。**
+> `_Tp`：必须是枚举类，否则会触发`static_assert`。**通常\_Tp需要满足其中每个枚举类型满足取值为2的若干次幂或部分标志的集合（即若干枚举值进行或操作的结果），<span style="color:red">除非你清楚本类会进行的行为</span>。**
 
 ##### 额外说明
 
@@ -111,11 +111,11 @@ flags.h旨在提供一个类型安全的位掩码标志管理的标志集功能�
 | `bool empty() const noexcept`                                | 检查是否为空集       | O(1)   |
 | `template <typename _Func>`<br>`void for_each(_Func func) const` | 对每个生效值执行func | O(n)   |
 
-**绝大多数函数均被标记为constexpr，其在性能上将非常优秀。**
+**绝大多数函数均被标记为`constexpr`，其在性能上将非常优秀。**
 
 > [!WARNING]
 >
-> **<span style="color:red">由于constexpr虚函数等行为只在C++20标准下才合法，所以operator <<=和operator <<使用了_STDEX_CONSTEXPR标记，该标记仅在C++20标准下被特化为constexpr。如果您需要对该函数的性能有所要求，请注意甄别所处的C++标准。</span>**
+> **<span style="color:red">由于`constexpr`虚函数等行为只在C++20标准下才合法，所以`operator <<=`和`operator <<`使用了`_STDEX_CONSTEXPR`标记，该标记仅在C++20标准下被特化为`constexpr`。如果您需要对该函数的性能有所要求，请注意甄别所处的C++标准。</span>**
 
 ##### 其他方法
 
@@ -145,7 +145,7 @@ enum class FilePermission : uint32_t {
 	Write=2,	//0010
 	Execute=4,	//0100
 	Delete=8,	//1000
-    All=15,		//1111
+	All=15,		//1111
 }
 
 struct file{`
@@ -168,16 +168,16 @@ struct file{`
 
 ```cpp
 enum class FontStyle : uint32_t {
-    None=0,			//000
-    Bold=1,			//001
-    Italic=2,		//010
-    Underline=4,	//100
-    All=7,			//111
+	None=0,			//000
+	Bold=1,			//001
+	Italic=2,		//010
+	Underline=4,	//100
+	All=7,			//111
 }
 _STDEX_ENABLE_FLAGS_ENHANCED(FontStyle)
 int main() {
-    stdex::bitwise::flags<FontStyle> aHeadStyle=FontStyle::Bold<<FontStyle::Underline;
-    stdex::bitwise::flags<FontStyle> aCommentStyle=FontStyle::All>>FontStyle::Italic>>FontStyleBold;
+	stdex::bitwise::flags<FontStyle> aHeadStyle=FontStyle::Bold<<FontStyle::Underline;
+	stdex::bitwise::flags<FontStyle> aCommentStyle=FontStyle::All>>FontStyle::Italic>>FontStyleBold;
 }
 ```
 
@@ -238,32 +238,32 @@ int main() {
 
 ```cpp
 enum class SeasoningOptions : uint32_t {
-    Salad=1,
-    Tomato=2,
-    Beef=4,
-    Cheese=8,
-}
+	Salad=1,
+	Tomato=2,
+	Beef=4,
+	Cheese=8,
+};
 //we assume salad and tomato is mutually exclusive
 //beef and cheese is also excusive
 
 stdex::bitwise::exclusive_flags<SeasoningOptions> seasoning;
 
 void InitializeCanteen() {
-    seasoning.clear();
-    seasoning.clear_exclusion();
-    seasoning.set_exclusion(SeasoningOptions::Salad,SeasoningOptions::Tomato);
-    seasoning.set_exclusion(SeasoningOptions::Beef,SeasoningOptions::Cheese);
+	seasoning.clear();
+	seasoning.clear_exclusion();
+	seasoning.set_exclusion(SeasoningOptions::Salad,SeasoningOptions::Tomato);
+	seasoning.set_exclusion(SeasoningOptions::Beef,SeasoningOptions::Cheese);
 }
 
 void TryAddSeasoning(SeasoningOptions s) {
-    seasoning<<=s;
+	seasoning<<=s;
 }
 
 void MakeFood() {
-    if (seasoning.contains(SeasoningOptions::Salad)) {
-        //add salad...
-    }
-    //other seasoning operations
+	if (seasoning.contains(SeasoningOptions::Salad)) {
+		//add salad...
+	}
+	//other seasoning operations
 }
 ```
 
@@ -307,35 +307,134 @@ void MakeFood() {
 
 依赖策略影响添加标志出现依赖不符合时的行为。选择`RP_FORCE`时，将强行将依赖加入集合，如果依赖被依赖环所影响，则不会加入且跳过后续所有检查和添加；选择`RP_REJECT`时，将不进行任何操作；选择`RP_EXCEPTION`时，会抛出`std::invalid_argument`错误。
 
+互斥关系和禁止关系的区别在于：互斥是双向的，禁止是单向的。如果需要管理双向互斥的行为，建议优先使用互斥关系，否则建议优先使用禁止关系。
+
 ##### 成员函数
 
 `advanced_flags<_Tp,_DefaultExclusionPolicy,_DefaultForbiddenPolicy,_DefaultDependencyPolicy>`继承了`exclusive_flags<_Tp,_DefaultExclusionPolicy>`的全部方法。同时，其还有以下特殊方法。
 
-| 方法                                                         | 说明                                                         | 复杂度       |
-| :----------------------------------------------------------- | :----------------------------------------------------------- | ------------ |
-| `advanced_flags()`                                           | 创建空标志集，并赋予默认关系策略                             | O(1)         |
-| `template <relation_policy _OtherPolicy1,relation_policy _OtherPolicy2,relation_policy _OtherPolicy3>`<br>`advanced_flags(const advanced_flags<_Tp,_OtherPolicy1,_OtherPolicy2,_OtherPolicy3>& other)` | 拷贝构造函数                                                 | O(1)         |
-| `template <relation_policy _OtherPolicy1,relation_policy _OtherPolicy2,relation_policy _OtherPolicy3>`<br>`advanced_flags& operator =(const advanced_flags<_Tp,_OtherPolicy1,_OtherPolicy2,_OtherPolicy3>& other)` | 拷贝赋值函数，但**不会**复制策略                             | O(n)         |
-| `void set_forbidden_policy(relation_policy policy)`          | 设置禁止策略                                                 | O(1)         |
-| `void set_dependency_policy(relation_policy policy)`         | 设置依赖策略                                                 | O(1)         |
-| `void add_dependency(_Tp requirer,_Tp required)`             | 设置`requirer`→`required`的依赖关系                          | O(1)         |
-| `void remove_dependency(_Tp requirer,_Tp required)`          | 取消`requirer`→`required`的依赖关系，无需保证关系存在        | O(1)         |
-| `void clear_dependency(_Tp requirer)`                        | 清除`requirer`的全部依赖关系（不包含\*→`requirer`，仅包含`requirer`→\*) | O(1)         |
-| `void add_forbidden(_Tp element,_Tp forbidden)`              | 添加`element`→`forbidden`的禁止关系                          | O(1)         |
-| `void remove_forbidden(_Tp element,_Tp forbidden)`           | 取消`element`→`forbidden`的禁止关系，无需保证关系存在        | O(1)         |
-| `void clear_forbidden(_Tp element)`                          | 清除`element`的全部禁止关系（不包含\*→`element`，仅包含`element`→\*） | O(1)         |
-| `advanced_flags& operator <<=(_Tp e)`                        | 添加标志                                                     | **等待写入** |
-| `std::vector<consistency_set<_Tp>> check_consistency()`      | 检测依赖-禁止环                                              | **等待写入** |
-| `const std::map<_Tp,flags<_Tp>>& forbiddens() const`         | 查询禁止关系                                                 | O(1)         |
-| `const std::map<_Tp,flags<_Tp>>& dependencies() const`       | 查询依赖关系                                                 | O(1)         |
+| 方法                                                         | 说明                                                         | 复杂度                                 |
+| :----------------------------------------------------------- | :----------------------------------------------------------- | -------------------------------------- |
+| `advanced_flags()`                                           | 创建空标志集，并赋予默认关系策略                             | O(1)                                   |
+| `template <relation_policy _OtherPolicy1,relation_policy _OtherPolicy2,relation_policy _OtherPolicy3>`<br>`advanced_flags(const advanced_flags<_Tp,_OtherPolicy1,_OtherPolicy2,_OtherPolicy3>& other)` | 拷贝构造函数                                                 | O(1)                                   |
+| `template <relation_policy _OtherPolicy1,relation_policy _OtherPolicy2,relation_policy _OtherPolicy3>`<br>`advanced_flags& operator =(const advanced_flags<_Tp,_OtherPolicy1,_OtherPolicy2,_OtherPolicy3>& other)` | 拷贝赋值函数，但**不会**复制策略                             | O(n)                                   |
+| `void set_forbidden_policy(relation_policy policy)`          | 设置禁止策略                                                 | O(1)                                   |
+| `void set_dependency_policy(relation_policy policy)`         | 设置依赖策略                                                 | O(1)                                   |
+| `void add_dependency(_Tp requirer,_Tp required)`             | 设置`requirer`→`required`的依赖关系                          | O(1)                                   |
+| `void remove_dependency(_Tp requirer,_Tp required)`          | 取消`requirer`→`required`的依赖关系，无需保证关系存在        | O(1)                                   |
+| `void clear_dependency(_Tp requirer)`                        | 清除`requirer`的全部依赖关系（不包含\*→`requirer`，仅包含`requirer`→\*) | O(1)                                   |
+| `void add_forbidden(_Tp element,_Tp forbidden)`              | 添加`element`→`forbidden`的禁止关系                          | O(1)                                   |
+| `void remove_forbidden(_Tp element,_Tp forbidden)`           | 取消`element`→`forbidden`的禁止关系，无需保证关系存在        | O(1)                                   |
+| `void clear_forbidden(_Tp element)`                          | 清除`element`的全部禁止关系（不包含\*→`element`，仅包含`element`→\*） | O(1)                                   |
+| `advanced_flags& operator <<=(_Tp e)`                        | 添加标志                                                     | 最好情况：O(F+n)<br>最坏情况：O(C+F+n) |
+| `std::vector<consistency_set<_Tp>> check_consistency()`      | 检测依赖-禁止环                                              | O((V+F)×(V+D))                         |
+| `const std::map<_Tp,flags<_Tp>>& forbiddens() const`         | 查询禁止关系                                                 | O(1)                                   |
+| `const std::map<_Tp,flags<_Tp>>& dependencies() const`       | 查询依赖关系                                                 | O(1)                                   |
+
+对于时间复杂度，V代表启用枚举值数量，F代表禁止关系数量，D代表依赖关系数量，C代表(V+F)×(V+D)。
 
 对于`check_consistency()`的返回值中的`consistency_set<_Tp>`类型，请参阅下文。
 
-**有关`__STDEX_CONSTEXPR`的内容与前文保持一致。**
+**有关`_STDEX_CONSTEXPR`的内容与前文保持一致。**
 
 ##### 使用样例
 
-暂无
+###### 以带游客的用户系统举例
+
+```cpp
+enum class UserState : uint32_t {
+	LoggedOut=1,
+	LoggedIn=2,
+	Guest=4,
+	Admin=8,
+	Moderator=16,
+};
+
+advanced_flags<UserState,RP_FORCE,RP_FORCE,RP_FORCE> state;
+
+void SetupSystem() {
+	state.set_exclusion(UserState::LoggedOut,UserState::LoggedIn);
+	state.add_dependency(UserState::Admin,UserState::LoggedIn);
+	state.add_dependency(UserState::Moderator,UserState::LoggedIn);
+	state.add_forbidden(UserState::Guest,UserState::Admin);
+	state.add_forbidden(UserState::Guest,UserState::Moderator);
+}
+
+void PromoteToAdmin() {
+	user_state<<=UserState::Admin; 
+}
+```
+
+在上述代码中，我们创建了一个用户管理系统，并将互斥策略、依赖策略和禁止策略设置为了`RP_FORCE`。在`SetupSystem()`中，我们设置了以下关系：登出与登陆状态互斥；管理员和高级管理员需要登陆状态；游客不能成为管理员或高级管理员。`RP_FORCE`表明，当遇到违反策略的情况时，会优先强制生效当前策略，以`PromoteToAdmin()`为例，设置`UserState::Admin`的同时，将会强制取消`UserState::Guest`身份，并自动使`UserState::LoggedIn`生效。如果依赖策略为`RP_REJECT`且未登录，则`PromoteToAdmin()`会在检测到依赖不满足时自动停止进一步调整`state`，不会导致任何预期外的行为。
+
+###### 以系统权限为例
+
+```cpp
+enum class SystemPermission : uint32_t {
+	None=0,
+	Login=1,
+	ViewData=2,
+	ExportData=4,
+	ManageUsers=8,
+	SystemConfig=16,
+	AuditLogs=32,
+	Suspended=64,
+	GuestMode=128,
+};
+
+class PermissionConfigValidator {
+	stdex::bitwise::advanced_flags<SystemPermission> config_;
+    
+public:
+	void SetupConfig() {
+		config_.add_dependency(SystemPermission::ManageUsers,SystemPermission::SystemConfig);
+		config_.add_dependency(SystemPermission::SystemConfig,SystemPermission::AuditLogs);
+		config_.add_dependency(SystemPermission::AuditLogs,SystemPermission::ManageUsers);
+		config_.add_dependency(SystemPermission::ExportData,SystemPermission::Login);
+		config_.add_forbidden(SystemPermission::ExportData,SystemPermission::Login);
+		config_.add_dependency(SystemPermission::AuditLogs,SystemPermission::SystemConfig);
+		config_.add_forbidden(SystemPermission::SystemConfig,SystemPermission::AuditLogs);
+		config_.add_forbidden(SystemPermission::GuestMode,SystemPermission::GuestMode);
+	}
+	void Validate() {
+		auto issues=config_.check_consistency();
+		if (issues.empty()) {
+			std::cout<<"Accepted"<<std::endl;
+			return;
+		}
+		for (const auto& issue:issues) {
+			switch (issue.type_) {
+				case stdex::bitwise::CT_CYCLE: {
+					std::cout<<"Dependency Cycle:"<<std::endl;
+					for (auto perm:issue.value_) std::cout<<static_cast<uint32_t>(perm)<<" ";
+					std::cout<<std::endl;
+					break;
+				}
+				case stdex::bitwise::CT_FORBIDDEN_WITH_DEPENDENCY: {
+					std::cout<<"Forbidden with Dependency:"<<std::endl<<static_cast<uint32_t>(issue.value_[0])<<" depends "<<static_cast<uint32_t>(issue.value_[1])<<", but also forbids it"<<std::endl;
+					break;
+				}
+				case stdex::bitwise::CT_REVERSE_FORBIDDEN_WITH_DEPENDENCY: {
+					std::cout<<"Forbidden with Dependency:"<<std::endl<<static_cast<uint32_t>(issue.value_[0])<<" is being depended by "<<static_cast<uint32_t>(issue.value_[1])<<", but also forbids it"<<std::endl;
+					break;
+				}
+				case stdex::bitwise::CT_FORBIDDEN_SELF: {
+					std::cout<<"Self forbidden:"<<std::endl<<static_cast<uint32_t>(issue.value_[0])<<" forbids itself\n";
+					break;
+				}
+			}
+		}
+	}
+};
+
+int main() {
+    PermissionConfigValidator validator;
+    validator.SetupConfig();
+    validator.Validate();
+}
+```
+
+在上述代码中，我们创建了一个权限检查器，并使用`Validate()`进行了检查。在该样例代码中，我们设置了全部四种相矛盾的标志关系，会被`Validate()`函数全部检查并打印出来。如果需要检查其他的权限配置情况，只需要更改`SetupConfig()`函数，就可以完成类似的测试。
 
 #### `class advanced_flags<_Tp,_DefaultExclusionPolicy,_DefaultForbiddenPolicy,_DefaultDependencyPolicy>::struct consistency_set<_Up>`
 
