@@ -26,7 +26,7 @@ StdEx库是一个包含文件模式的C++扩展库，本库使用非外部链接
 
 flags.h旨在提供一个类型安全的位掩码标志管理的标志集功能，用于维护多个标志是否启用的状态。
 
-使用flags.h提供的标志集，可以枚举标志的集合操作（添加/删除/检测），快速地对标志进行标识和清除，并检测特定标识是否启用。
+使用flags.h提供的标志集，可以枚举标志的集合操作（添加/删除/检测），快速地对标志进行标识和清除，并检测特定标志是否启用。
 
 同时，flags.h还提供一系列具有特定强化方向的增强标志集，可以通过设置标志之间的关系进行更复杂的管理。
 
@@ -38,7 +38,7 @@ flags.h旨在提供一个类型安全的位掩码标志管理的标志集功能�
 
 #### 使用场景
 
-本库提供的标志集常常用于多个同类型标识需要分别记录状态的情况。
+本库提供的标志集常常用于多个同类型标志需要分别记录状态的情况。
 
 以文件系统的访问权限为例，使用本标志集可以同时完成对文件的读操作、写操作、执行操作等操作权限进行管理。
 
@@ -111,6 +111,8 @@ flags.h旨在提供一个类型安全的位掩码标志管理的标志集功能�
 | `bool empty() const noexcept`                                | 检查是否为空集       | O(1)   |
 | `template <typename _Func>`<br>`void for_each(_Func func) const` | 对每个生效值执行func | O(n)   |
 
+对于时间复杂度，n为标志集定义的标志总数（不计入组合标志情况）。
+
 **绝大多数函数均被标记为`constexpr`，其在性能上将非常优秀。**
 
 > [!WARNING]
@@ -149,7 +151,7 @@ enum class FilePermission : uint32_t {
 }
 
 struct file{`
-	stdex::bitwise::flags<FilePermisson> permission_;
+	stdex::bitwise::flags<FilePermission> permission_;
 	//other members...
 	void add_permission(FilePermission permission) { permission_<<=permission; }
 	void set_admin_permission() { permission_=FilePermission::All; }
@@ -177,7 +179,7 @@ enum class FontStyle : uint32_t {
 _STDEX_ENABLE_FLAGS_ENHANCED(FontStyle)
 int main() {
 	stdex::bitwise::flags<FontStyle> aHeadStyle=FontStyle::Bold<<FontStyle::Underline;
-	stdex::bitwise::flags<FontStyle> aCommentStyle=FontStyle::All>>FontStyle::Italic>>FontStyleBold;
+	stdex::bitwise::flags<FontStyle> aCommentStyle=FontStyle::All>>FontStyle::Italic>>FontStyle::Bold;
 }
 ```
 
@@ -226,7 +228,7 @@ int main() {
 | `virtual exclusive_flags& operator <<=(_Tp e)`               | 添加标志                         | O(1)   |
 | `const std::map<_Tp,flags<_Tp>*>& exclusions() const`        | 获取互斥组成员                   | O(1)   |
 
-**与`flags<_Tp>`一样，绝大多数可以使用`constexpr`的函数都被标记了`constexpr`，这使得性能大大提升。有关`_STDEX_CONSTEXPR`的内容与前文保持一致。**
+**与`flags<_Tp>`一样，绝大多数可以使用`constexpr`的函数都被标记了`constexpr`，这使得性能大大提升。有关`_STDEX_CONSTEXPR`和时间复杂度的内容与前文保持一致。**
 
 > [!WARNING]
 >
@@ -335,7 +337,7 @@ void MakeFood() {
 
 对于`check_consistency()`的返回值中的`consistency_set<_Tp>`类型，请参阅下文。
 
-**有关`_STDEX_CONSTEXPR`的内容与前文保持一致。**
+**有关`_STDEX_CONSTEXPR`和时间复杂度的内容与前文保持一致。**
 
 ##### 使用样例
 
