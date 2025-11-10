@@ -163,6 +163,165 @@ class deflate_compressor {
 		}
 		return 29;
 	}
+	
+	static huffman build_dynamic_huffman(const uint32_t* freq,int n) {
+		struct node {
+			uint32_t freq_;
+			int16_t left_,right_,sym_;
+		};
+		huffman result;
+		std::vector<node> nodes;
+		nodes.reserve(2*n+1);
+		for (int i=0;i<n;i++) {
+        	if (freq[i]>0) nodes.push_back({freq[i],-1,-1,(int16_t)i});
+		}
+		if (nodes.empty()) {
+			result.length_.assign(n,0);
+			return result;
+		}
+		if (nodes.size()==1) {
+			result.length_.assign(n,0);
+			result.length_[nodes[0].sym_]=1;
+			build_canonical_table(result);
+			return result;
+		}
+		auto cmp=[](const node& lhs,const node& rhs){
+			return lhs.freq_>rhs.freq_;
+		};
+		std::make_heap(nodes.begin(),nodes.end(),cmp);
+		int next_index=nodes.size();
+		while (nodes.size()>1) {
+			std::pop_heap(nodes.begin(),nodes.end(),cmp);
+			node n1=nodes.back();
+			nodes.pop_back();
+			std::pop_heap(nodes.begin(),nodes.end(),cmp);
+			node n2=nodes.back();
+			nodes.pop_back();
+			nodes.push_back({n1.freq_+n2.freq_,(int16_t)(n1.sym_>=0?-(n1.sym_+1):n1.left_),(int16_t)(n2.sym_>=0?-(n2.sym_+1):n2.left_),(int16_t)-next_index});
+			next_index++;
+			std::push_heap(nodes.begin(),nodes.end(),cmp);
+		}
+		result.length_.assign(n,0);
+		std::function<void(const node&,int)> dfs=[&](const node& nd,int depth){
+			if (nd.sym_>=0) {
+				result.length_[nd.sym_]=depth;
+				return;
+			}
+			if (nd.left_>=0) dfs(nodes[-nd.left_-1],depth+1);
+			if (nd.right_>=0) dfs(nodes[-nd.right_-1],depth+1);
+		};
+		dfs(nodes.front(),0);
+		const int MAXBITS=15;
+		int overflow=0;
+		std::array<int,MAXBITS+1> bl_count{};
+		for (int it:result.length_) {
+			if (it>0) bl_count[it]++;
+		}
+		for (int bits=MAXBITS+1;bits<(int)bl_count.size();bits++) {
+			overflow+=bl_count[bits];
+			bl_count[MAXBITS]+=bl_count[bits];
+		}
+		while (overflow>0) {
+			for (int bits=MAXBITS-1;bits>=1 && overflow>0;bits--) {
+				if (bl_count[bits]>0) {
+					bl_count[bits]--;
+					bl_count[bits+1]+=2;
+					overflow--;
+				}
+			}
+		}
+		int len_idx=0;
+		for (int bits=MAXBITS;bits>=1;bits--) {
+			for (int i=0;i<n;i++) {
+				if (result.length_[i]>bits) result.length_[i]=bits;
+			}
+		}
+		build_canonical_table(result);
+		return result;
+	}
+	static void write_dynamic_header(bitwise::bit_writer& bw,const std::vector<uint8_t>& litlen_len,const std::vector<uint8_t>& dist_len) {
+		int HLIT=286-1;
+		while (HLIT>=257 && litlen_len[HLIT]==0) HLIT--;
+		int HDIST=30-1;
+		while (HDIST>=1 && dist_len[HDIST]==0) HDIST--;
+		int HLIT_count=HLIT+1-257;
+		int HDIST_count=HDIST+1-1;
+		std::vector<uint8_t> all_lens;
+		all_lens.insert(all_lens.end(),litlen_len.begin(),litlen_len.begin()+HLIT+1);
+		all_lens.insert(all_lens.end(),dist_len.begin(),dist_len.begin()+HDIST+1);
+		std::array<uint32_t,19> code_freq{}; 
+		struct run {
+			uint8_t sym_;
+			uint8_t old_len_;
+			uint8_t extra_bits_;
+			uint8_t extra_val_;
+		};
+		std::vector<run> runs;
+		uint8_t prev=0;
+		int len=0;
+		auto flush_run=[&](uint8_t val,int count){
+			if (val==0) {
+				while (count>0) {
+					if (count>=11) {
+						int n=std::min(count,138);
+						count-=n;
+						runs.push_back({18,val,7,(uint8_t)(n-11)});
+						code_freq[18]++;
+					} else if (count>=3) {
+						int n=std::min(count,10);
+						count-=n;
+						runs.push_back({17,val,3,(uint8_t)(n-3)});
+						code_freq[17]++;
+					} else {
+						runs.push_back({val,val,0,0});
+						code_freq[val]++;
+						count--;
+					}
+				}
+			} else {
+				runs.push_back({val,val,0,0});
+				code_freq[val]++;
+				count--;
+				while (count>0) {
+					if (count>=3) {
+						int n=std::min(count,6);
+						runs.push_back({16,val,2,(uint8_t)(n-3)});
+						code_freq[16]++;
+						count-=n;
+					} else {
+						runs.push_back({val,val,0,0});
+						code_freq[val]++;
+						count--;
+					}
+				}
+			}
+		};
+		for (int i=0;i<(int)all_lens.size();i++) {
+			if (i==0) {
+				prev=all_lens[0];
+				len=1;
+			} else if (all_lens[i]==prev) len++;
+			else {
+				flush_run(prev,len);
+				prev=all_lens[i];
+				len=1;
+			}
+		}
+		flush_run(prev,len);
+		huffman cl_tree=build_dynamic_huffman(code_freq.data(),19);
+		const int order[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
+		int HCLEN=19-1;
+		while (HCLEN>=4 && cl_tree.length_[order[HCLEN]]==0) HCLEN--;
+		int HCLEN_count=HCLEN+1-4;
+		bw.write_bits<uint8_t>(5,HLIT_count);
+		bw.write_bits<uint8_t>(5,HDIST_count);
+		bw.write_bits<uint8_t>(4,HCLEN_count);
+		for (int i=0;i<HCLEN+1;i++) bw.write_bits<uint8_t>(3,cl_tree.length_[order[i]]);
+		for (auto& it:runs) {
+			bw.write_bits<uint16_t>(cl_tree.length_[it.sym_],bitwise::reverse_bits(cl_tree.table_[it.sym_],cl_tree.length_[it.sym_]));
+			if (it.sym_>=16) bw.write_bits<uint8_t>(it.extra_bits_,it.extra_val_);
+		}
+	}
 
 public:
 	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,int level=6,bool raw=false,int btype=2,bool auto_btype=true) {
@@ -173,7 +332,7 @@ public:
 			if (level<=1) btype=0;
 			else if (level<=3) btype=1;
 		}
-btype=1;
+btype=2;
 		uint32_t bitbuf=0;
 		int bitcnt=0;
 		if (btype==0) {
@@ -206,12 +365,12 @@ btype=1;
 					int length_code=get_length_code(it.length_,extra_len_value,extra_len_bits);
 					auto [code,len]=get_litlen(length_code);
 					bw.write_bits<uint16_t>(len,bitwise::reverse_bits(code,len));
-					if (extra_len_bits>0) bw.write_bits<uint16_t>(extra_len_bits,bitwise::reverse_bits((uint64_t)extra_len_value,extra_len_bits));
+					if (extra_len_bits>0) bw.write_bits<uint16_t>(extra_len_bits,(uint64_t)extra_len_value);
 					int extra_dist_bits=0,extra_dist_value=0;
 					int dist_code=get_dist_code(it.distance_,extra_dist_value,extra_dist_bits);
 					auto [dcode,dlen]=get_dist(dist_code);
 					bw.write_bits<uint16_t>(dlen,bitwise::reverse_bits(dcode,dlen));
-					if (extra_dist_bits>0) bw.write_bits<uint16_t>(extra_dist_bits,bitwise::reverse_bits((uint64_t)extra_dist_value,extra_dist_bits));
+					if (extra_dist_bits>0) bw.write_bits<uint16_t>(extra_dist_bits,(uint64_t)extra_dist_value);
 				}
 			}
 			auto [endcode,endlen]=get_litlen(256);
@@ -219,11 +378,40 @@ btype=1;
 			bw.flush_bits();
 		} else {
 			crypto::lz77 lz;
-			/*auto tokens=lz.encode(data);
-			huffman ll_tree,dist_tree;
-			build_optimal_trees(toks,ll_tree,dist_tree);
-			write_dynamic_block(result,toks,ll_tree,dist_tree,true);
-			flush_bits(result,bitbuf,bitcnt);*/
+			auto tokens=lz.encode(data);
+			bw.write_bits<uint8_t>(1,1);
+			bw.write_bits<uint8_t>(2,2);
+			std::array<uint32_t,286> litlen_freq{};
+			std::array<uint32_t,30> dist_freq{};
+			for (auto& it:tokens) {
+				if (it.length_==0) litlen_freq[it.literal_]++;
+				else {
+					int extra_len_bits=0,extra_len_value=0;
+					int len_code=get_length_code(it.length_,extra_len_value,extra_len_bits);
+					litlen_freq[len_code]++;
+					int extra_dist_bits=0,extra_dist_value=0;
+					int dist_code=get_dist_code(it.distance_,extra_dist_value,extra_dist_bits);
+					dist_freq[dist_code]++;
+				}
+			}
+			litlen_freq[256]++;
+			huffman ll_tree=build_dynamic_huffman(litlen_freq.data(),286),dist_tree=build_dynamic_huffman(dist_freq.data(),30);
+			write_dynamic_header(bw,ll_tree.length_,dist_tree.length_);
+			for (auto& it:tokens) {
+				if (it.length_==0) bw.write_bits(ll_tree.length_[it.literal_],bitwise::reverse_bits(ll_tree.table_[it.literal_],ll_tree.length_[it.literal_]));
+				else {
+					int extra_len_bits=0,extra_len_value=0;
+					int len_code=get_length_code(it.length_,extra_len_value,extra_len_bits);
+					bw.write_bits(ll_tree.length_[len_code],bitwise::reverse_bits(ll_tree.table_[len_code],ll_tree.length_[len_code]));
+					if (extra_len_bits>0) bw.write_bits<uint16_t>(extra_len_bits,(uint64_t)extra_len_value);
+					int extra_dist_bits=0,extra_dist_value=0;
+					int dist_code=get_dist_code(it.distance_,extra_dist_value,extra_dist_bits);
+					bw.write_bits(dist_tree.length_[dist_code],bitwise::reverse_bits(dist_tree.table_[dist_code],dist_tree.length_[dist_code]));
+					if (extra_dist_bits>0) bw.write_bits<uint16_t>(extra_dist_bits,(uint64_t)extra_dist_value);
+				}
+			}
+			bw.write_bits(ll_tree.length_[256],bitwise::reverse_bits(ll_tree.table_[256],ll_tree.length_[256]));
+			bw.flush_bits();
 		}
 		if (!raw) {
 			auto ad=compute_adler32(data);
@@ -1035,7 +1223,7 @@ public:
 		bool compression_successful=false;
 		switch (method_) {
 			case CM_DEFLATED: {
-				compressed=deflate_compressor::compress(data_,static_cast<int>(level),true);
+				compressed=deflate_compressor::compress(data_,static_cast<int>(level),2,true);
 				compression_successful=compressed.size()<data_.size();
 				break;
 			}
