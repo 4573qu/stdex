@@ -27,6 +27,7 @@
 #include "../bitwise/bits.h"//At Least 1.1
 #include "../crypto/lz77.h"//At Least 1.0
 #include "../integrity/crc.h"//At Least 1.0
+#include "../structure/huffman.h"//At Least 1.1
 
 namespace stdex {
 
@@ -92,7 +93,7 @@ class deflate_compressor {
 		return h;
 	}
 	static void build_canonical_table(huffman& h) {
-		    // 1. 计算最大码长
+	/*	    // 1. 计算最大码长
     int MAXBITS = 0;
     for (uint8_t it : h.length_) {
         if (it > MAXBITS) MAXBITS = it;
@@ -184,8 +185,8 @@ class deflate_compressor {
         fprintf(stderr, "[WARN] Huffman code tree not full (%d of %d slots used)\n",
                 check_code, 1 << MAXBITS);
         // incomplete 不需要异常，这在DEFLATE中合法
-    }
-		/*int MAXBITS=0;
+    }*/
+		int MAXBITS=0;
 		for (uint8_t it:h.length_) {
 			if (it>MAXBITS) MAXBITS=it;
 		}
@@ -215,7 +216,7 @@ class deflate_compressor {
 			}
 		}
 		
-		int overflow_check = (code + bl_count[MAXBITS-1]) << 1;
+		/*int overflow_check = (code + bl_count[MAXBITS-1]) << 1;
 if (overflow_check != (1 << MAXBITS)) {
     throw std::runtime_error("Invalid Huffman code length set (oversubscribed)");
 }*/
@@ -292,24 +293,7 @@ if (overflow_check != (1 << MAXBITS)) {
 			build_canonical_table(result);
 			return result;
 		}
-		/*std::vector<int> heap;
-		heap.reserve(nodes.size()*2);
-		for (std::size_t i=0;i<nodes.size();i++) heap.push_back(i);
-		std::make_heap(heap.begin(),heap.end(),cmp);
-		//std::make_heap(nodes.begin(),nodes.end(),cmp);
-		while (heap.size()>1) {
-			std::pop_heap(heap.begin(),heap.end(),cmp);
-			int i1=heap.back();
-			heap.pop_back();
-			std::pop_heap(heap.begin(),heap.end(),cmp);
-			int n2=heap.back();
-			heap.pop_back();
-			nodes.push_back({nodes[i1].freq_+nodes[i2].freq_,i1,i2,-1});
-			heap.push_back(nodes.size());
-			std::push_heap(heap.begin(),heap.end(),cmp);
-		}
-		int root=heap.front();*/
-		while (pq.size()>1) {
+		/*while (pq.size()>1) {
 			int index1=pq.top();
 			pq.pop();
 			int index2=pq.top();
@@ -363,6 +347,32 @@ if (overflow_check != (1 << MAXBITS)) {
 		for (int i=0;i<n;i++) {
 			if (result.length_[i]>MAXBITS) result.length_[i]=MAXBITS;
 		}
+		build_canonical_table(result);
+		return result;*/
+		result.length_.assign(n,0);
+		std::vector<uint32_t> freqs;
+		std::vector<int> symbols;
+		for (int i=0;i<n;i++) {
+			if (freq[i]>0) {
+				freqs.push_back(freq[i]);
+				symbols.push_back(i);
+			}
+		}
+		structure::huffman<int,uint32_t> huff;
+		huff.build_shortest_limited(freqs,symbols,15);
+		auto convert_huff=[&](int s,uint32_t f,int d){
+			result.length_[s]=d;
+		};
+		huff.for_each(convert_huff);
+		/*std::function<void(const std::shared_ptr<structure::huffman<int,uint32_t>::node>,int)> convert_huff=[&](const std::shared_ptr<structure::huffman<int,uint32_t>::node>& p,int depth){
+			if (!p) return;
+			if (p->is_leaf()) {
+				result.length_[p->symbol_]=depth;
+				return;
+			}
+			convert_huff(p->left_,depth+1);
+			convert_huff(p->right_,depth+1);
+		};*/
 		build_canonical_table(result);
 		return result;
 	}

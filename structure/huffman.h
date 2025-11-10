@@ -1,8 +1,7 @@
 //Last Modified At 2025/11/06
+//@Version 1.1.0.0
 #ifndef _STDEX_STRUCTURE_HUFFMAN_H_
 #define _STDEX_STRUCTURE_HUFFMAN_H_ 1
-
-#include <bitset>
 
 #include <algorithm>
 #include <cmath>
@@ -26,6 +25,7 @@ namespace structure {
 
 template <typename _Tp,typename _Freq=std::size_t,typename _Compare=std::greater<_Freq>>
 class huffman {
+public:
 	struct node {
 		_Tp symbol_{};
 		_Freq frequency_;
@@ -37,6 +37,7 @@ class huffman {
 		bool is_leaf() const noexcept { return !left_ && !right_; }
 	};
 
+private:
 	template <typename _Str>
 	void build_codes(std::shared_ptr<node> root,const _Str& prefix,std::unordered_map<_Tp,_Str>& table) {
 		if (!root) return;
@@ -81,6 +82,17 @@ class huffman {
 			auto right=deserialize_node<_Str>(in);
 			return std::make_shared<node>(left,right);
 		} else throw std::runtime_error("Invalid tree tag");
+	}
+	
+	template <typename _Func>
+	void for_each(const std::shared_ptr<node>& root,_Func func,int index) const {
+		if (!root) return;
+		if (root->is_leaf()) {
+			func(root->symbol_,root->frequency_,index);
+			return;
+		}
+		for_each<_Func>(root->left_,func,index+1);
+		for_each<_Func>(root->right_,func,index+1);
 	}
 
 public:
@@ -202,7 +214,8 @@ public:
 		}
 		if (max_depth<=0) throw std::invalid_argument("Invalid max_depth");
 		auto length=get_shortest_length(frequencies,max_depth);
-		std::reverse(length.begin(),length.end());
+		//std::reverse(length.begin(),length.end());
+		std::sort(length.begin(),length.end());
 		std::vector<std::shared_ptr<node>> nodes;
 		for (int i=0;i<n;i++) nodes.push_back(std::make_shared<node>(symbols[i],frequencies[i]));
 		std::stable_sort(nodes.begin(),nodes.end(),[](const std::shared_ptr<node>& lhs,const std::shared_ptr<node>& rhs){
@@ -322,6 +335,12 @@ public:
 	void deserialize_tree_binary(const std::vector<uint8_t>& buf) {
 		std::basic_istringstream<typename _Str::value_type> iss(_Str(buf.begin(),buf.end()),std::ios::binary);
 		root_=deserialize_tree<_Str>(iss);
+	}
+	
+	template <typename _Func>
+	void for_each(_Func func) const {
+		int index=0;
+		for_each<_Func>(root_,func,index);
 	}
 };
 
