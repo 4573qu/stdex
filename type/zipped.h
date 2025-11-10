@@ -38,7 +38,7 @@ class deflate_compressor {
 	struct huffman {
 		std::vector<uint16_t> table_;
 		std::vector<uint8_t> length_;
-		int maxbits_;
+		int maxbits_=0;
 		std::vector<std::vector<uint16_t>> codes_bl_;
 		std::vector<std::vector<int>> syms_bl_;
 		int decode(bitwise::bit_reader& br) const {
@@ -92,7 +92,100 @@ class deflate_compressor {
 		return h;
 	}
 	static void build_canonical_table(huffman& h) {
-		int MAXBITS=0;
+		    // 1. 计算最大码长
+    int MAXBITS = 0;
+    for (uint8_t it : h.length_) {
+        if (it > MAXBITS) MAXBITS = it;
+    }
+    h.maxbits_ = MAXBITS;
+
+    // 2. 统计每个码长频数
+    std::vector<int> bl_count(MAXBITS + 1, 0);
+    for (uint8_t it : h.length_) {
+        if (it) bl_count[it]++;
+    }
+
+    // ----------------------------
+    // 3. 检查并修复 oversubscribed / incomplete 分布
+    // ----------------------------
+    int left = 1;  // 可用叶子数量（用1表示根）
+    for (int bits = 1; bits <= MAXBITS; bits++) {
+        left <<= 1;           // 每深入一层可分出两倍节点
+        left -= bl_count[bits];
+    }
+
+    if (left < 0) {
+        // ⚠️ oversubscribed：长度集合非法 —— 平衡调整或警告退出
+        fprintf(stderr, "[WARN] Huffman set oversubscribed; adjusting counts\n");
+
+        // 尝试削减最深层（从后往前）直到合法
+        for (int bits = MAXBITS; bits >= 1 && left < 0; bits--) {
+            while (bl_count[bits] && left < 0) {
+                bl_count[bits]--;
+                left += 1 << (MAXBITS - bits);
+            }
+        }
+
+        // 若依旧非法则直接报错
+        if (left < 0) {
+            throw std::runtime_error("Huffman code length set oversubscribed and cannot be fixed");
+        }
+    }
+    else if (left > 0) {
+        // 不满（incomplete tree）是允许的，但我们可以补足
+        fprintf(stderr, "[INFO] Huffman set incomplete; padding last level (%d extra)\n", left);
+        bl_count[MAXBITS] += left;
+        left = 0;
+    }
+
+    // ----------------------------
+    // 4. 生成起始码值 next_code
+    // ----------------------------
+    std::vector<int> next_code(MAXBITS + 1, 0);
+    int code = 0;
+    for (int bits = 1; bits <= MAXBITS; bits++) {
+        code = (code + bl_count[bits - 1]) << 1;
+        next_code[bits] = code;
+
+        // 实时检测 oversubscribe，防御性
+        if (code > (1 << bits)) {
+            fprintf(stderr, "[ERROR] Detected oversubscribed state at length=%d (code=%d limit=%d)\n",
+                    bits, code, 1 << bits);
+            throw std::runtime_error("Invalid Huffman length set (oversubscribed)");
+        }
+    }
+
+    // ----------------------------
+    // 5. 构造各符号的 canonical code 表
+    // ----------------------------
+    h.table_.assign(h.length_.size(), 0);
+    h.codes_bl_.assign(MAXBITS + 1, {});
+    h.syms_bl_.assign(MAXBITS + 1, {});
+
+    for (std::size_t n = 0; n < h.length_.size(); n++) {
+        int len = h.length_[n];
+        if (len != 0) {
+            int val = next_code[len]++;
+            int rev = 0;
+            // bit 反转：假设写入顺序为LSB-first，此为DEFLATE规范
+            for (int i = 0; i < len; i++)
+                rev = (rev << 1) | ((val >> i) & 1);
+            h.table_[n] = rev;
+            h.codes_bl_[len].push_back(h.table_[n]);
+            h.syms_bl_[len].push_back(static_cast<int>(n));
+        }
+    }
+
+    // ----------------------------
+    // 6. 完成性检查
+    // ----------------------------
+    int check_code = (code + bl_count[MAXBITS - 1]) << 1;
+    if (check_code != (1 << MAXBITS)) {
+        fprintf(stderr, "[WARN] Huffman code tree not full (%d of %d slots used)\n",
+                check_code, 1 << MAXBITS);
+        // incomplete 不需要异常，这在DEFLATE中合法
+    }
+		/*int MAXBITS=0;
 		for (uint8_t it:h.length_) {
 			if (it>MAXBITS) MAXBITS=it;
 		}
@@ -121,6 +214,11 @@ class deflate_compressor {
 				h.syms_bl_[len].push_back((int)n);
 			}
 		}
+		
+		int overflow_check = (code + bl_count[MAXBITS-1]) << 1;
+if (overflow_check != (1 << MAXBITS)) {
+    throw std::runtime_error("Invalid Huffman code length set (oversubscribed)");
+}*/
 	}
 	static uint32_t compute_adler32(const std::vector<uint8_t>& data) {
 		uint32_t a=1,b=0;
@@ -167,13 +265,22 @@ class deflate_compressor {
 	static huffman build_dynamic_huffman(const uint32_t* freq,int n) {
 		struct node {
 			uint32_t freq_;
-			int16_t left_,right_,sym_;
+			int left_,right_;
+			int sym_;
+			int depth_;
 		};
 		huffman result;
 		std::vector<node> nodes;
 		nodes.reserve(2*n+1);
+		auto cmp=[&](int lhs,int rhs){
+			return nodes[lhs].freq_>nodes[rhs].freq_;
+		};
+		std::priority_queue<int,std::vector<int>,decltype(cmp)> pq(cmp);
 		for (int i=0;i<n;i++) {
-        	if (freq[i]>0) nodes.push_back({freq[i],-1,-1,(int16_t)i});
+        	if (freq[i]>0) {
+        		nodes.push_back({freq[i],-1,-1,i,0});
+        		pq.push(nodes.size()-1);
+			}
 		}
 		if (nodes.empty()) {
 			result.length_.assign(n,0);
@@ -185,56 +292,76 @@ class deflate_compressor {
 			build_canonical_table(result);
 			return result;
 		}
-		auto cmp=[](const node& lhs,const node& rhs){
-			return lhs.freq_>rhs.freq_;
-		};
-		std::make_heap(nodes.begin(),nodes.end(),cmp);
-		int next_index=nodes.size();
-		while (nodes.size()>1) {
-			std::pop_heap(nodes.begin(),nodes.end(),cmp);
-			node n1=nodes.back();
-			nodes.pop_back();
-			std::pop_heap(nodes.begin(),nodes.end(),cmp);
-			node n2=nodes.back();
-			nodes.pop_back();
-			nodes.push_back({n1.freq_+n2.freq_,(int16_t)(n1.sym_>=0?-(n1.sym_+1):n1.left_),(int16_t)(n2.sym_>=0?-(n2.sym_+1):n2.left_),(int16_t)-next_index});
-			next_index++;
-			std::push_heap(nodes.begin(),nodes.end(),cmp);
+		/*std::vector<int> heap;
+		heap.reserve(nodes.size()*2);
+		for (std::size_t i=0;i<nodes.size();i++) heap.push_back(i);
+		std::make_heap(heap.begin(),heap.end(),cmp);
+		//std::make_heap(nodes.begin(),nodes.end(),cmp);
+		while (heap.size()>1) {
+			std::pop_heap(heap.begin(),heap.end(),cmp);
+			int i1=heap.back();
+			heap.pop_back();
+			std::pop_heap(heap.begin(),heap.end(),cmp);
+			int n2=heap.back();
+			heap.pop_back();
+			nodes.push_back({nodes[i1].freq_+nodes[i2].freq_,i1,i2,-1});
+			heap.push_back(nodes.size());
+			std::push_heap(heap.begin(),heap.end(),cmp);
+		}
+		int root=heap.front();*/
+		while (pq.size()>1) {
+			int index1=pq.top();
+			pq.pop();
+			int index2=pq.top();
+			pq.pop();
+			nodes.push_back({nodes[index1].freq_+nodes[index2].freq_,index1,index2,-1,std::max(nodes[index1].depth_,nodes[index2].depth_)+1});
+			pq.push(nodes.size()-1);
 		}
 		result.length_.assign(n,0);
-		std::function<void(const node&,int)> dfs=[&](const node& nd,int depth){
-			if (nd.sym_>=0) {
-				result.length_[nd.sym_]=depth;
+		std::function<void(int,int)> dfs=[&](int index,int depth){
+			if (index<0) return;
+			const node& n=nodes[index];
+			if (n.sym_>=0) {
+				result.length_[n.sym_]=depth;
 				return;
 			}
-			if (nd.left_>=0) dfs(nodes[-nd.left_-1],depth+1);
-			if (nd.right_>=0) dfs(nodes[-nd.right_-1],depth+1);
+			dfs(n.left_,depth+1);
+			dfs(n.right_,depth+1);
 		};
-		dfs(nodes.front(),0);
+		dfs(pq.top(),0);
 		const int MAXBITS=15;
-		int overflow=0;
 		std::array<int,MAXBITS+1> bl_count{};
+		int overflow=0;
 		for (int it:result.length_) {
-			if (it>0) bl_count[it]++;
-		}
-		for (int bits=MAXBITS+1;bits<(int)bl_count.size();bits++) {
-			overflow+=bl_count[bits];
-			bl_count[MAXBITS]+=bl_count[bits];
-		}
-		while (overflow>0) {
-			for (int bits=MAXBITS-1;bits>=1 && overflow>0;bits--) {
-				if (bl_count[bits]>0) {
-					bl_count[bits]--;
-					bl_count[bits+1]+=2;
-					overflow--;
+			if (it>0) {
+				if (it>MAXBITS) {
+					it=MAXBITS;
+					overflow++;
 				}
+				bl_count[it]++;
 			}
 		}
-		int len_idx=0;
-		for (int bits=MAXBITS;bits>=1;bits--) {
-			for (int i=0;i<n;i++) {
-				if (result.length_[i]>bits) result.length_[i]=bits;
+		while (1) {
+			int total=0;
+			for (int bits=1;bits<=MAXBITS;bits++) total+=bl_count[bits]<<(MAXBITS-bits);
+			if (total==(1<<MAXBITS)) break;
+			if (total>(1<<MAXBITS)) {
+				int bits=MAXBITS-1;
+				while (bits>=1 && bl_count[bits]==0) bits--;
+				bl_count[bits]--;
+				bl_count[bits+1]+=2;
+				overflow--;
+			} else {
+				int bits=1;
+				while (bits<=MAXBITS && bl_count[bits]==0) bits++;				
+				if (bits>MAXBITS) break;
+				bl_count[bits]--;
+				bl_count[bits-1]+=2;
 			}
+			//if (overflow==0) break;
+		}	
+		for (int i=0;i<n;i++) {
+			if (result.length_[i]>MAXBITS) result.length_[i]=MAXBITS;
 		}
 		build_canonical_table(result);
 		return result;
@@ -252,7 +379,6 @@ class deflate_compressor {
 		std::array<uint32_t,19> code_freq{}; 
 		struct run {
 			uint8_t sym_;
-			uint8_t old_len_;
 			uint8_t extra_bits_;
 			uint8_t extra_val_;
 		};
@@ -265,31 +391,31 @@ class deflate_compressor {
 					if (count>=11) {
 						int n=std::min(count,138);
 						count-=n;
-						runs.push_back({18,val,7,(uint8_t)(n-11)});
+						runs.push_back({18,7,(uint8_t)(n-11)});
 						code_freq[18]++;
 					} else if (count>=3) {
 						int n=std::min(count,10);
 						count-=n;
-						runs.push_back({17,val,3,(uint8_t)(n-3)});
+						runs.push_back({17,3,(uint8_t)(n-3)});
 						code_freq[17]++;
 					} else {
-						runs.push_back({val,val,0,0});
+						runs.push_back({val,0,0});
 						code_freq[val]++;
 						count--;
 					}
 				}
 			} else {
-				runs.push_back({val,val,0,0});
+				runs.push_back({val,0,0});
 				code_freq[val]++;
 				count--;
 				while (count>0) {
 					if (count>=3) {
 						int n=std::min(count,6);
-						runs.push_back({16,val,2,(uint8_t)(n-3)});
+						runs.push_back({16,2,(uint8_t)(n-3)});
 						code_freq[16]++;
 						count-=n;
 					} else {
-						runs.push_back({val,val,0,0});
+						runs.push_back({val,0,0});
 						code_freq[val]++;
 						count--;
 					}
@@ -308,6 +434,26 @@ class deflate_compressor {
 			}
 		}
 		flush_run(prev,len);
+		printf("All_lens:\n");
+		for (auto& it:all_lens) printf("%02X ",it);
+		printf("\nSerialized All_lens:\n");
+		for (int i=0;i<(int)all_lens.size();i++) {
+			if (i==0) {
+				prev=all_lens[0];
+				len=1;
+			} else if (all_lens[i]==prev) len++;
+			else {
+				printf("%02d:%02X ",prev,len);
+				prev=all_lens[i];
+				len=1;
+			}
+		}
+		printf("%02d:%02X ",prev,len);
+		printf("\nFreqs:\n");
+		for (int i=0;i<code_freq.size();i++) printf("%02d:%02X ",i,code_freq[i]);
+		printf("\nRuns:\n");
+		for (auto& it:runs) printf("{%d,%d,%d}",it.sym_,it.extra_bits_,it.extra_val_);
+		printf("\n");
 		huffman cl_tree=build_dynamic_huffman(code_freq.data(),19);
 		const int order[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
 		int HCLEN=19-1;
@@ -318,8 +464,8 @@ class deflate_compressor {
 		bw.write_bits<uint8_t>(4,HCLEN_count);
 		for (int i=0;i<HCLEN+1;i++) bw.write_bits<uint8_t>(3,cl_tree.length_[order[i]]);
 		for (auto& it:runs) {
-			bw.write_bits<uint16_t>(cl_tree.length_[it.sym_],bitwise::reverse_bits(cl_tree.table_[it.sym_],cl_tree.length_[it.sym_]));
-			if (it.sym_>=16) bw.write_bits<uint8_t>(it.extra_bits_,it.extra_val_);
+			bw.write_bits<uint16_t>(cl_tree.length_[it.sym_],cl_tree.table_[it.sym_]);
+			if (it.sym_>=16) bw.write_bits<uint16_t>(it.extra_bits_,it.extra_val_);
 		}
 	}
 
@@ -394,23 +540,24 @@ btype=2;
 					dist_freq[dist_code]++;
 				}
 			}
-			litlen_freq[256]++;
+			litlen_freq[256]=1;
+			if (std::all_of(dist_freq.begin(),dist_freq.end(),[](uint32_t f){ return f==0; })) dist_freq[0]=1;
 			huffman ll_tree=build_dynamic_huffman(litlen_freq.data(),286),dist_tree=build_dynamic_huffman(dist_freq.data(),30);
 			write_dynamic_header(bw,ll_tree.length_,dist_tree.length_);
 			for (auto& it:tokens) {
-				if (it.length_==0) bw.write_bits(ll_tree.length_[it.literal_],bitwise::reverse_bits(ll_tree.table_[it.literal_],ll_tree.length_[it.literal_]));
+				if (it.length_==0) bw.write_bits(ll_tree.length_[it.literal_],ll_tree.table_[it.literal_]);
 				else {
 					int extra_len_bits=0,extra_len_value=0;
 					int len_code=get_length_code(it.length_,extra_len_value,extra_len_bits);
-					bw.write_bits(ll_tree.length_[len_code],bitwise::reverse_bits(ll_tree.table_[len_code],ll_tree.length_[len_code]));
+					bw.write_bits(ll_tree.length_[len_code],ll_tree.table_[len_code]);
 					if (extra_len_bits>0) bw.write_bits<uint16_t>(extra_len_bits,(uint64_t)extra_len_value);
 					int extra_dist_bits=0,extra_dist_value=0;
 					int dist_code=get_dist_code(it.distance_,extra_dist_value,extra_dist_bits);
-					bw.write_bits(dist_tree.length_[dist_code],bitwise::reverse_bits(dist_tree.table_[dist_code],dist_tree.length_[dist_code]));
+					bw.write_bits(dist_tree.length_[dist_code],dist_tree.table_[dist_code]);
 					if (extra_dist_bits>0) bw.write_bits<uint16_t>(extra_dist_bits,(uint64_t)extra_dist_value);
 				}
 			}
-			bw.write_bits(ll_tree.length_[256],bitwise::reverse_bits(ll_tree.table_[256],ll_tree.length_[256]));
+			bw.write_bits(ll_tree.length_[256],ll_tree.table_[256]);
 			bw.flush_bits();
 		}
 		if (!raw) {
@@ -1756,7 +1903,9 @@ public:
 	bool add_file(const std::filesystem::path& file_path,compression_method method=CM_STORED,compression_level level=CL_NORMAL,const std::string& name_in_archive="") {
 		std::error_code ec;
 		if (!std::filesystem::exists(file_path,ec)) return false;
-		file_info file(name_in_archive.empty()?file_path.filename().string():name_in_archive);
+		std::string file_name=name_in_archive.empty()?file_path.filename().string():name_in_archive;
+		file_info file(file_name);
+		if (contains(file_name)) return false;
 		if (std::filesystem::is_directory(file_path,ec)) {
 			file.filename(file.filename()+"/");
 			file.set_directory(true);
@@ -1803,7 +1952,8 @@ public:
 		}
 		return true;
 	}
-	void add_data(const std::string& filename,const std::vector<uint8_t>& data,compression_method method=CM_STORED,compression_level level=CL_NORMAL,const std::string& comment="") {
+	bool add_data(const std::string& filename,const std::vector<uint8_t>& data,compression_method method=CM_STORED,compression_level level=CL_NORMAL,const std::string& comment="") {
+		if (contains(filename)) return false;
 		file_info file(filename);
 		file.data(data);
 		file.method(method);
@@ -1814,18 +1964,21 @@ public:
 		file.external_attributes(0x20);
 		//file.compress_data(level);
 		files_.push_back(std::move(file));
+		return true;
 	}
-	void add_directory(const std::string& dirname,const std::string& comment="") {
+	bool add_directory(const std::string& dirname,const std::string& comment="") {
 		std::string normalized_dirname=dirname;
 		if (!normalized_dirname.empty() && normalized_dirname.back()!='/') {
 			normalized_dirname+='/';
 		}
+		if (contains(normalized_dirname)) return false;
 		file_info file(normalized_dirname);
 		file.set_directory(true);
 		file.last_write_time(std::chrono::system_clock::now());
 		file.comment(comment);
 		file.external_attributes(0x10);
 		files_.push_back(std::move(file));
+		return true;
 	}
 	bool save(const std::string& filename,const std::string& archive_comment="") {
 		archive_comment_=archive_comment;
