@@ -116,7 +116,7 @@ public:
 	}
 	
 	/*[[discarded]]
-	static std::vector<std::size_t> get_package_length(const std::vector<_Freq>& frequencies,const std::vector<_Tp>& symbols,int max_depth) {
+	static std::vector<std::size_t> get_package_length(const std::vector<_Freq>& frequencies,int max_depth) {
 		/*struct package {
 			_Freq freq_;
 			int count_;
@@ -138,6 +138,8 @@ public:
 		However, I give up with PackageMerge for the reason that it is too hard to learn about
 	}*/
 
+	//when the tree is so much complicated,it may have some bug while generating length
+	//for example:generate code-length table in DEFLATE btype=2 while building an exe.
 	static std::vector<std::size_t> get_shortest_length(const std::vector<_Freq>& frequencies,int max_depth) {
 		const int n=static_cast<int>(frequencies.size());
 		if (n==0) return {};
@@ -204,6 +206,32 @@ public:
 		return solve(max_depth,emptys,frequencies);
 	}
 	
+	static std::vector<std::size_t> get_fastest_length(const std::vector<_Freq>& frequencies,int max_depth) {
+		const int n=static_cast<int>(frequencies.size());
+		if (n==0) return {};
+		if (n==1) return {1};
+		if (max_depth<=0) throw std::invalid_argument("Invalid max_depth");
+		std::size_t depth=1;
+		while ((1ULL<<depth)<n && depth<max_depth) depth++;
+		std::size_t total=1ULL<<depth;
+		std::size_t extra=total-n;
+		std::vector<std::size_t> counts(depth+1,0);
+		counts[depth]=total;
+		for (std::size_t d=depth;d>1 && extra>0;d--) {
+			std::size_t can_fold=std::min(extra,counts[d]/2);
+			counts[d]-=can_fold*2;
+			counts[d-1]+=can_fold;
+			extra-=can_fold;
+		}
+		std::vector<std::size_t> lengths;
+		lengths.reserve(n);
+		for (std::size_t d=1;d<=depth;d++) {
+			for (std::size_t i=0;i<counts[d];i++) lengths.push_back(d);
+        }
+		if (lengths.size()>n) lengths.resize(n);
+		return lengths;
+	}
+	
 	void build_shortest_limited(const std::vector<_Freq>& frequencies,const std::vector<_Tp>& symbols,int max_depth) {
 		if (frequencies.size()!=symbols.size()) throw std::invalid_argument("Frequency size and symbol size mismatch");
 		const int n=static_cast<int>(frequencies.size());
@@ -213,7 +241,7 @@ public:
 			return;
 		}
 		if (max_depth<=0) throw std::invalid_argument("Invalid max_depth");
-		auto length=get_shortest_length(frequencies,max_depth);
+		auto length=get_fastest_length(frequencies,max_depth);
 		//std::reverse(length.begin(),length.end());
 		std::sort(length.begin(),length.end());
 		std::vector<std::shared_ptr<node>> nodes;

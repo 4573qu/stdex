@@ -93,99 +93,6 @@ class deflate_compressor {
 		return h;
 	}
 	static void build_canonical_table(huffman& h) {
-	/*	    // 1. 计算最大码长
-    int MAXBITS = 0;
-    for (uint8_t it : h.length_) {
-        if (it > MAXBITS) MAXBITS = it;
-    }
-    h.maxbits_ = MAXBITS;
-
-    // 2. 统计每个码长频数
-    std::vector<int> bl_count(MAXBITS + 1, 0);
-    for (uint8_t it : h.length_) {
-        if (it) bl_count[it]++;
-    }
-
-    // ----------------------------
-    // 3. 检查并修复 oversubscribed / incomplete 分布
-    // ----------------------------
-    int left = 1;  // 可用叶子数量（用1表示根）
-    for (int bits = 1; bits <= MAXBITS; bits++) {
-        left <<= 1;           // 每深入一层可分出两倍节点
-        left -= bl_count[bits];
-    }
-
-    if (left < 0) {
-        // ⚠️ oversubscribed：长度集合非法 —— 平衡调整或警告退出
-        fprintf(stderr, "[WARN] Huffman set oversubscribed; adjusting counts\n");
-
-        // 尝试削减最深层（从后往前）直到合法
-        for (int bits = MAXBITS; bits >= 1 && left < 0; bits--) {
-            while (bl_count[bits] && left < 0) {
-                bl_count[bits]--;
-                left += 1 << (MAXBITS - bits);
-            }
-        }
-
-        // 若依旧非法则直接报错
-        if (left < 0) {
-            throw std::runtime_error("Huffman code length set oversubscribed and cannot be fixed");
-        }
-    }
-    else if (left > 0) {
-        // 不满（incomplete tree）是允许的，但我们可以补足
-        fprintf(stderr, "[INFO] Huffman set incomplete; padding last level (%d extra)\n", left);
-        bl_count[MAXBITS] += left;
-        left = 0;
-    }
-
-    // ----------------------------
-    // 4. 生成起始码值 next_code
-    // ----------------------------
-    std::vector<int> next_code(MAXBITS + 1, 0);
-    int code = 0;
-    for (int bits = 1; bits <= MAXBITS; bits++) {
-        code = (code + bl_count[bits - 1]) << 1;
-        next_code[bits] = code;
-
-        // 实时检测 oversubscribe，防御性
-        if (code > (1 << bits)) {
-            fprintf(stderr, "[ERROR] Detected oversubscribed state at length=%d (code=%d limit=%d)\n",
-                    bits, code, 1 << bits);
-            throw std::runtime_error("Invalid Huffman length set (oversubscribed)");
-        }
-    }
-
-    // ----------------------------
-    // 5. 构造各符号的 canonical code 表
-    // ----------------------------
-    h.table_.assign(h.length_.size(), 0);
-    h.codes_bl_.assign(MAXBITS + 1, {});
-    h.syms_bl_.assign(MAXBITS + 1, {});
-
-    for (std::size_t n = 0; n < h.length_.size(); n++) {
-        int len = h.length_[n];
-        if (len != 0) {
-            int val = next_code[len]++;
-            int rev = 0;
-            // bit 反转：假设写入顺序为LSB-first，此为DEFLATE规范
-            for (int i = 0; i < len; i++)
-                rev = (rev << 1) | ((val >> i) & 1);
-            h.table_[n] = rev;
-            h.codes_bl_[len].push_back(h.table_[n]);
-            h.syms_bl_[len].push_back(static_cast<int>(n));
-        }
-    }
-
-    // ----------------------------
-    // 6. 完成性检查
-    // ----------------------------
-    int check_code = (code + bl_count[MAXBITS - 1]) << 1;
-    if (check_code != (1 << MAXBITS)) {
-        fprintf(stderr, "[WARN] Huffman code tree not full (%d of %d slots used)\n",
-                check_code, 1 << MAXBITS);
-        // incomplete 不需要异常，这在DEFLATE中合法
-    }*/
 		int MAXBITS=0;
 		for (uint8_t it:h.length_) {
 			if (it>MAXBITS) MAXBITS=it;
@@ -215,11 +122,6 @@ class deflate_compressor {
 				h.syms_bl_[len].push_back((int)n);
 			}
 		}
-		
-		/*int overflow_check = (code + bl_count[MAXBITS-1]) << 1;
-if (overflow_check != (1 << MAXBITS)) {
-    throw std::runtime_error("Invalid Huffman code length set (oversubscribed)");
-}*/
 	}
 	static uint32_t compute_adler32(const std::vector<uint8_t>& data) {
 		uint32_t a=1,b=0;
@@ -359,20 +261,11 @@ if (overflow_check != (1 << MAXBITS)) {
 			}
 		}
 		structure::huffman<int,uint32_t> huff;
-		huff.build_shortest_limited(freqs,symbols,15);
+		huff.build_shortest_limited(freqs,symbols,14);
 		auto convert_huff=[&](int s,uint32_t f,int d){
 			result.length_[s]=d;
 		};
 		huff.for_each(convert_huff);
-		/*std::function<void(const std::shared_ptr<structure::huffman<int,uint32_t>::node>,int)> convert_huff=[&](const std::shared_ptr<structure::huffman<int,uint32_t>::node>& p,int depth){
-			if (!p) return;
-			if (p->is_leaf()) {
-				result.length_[p->symbol_]=depth;
-				return;
-			}
-			convert_huff(p->left_,depth+1);
-			convert_huff(p->right_,depth+1);
-		};*/
 		build_canonical_table(result);
 		return result;
 	}
@@ -469,6 +362,7 @@ if (overflow_check != (1 << MAXBITS)) {
 		int HCLEN=19-1;
 		while (HCLEN>=4 && cl_tree.length_[order[HCLEN]]==0) HCLEN--;
 		int HCLEN_count=HCLEN+1-4;
+		printf("HCLEN=%d\n",HCLEN);
 		bw.write_bits<uint8_t>(5,HLIT_count);
 		bw.write_bits<uint8_t>(5,HDIST_count);
 		bw.write_bits<uint8_t>(4,HCLEN_count);
