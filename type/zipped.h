@@ -1,5 +1,5 @@
-//Last Modified At 2025/11/07
-//@Version 1.2.0.0
+//Last Modified At 2025/11/14
+//@Version 1.2.0.1
 #ifndef _STDEX_TYPE_ZIPPED_H_
 #define _STDEX_TYPE_ZIPPED_H_ 1
 
@@ -55,7 +55,7 @@ class deflate_compressor {
 			throw std::runtime_error("invalid huffman code");
 		}
 	};
-	static inline std::pair<int,int> length_codes[29]={
+	static inline std::pair<int,int> length_codes_[29]={
 		{3,0},{4,0},{5,0},{6,0},{7,0},{8,0},{9,0},{10,0},
 		{11,1},{13,1},{15,1},{17,1},
 		{19,2},{23,2},{27,2},{31,2},
@@ -63,7 +63,7 @@ class deflate_compressor {
 		{67,4},{83,4},{99,4},{115,4},
 		{131,5},{163,5},{195,5},{227,5},{258,0}
 	};
-	static inline std::pair<int,int> dist_codes[30]={
+	static inline std::pair<int,int> dist_codes_[30]={
 		{1,0},{2,0},{3,0},{4,0},
 		{5,1},{7,1},{9,2},{13,2},
 		{17,3},{25,3},{33,4},{49,4},
@@ -72,6 +72,7 @@ class deflate_compressor {
 		{1025,9},{1537,9},{2049,10},{3073,10},
 		{4097,11},{6145,11},{8193,12},{12289,12},{16385,13},{24577,13}
 	};
+	static inline int order_[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
 	static huffman build_fixed_tree_LIT() {
 		huffman h;
 		h.maxbits_=9;
@@ -144,10 +145,10 @@ class deflate_compressor {
 	}
 	static int get_length_code(int len,int& extra_value,int& extra_len) {
 		for (int i=0;i<29;i++) {
-			int next_base=(i+1<29)?length_codes[i+1].first:259;
-			if (len>=length_codes[i].first && len<next_base) {
-				extra_len=length_codes[i].second;
-				extra_value=len-length_codes[i].first;
+			int next_base=(i+1<29)?length_codes_[i+1].first:259;
+			if (len>=length_codes_[i].first && len<next_base) {
+				extra_len=length_codes_[i].second;
+				extra_value=len-length_codes_[i].first;
 				return 257+i;
 			}
 		}
@@ -155,11 +156,11 @@ class deflate_compressor {
 	}
 	static int get_dist_code(int dist,int &extra_value,int &extra_len) {
 		for (int i=0;i<30;i++) {
-			int next_base=(i+1<30)?dist_codes[i+1].first:dist_codes[i].first*2;
-			if (dist>=dist_codes[i].first && dist<next_base) {
-            	extra_len=dist_codes[i].second;
-            	extra_value=dist-dist_codes[i].first;
-            	return i;
+			int next_base=(i+1<30)?dist_codes_[i+1].first:dist_codes_[i].first*2;
+			if (dist>=dist_codes_[i].first && dist<next_base) {
+				extra_len=dist_codes_[i].second;
+				extra_value=dist-dist_codes_[i].first;
+				return i;
 			}
 		}
 		return 29;
@@ -337,7 +338,7 @@ class deflate_compressor {
 			}
 		}
 		flush_run(prev,len);
-		printf("All_lens:\n");
+		/*printf("All_lens:\n");
 		for (auto& it:all_lens) printf("%02X ",it);
 		printf("\nSerialized All_lens:\n");
 		for (int i=0;i<(int)all_lens.size();i++) {
@@ -356,17 +357,16 @@ class deflate_compressor {
 		for (int i=0;i<code_freq.size();i++) printf("%02d:%02X ",i,code_freq[i]);
 		printf("\nRuns:\n");
 		for (auto& it:runs) printf("{%d,%d,%d}",it.sym_,it.extra_bits_,it.extra_val_);
-		printf("\n");
+		printf("\n");*/
 		huffman cl_tree=build_dynamic_huffman(code_freq.data(),19);
-		const int order[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
 		int HCLEN=19-1;
-		while (HCLEN>=4 && cl_tree.length_[order[HCLEN]]==0) HCLEN--;
+		while (HCLEN>=4 && cl_tree.length_[order_[HCLEN]]==0) HCLEN--;
 		int HCLEN_count=HCLEN+1-4;
 		printf("HCLEN=%d\n",HCLEN);
 		bw.write_bits<uint8_t>(5,HLIT_count);
 		bw.write_bits<uint8_t>(5,HDIST_count);
 		bw.write_bits<uint8_t>(4,HCLEN_count);
-		for (int i=0;i<HCLEN+1;i++) bw.write_bits<uint8_t>(3,cl_tree.length_[order[i]]);
+		for (int i=0;i<HCLEN+1;i++) bw.write_bits<uint8_t>(3,cl_tree.length_[order_[i]]);
 		for (auto& it:runs) {
 			bw.write_bits<uint16_t>(cl_tree.length_[it.sym_],cl_tree.table_[it.sym_]);
 			if (it.sym_>=16) bw.write_bits<uint16_t>(it.extra_bits_,it.extra_val_);
@@ -509,9 +509,8 @@ btype=2;
 				int HLIT=br.read_bits<uint32_t>(5)+257;
 				int HDIST=br.read_bits<uint32_t>(5)+1;
 				int HCLEN=br.read_bits<uint32_t>(4)+4;
-				static const int order[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
 				std::vector<uint8_t> code_len(19,0);
-				for (int i=0;i<HCLEN;i++) code_len[order[i]]=br.read_bits<uint32_t>(3);		
+				for (int i=0;i<HCLEN;i++) code_len[order_[i]]=br.read_bits<uint32_t>(3);		
 				huffman code_tree;
 				code_tree.length_=code_len;
 				build_canonical_table(code_tree);
@@ -538,10 +537,10 @@ btype=2;
 				build_canonical_table(litlen);
 				build_canonical_table(dist);
 			} else throw std::runtime_error("Reserved BTYPE");
-			static const int lens[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
-			static const int lext[29]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
-			static const int dstbase[30]={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
-			static const int dstext[30]={0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
+			//static const int lens[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
+			//static const int lext[29]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
+			//static const int dstbase[30]={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
+			//static const int dstext[30]={0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
 			while (1) {
 				int sym=litlen.decode(br);
 				if (sym<256) {
@@ -553,12 +552,12 @@ btype=2;
 					break;
 				}
 				if (sym>285) throw std::runtime_error("bad length sym");
-				int len=lens[sym-257];
-				if (lext[sym-257]) len+=br.read_bits<uint32_t>(lext[sym-257]);
+				int len=length_codes_[sym-257].first;
+				if (length_codes_[sym-257].second) len+=br.read_bits<uint32_t>(length_codes_[sym-257].second);
 				int dist_sym=dist.decode(br);
 				if (dist_sym>29) throw std::runtime_error("bad dist sym");
-				int distv=dstbase[dist_sym];
-				if (dstext[dist_sym]) distv+=br.read_bits<uint32_t>(dstext[dist_sym]);
+				int distv=dist_codes_[dist_sym].first;
+				if (dist_codes_[dist_sym].second) distv+=br.read_bits<uint32_t>(dist_codes_[dist_sym].second);
 				if ((std::size_t)distv>decompressed.size()) throw std::runtime_error("dist too far");
 				std::size_t start=decompressed.size()-distv;
 				//for (int i=0;i<len;i++) decompressed.push_back(decompressed[start+i]);
