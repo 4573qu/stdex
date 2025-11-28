@@ -6,6 +6,16 @@ For contributing a new module to STDEX, please refer to: [submitting](/Documents
 
 ---
 
+### License
+
+This Project is license under the MIT License.
+
+See the [LICENSE](LICENSE) file for details.
+
+- **Copyright (c) 2025 4573qu**
+
+- [type/notation.h](type/notation.h) is inspired by implementations from the [nlohmann/json](https://github.com/nlohmann/json) library (MIT License).
+
 ### General Headers(Currently Unavailable)
 
 For single-file development (non-project mode), use:  
