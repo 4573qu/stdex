@@ -1,7 +1,7 @@
-//Last Modified At 2025/10/10
-//@Version 1.0.0.0
-#ifndef _STDEX_MACROS_STD_HEADER_H_
-#define _STDEX_MACROS_STD_HEADER_H_ 1
+//Last Modified At 2025/11/29
+//@Version 1.1.0.0
+
+#include <type_traits>
 
 namespace stdex {
 	namespace algorithm { }
@@ -31,23 +31,26 @@ namespace _STDEX_HEADER_NAME {
 namespace std {
 #endif
 
-	using namespace stdex::algorithm;
-	using namespace stdex::bitwise;
-	using namespace stdex::crypto;
-	using namespace stdex::integrity;
-	using namespace stdex::machine;
-	using namespace stdex::machine::assembler;
-	using namespace stdex::math;
-	using namespace stdex::memory;
-	using namespace stdex::meta::core;
-	using namespace stdex::perf;
-	using namespace stdex::profiling;
-	using namespace stdex::structure;
-	using namespace stdex::syntax;
-	using namespace stdex::type;
-	using namespace stdex::utility;
-	using namespace stdex::vision;
+#define _STDEX_SAFE_ALIAS(ALIAS) \
+using namespace stdex::##ALIAS;
+
+	_STDEX_SAFE_ALIAS(algorithm)
+	_STDEX_SAFE_ALIAS(bitwise)
+	_STDEX_SAFE_ALIAS(crypto)
+	_STDEX_SAFE_ALIAS(integrity)
+	_STDEX_SAFE_ALIAS(machine)
+	_STDEX_SAFE_ALIAS(machine::assembler)
+	_STDEX_SAFE_ALIAS(math)
+	_STDEX_SAFE_ALIAS(memory)
+	_STDEX_SAFE_ALIAS(meta::core)
+	_STDEX_SAFE_ALIAS(perf)
+	_STDEX_SAFE_ALIAS(profiling)
+	_STDEX_SAFE_ALIAS(structure)
+	_STDEX_SAFE_ALIAS(syntax)
+	_STDEX_SAFE_ALIAS(type)
+	_STDEX_SAFE_ALIAS(utility)
+	_STDEX_SAFE_ALIAS(vision)
+
+#undef _STDEX_SAFE_ALIAS
 
 }
-
-#endif

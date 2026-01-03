@@ -1,13 +1,13 @@
-//Last Modified At 2025/10/23
-//@Version 1.1.0.2
-//@H_Version 1.2.0.1
+//Last Modified At 2026/01/03
+//@Version 1.2.0.0
+//@H_Version 1.3.0.0
 #include "matrix.h"
 
 #include <cmath>
 #include <stdexcept>
 
 template <typename _Tp>
-stdex::math::matrix<_Tp>::matrix(size_t x_dimension,size_t y_dimension) : x_dimension_(x_dimension) , y_dimension_(y_dimension) {
+stdex::math::matrix<_Tp>::matrix(std::size_t x_dimension,std::size_t y_dimension) : x_dimension_(x_dimension) , y_dimension_(y_dimension) {
 	if (x_dimension<1 || y_dimension<1) throw std::invalid_argument("Matrix dimensions do not match for create");
 	m_=new _Tp*[x_dimension];
 	for (int i=0;i<x_dimension;i++) {
@@ -17,7 +17,7 @@ stdex::math::matrix<_Tp>::matrix(size_t x_dimension,size_t y_dimension) : x_dime
 }
 
 template <typename _Tp>
-stdex::math::matrix<_Tp>::matrix(size_t x_dimension,size_t y_dimension,std::initializer_list<_Tp> init_list) : x_dimension_(x_dimension) , y_dimension_(y_dimension) {
+stdex::math::matrix<_Tp>::matrix(std::size_t x_dimension,std::size_t y_dimension,std::initializer_list<_Tp> init_list) : x_dimension_(x_dimension) , y_dimension_(y_dimension) {
 	if (init_list.size()!=x_dimension*y_dimension) throw std::invalid_argument("Initializer list size does not match matrix dimensions");
 	m_=new _Tp*[x_dimension];
 	typename std::initializer_list<_Tp>::iterator it=init_list.begin();
@@ -162,13 +162,13 @@ stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::operator /(const stdex::math:
 }
 
 template <typename _Tp>
-_Tp& stdex::math::matrix<_Tp>::operator ()(size_t i,size_t j) {
+_Tp& stdex::math::matrix<_Tp>::operator ()(std::size_t i,std::size_t j) {
 	if (i>=x_dimension_ || j>=y_dimension_) throw std::out_of_range("Index out of range");
 	return m_[i][j];
 }
 
 template <typename _Tp>
-const _Tp& stdex::math::matrix<_Tp>::operator ()(size_t i,size_t j) const {
+const _Tp& stdex::math::matrix<_Tp>::operator ()(std::size_t i,std::size_t j) const {
 	if (i>=x_dimension_ || j>=y_dimension_) throw std::out_of_range("Index out of range");
 	return m_[i][j];
 }
@@ -248,7 +248,7 @@ stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::power(int times) const {
 }
 
 template <typename _Tp>
-stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::expansion(size_t x,size_t y) const {
+stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::expansion(std::size_t x,std::size_t y) const {
 	if (x_dimension_<2 || y_dimension_<2) throw std::invalid_argument("Matrix dimensions do not match for expansion");
 	stdex::math::matrix<_Tp> result(x_dimension_-1,y_dimension_-1);
 	for (int i=0;i<x_dimension_;i++) {
@@ -260,7 +260,7 @@ stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::expansion(size_t x,size_t y) 
 }
 
 template <typename _Tp>
-stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::expand_to(size_t to_x,size_t to_y,size_t x_dimension,size_t y_dimension) const {
+stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::expand_to(std::size_t to_x,std::size_t to_y,std::size_t x_dimension,std::size_t y_dimension) const {
 	if (x_dimension<x_dimension_ || y_dimension<y_dimension_ || (x_dimension==x_dimension_ && y_dimension==y_dimension_)) throw std::invalid_argument("Target dimensions are too small");
 	if (to_x+x_dimension_>x_dimension || to_y+y_dimension_>y_dimension) throw std::out_of_range("Target position is out of range");
 	stdex::math::matrix<_Tp> result(x_dimension,y_dimension);
@@ -271,12 +271,12 @@ stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::expand_to(size_t to_x,size_t 
 }
 
 template <typename _Tp>
-stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::expand_to(size_t x_dimension,size_t y_dimension) const {
+stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::expand_to(std::size_t x_dimension,std::size_t y_dimension) const {
 	return expand_to(0,0,x_dimension,y_dimension);
 }
 
 template <typename _Tp>
-stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::crop_to(size_t from_x,size_t from_y,size_t x_dimension,size_t y_dimension) const {
+stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::crop_to(std::size_t from_x,std::size_t from_y,std::size_t x_dimension,std::size_t y_dimension) const {
 	if (x_dimension>x_dimension_ || y_dimension>y_dimension_ || (x_dimension==x_dimension_ && y_dimension==y_dimension_)) throw std::invalid_argument("Target dimensions are too large");
 	if (from_x+x_dimension>x_dimension_ || from_y+y_dimension>y_dimension_) throw std::out_of_range("Target position is out of range");
 	stdex::math::matrix<_Tp> result(x_dimension,y_dimension);
@@ -287,7 +287,7 @@ stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::crop_to(size_t from_x,size_t 
 }
 
 template <typename _Tp>
-stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::crop_to(size_t x_dimension,size_t y_dimension) const {
+stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::crop_to(std::size_t x_dimension,std::size_t y_dimension) const {
 	return crop_to(0,0,x_dimension,y_dimension);
 }
 
@@ -322,6 +322,50 @@ _Tp stdex::math::matrix<_Tp>::value() const {
 		}
 	}
 	return det;
+}
+
+template <typename _Tp>
+_Tp stdex::math::matrix<_Tp>::trace() const {
+	if (!is_square()) return stdex::math::base_unit_trait<_Tp>::zero();
+	_Tp sum=stdex::math::base_unit_trait<_Tp>::zero();;
+	for (std::size_t i=0;i<x_dimension_;i++) sum+=(*this)(i,i);
+	return sum;
+}
+
+template <typename _Tp>
+bool stdex::math::matrix<_Tp>::is_valid() const {
+	return m_ && x_dimension_>0 && y_dimension_>0;
+}
+
+template <typename _Tp>
+stdex::math::matrix<_Tp> stdex::math::matrix<_Tp>::identity(std::size_t n) {
+	stdex::math::matrix<_Tp> m(n,n);
+	for (std::size_t i=0;i<n;i++) {
+		for (std::size_t j=0;j<n;j++) m(i,j)=(i==j)?stdex::math::base_unit_trait<_Tp>::value();:stdex::math::base_unit_trait<_Tp>::zero();
+	}
+	return m;
+}
+
+template <typename _Tp>
+void stdex::math::matrix<_Tp>::fill(const _Tp& value) {
+	for (std::size_t i=0;i<x_dimension_;i++) {
+		for (std::size_t j=0;j<y_dimension_;j++) (*this)(i,j)=value;
+	}
+}
+
+template <typename _Tp>
+_Tp stdex::math::matrix<_Tp>::determinant2() const {
+	if (x_dimension_!=2 || y_dimension_!=2) return stdex::math::base_unit_trait<_Tp>::zero();;
+	return (*this)(0,0)*(*this)(1,1)-(*this)(0,1)*(*this)(1,0);
+}
+
+template <typename _Tp>
+_Tp stdex::math::matrix<_Tp>::determinant3() const {
+	if (x_dimension_!=3 || y_dimension_!=3) return stdex::math::base_unit_trait<_Tp>::zero();;
+	const _Tp& a=(*this)(0,0); const _Tp& b=(*this)(0,1); const _Tp& c=(*this)(0,2);
+	const _Tp& d=(*this)(1,0); const _Tp& e=(*this)(1,1); const _Tp& f=(*this)(1,2);
+	const _Tp& g=(*this)(2,0); const _Tp& h=(*this)(2,1); const _Tp& i=(*this)(2,2);
+	return a*(e*i-f*h)-b*(d*i-f*g)+c*(d*h-e*g);
 }
 
 template <typename _Tp>

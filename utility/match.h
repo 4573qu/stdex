@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/24
-//@Version 1.1.0.1
+//Last Modified At 2025/11/29
+//@Version 1.2.0.0
 #ifndef _STDEX_UTILITY_MATCH_H_
 #define _STDEX_UTILITY_MATCH_H_ 1
 
@@ -394,8 +394,8 @@ class matcher {
 		if (matched_results.empty()) {
 			if (options_.throw_on_no_match) throw std::runtime_error("Pattern match failed: no case matched");
 			else {
-				if constexpr (sizeof...(_Cases) > 0) {
-					if constexpr (!std::is_void_v<result_type>) {
+				if constexpr (sizeof...(_Cases)>0) {
+					if constexpr (!std::is_void_v<decltype(std::declval<std::tuple_element_t<0,std::tuple<_Cases...>>>().pattern.execute(value_,std::declval<std::tuple_element_t<0,std::tuple<_Cases...>>>().action))>) {
 						return decltype(std::declval<std::tuple_element_t<0,std::tuple<_Cases...>>>().pattern.execute(value_,std::declval<std::tuple_element_t<0,std::tuple<_Cases...>>>().action)){};
 					}
 				}
