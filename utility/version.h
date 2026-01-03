@@ -76,7 +76,7 @@ struct version {
 		return build_==other.build_;
 	}
 	bool operator !=(const version& other) const {
-		return !(*this == other);
+		return !(*this==other);
 	}
 	bool operator <(const version& other) const {
 		if (major_!=other.major_) return major_<other.major_;
