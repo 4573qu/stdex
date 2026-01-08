@@ -1,16 +1,18 @@
-//Last Modified At 2024/09/09
-//@Version 1.2
-#ifndef _STD4573_VISION_EASING_H_
-#define _STD4573_VISION_EASING_H_ 1
-#include <stdexcept>
-#include <math.h>
-#include "../math/geometry/primitives.h"
+//Last Modified At 2026/01/08
+//@Version 1.0.0.0
+#ifndef _STDEX_VISION_EASING_H_
+#define _STDEX_VISION_EASING_H_ 1
 
-namespace std {
+#include <cmath>
+#include <stdexcept>
+
+#include "../math/geometry/primitives.h"//At Least 1.0
+
+namespace stdex {
 	
 namespace vision {
 
-enum EASING_TYPE {
+enum easing_type {
 	ET_LINEAR,
 	ET_QUAD,
 	ET_INVERSE_QUAD,
@@ -35,30 +37,30 @@ enum EASING_TYPE {
 	ET_INVERSE_QUADS,
 	ET_CUBICS,
 	ET_CUSTOM,
-	ET_UNKNOWN
+	ET_UNKNOWN,
 };
 
-enum EASING_OPTION {
+enum easing_option {
 	EO_EASEIN,
 	EO_EASEOUT,
 	EO_EASEINOUT,
 	EO_EASEIN_STRONG,
 	EO_EASEOUT_STRONG,
 	EO_EASEINOUT_STRONG,
-	EO_UNKNOWN
+	EO_UNKNOWN,
 };
 
-enum EASING_MIDDLE {
-	EM_NORMAL,
-	EM_FAST,
-	EM_SLOW,
-	EM_UNKNOWN
+enum easing_inflection {
+	EI_NORMAL,
+	EI_FAST,
+	EI_SLOW,
+	EI_UNKNOWN,
 };
 
 template <typename _Tp>
 class easing {
 public:
-	EASING_TYPE type_;
+	easing_type type_;
 	union {
 		struct {
 			_Tp base_;
@@ -74,22 +76,25 @@ public:
 			_Tp offset_;
 		} back_;
 		struct {
-			_Tp val_;
+			_Tp value_;
 		} constant_;
 		struct {
 			_Tp base_;
 		} logarithm_;
 		struct {
-			math::curve<_Tp>* beizer_;
+			math::curve<_Tp,2>* beizer_;
 			_Tp precision_;
 		} custom_;
 	} parameter_;
+
+private:
+	_Tp progress(_Tp time);
+
 public:
-	easing(EASING_TYPE type=ET_UNKNOWN);
-	_Tp get_progress_details(_Tp time);
-	_Tp get_progress(_Tp time);
-	_Tp get_progress(_Tp time,EASING_OPTION option);
-	_Tp get_progress(_Tp time,EASING_OPTION option,EASING_MIDDLE middle=EM_NORMAL);
+	easing(easing_type type=ET_UNKNOWN);
+
+	_Tp get(_Tp time);	
+	_Tp get(_Tp time,easing_option option,easing_inflection inflection=EI_NORMAL);
 };
 
 }

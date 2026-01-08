@@ -1,63 +1,95 @@
-//Last Modified At 2025/09/16
+//Last Modified At 2026/01/08
 //@Version 1.0.0.2
 #ifndef _STDEX_MATH_GEOMETRY_TRAJECTORY_H_
 #define _STDEX_MATH_GEOMETRY_TRAJECTORY_H_ 1
+
+#include <type_traits>
 #include <vector>
 
 #include "../base.h"
-#include "point.h"
+#include "point.h"//At Least 1.0
 
 namespace stdex {
 	
 namespace math {
 
-template <typename _Tp,template <typename> class _point=point2>	
+template <typename _Tp,std::size_t _N>	
 class line {
+	virtual point<_Tp,_N> get_cached(float position) {
+		if (position<0 || position>1) throw std::invalid_argument("position must be between 0 and 1");
+		point<_Tp,_N> result=end_-start_;
+		result=result*position;
+		result+=start_;
+		return result;
+	}
+
+	virtual void before_get_points() { }
+
 public:
-	_point<_Tp> start_,end_;
+	point<_Tp,_N> start_,end_;
+
 public:
 	line() { }
-	virtual vector<_point<_Tp> > get_points(int precision) {
-		vector<_point<_Tp> > temp_points;
-		for (int i=0;i<precision+1;i++) {
-			_Tp t=(_Tp)i/(_Tp)precision;
-			_point<_Tp> temp=end_-start_;
-			temp=temp*t;
-			temp+=start_;
-			temp_points.push_back(temp);
-		}
-		return temp_points;
+	virtual point<_Tp,_N> get(float position) {
+		return get_cached(position);
+	}
+	vector<point<_Tp,_N>> get_points(std::size_t precision) {
+		before_get_points();
+		vector<point<_Tp,_N>> result;
+		for (std::size_t i=0;i<precision+1;i++) result.push_back(get_cached((float)i/(float)precision));
+		return result;
 	}
 };
 
-template <typename _Tp,template <typename> class _point=point2>	
-class curve : public line<_Tp,_point> {
-public:
-	vector<_point<_Tp> > controls_;	
-public:
-	curve() : line<_Tp,_point>() { }
-	vector<_point<_Tp> > get_points(int precision/*,_Tp t0=(_Tp)0.5*/) override {
-		/*if (t0<base_unit_trait<_Tp>::zero() || t0>base_unit_trait<_Tp>::value()) {
-        		throw std::invalid_argument("t0 must between 0 and 1");
-		}*/
-		int size=controls_.size()+1;
-		vector<vector<_point<_Tp>>> temp_points(size+1),middle_points(size+1);
-		temp_points[0].push_back(start_);
-		temp_points[0].insert(temp_points[0].end(),controls_.begin(),controls_.end());
-		temp_points[0].push_back(end_);
-		/*for (int i=1;i<size+1;i++) {
-			for (int j=0;j<size+1-i;j++) temp_points[i].push_back(temp_points[i-1][j]*((_Tp)1.0-t0)+temp_points[i-1][j+1]*t0);
-		}*/
-		middle_points[0]=temp_points[0];
-		for (int i=0;i<precision+1;i++) {
-			_Tp t=(_Tp)i/(_Tp)precision;
-			for (int j=1;j<size;j++) {
-				middle_points[j].clear();
-				for (int k=0;k<size+1-j;k++) middle_points[j].push_back(middle_points[j-1][k]*((_Tp)1.0-t)+middle_points[j-1][k+1]*t);
-			}
-			middle_points[size].push_back(middle_points[size-1][0]*((_Tp)1.0-t)+middle_points[size-1][1]*t);
+template <typename _Tp,std::size_t _N>
+class curve : public line<_Tp,_N> {
+	mutable std::vector<std::vector<point<_Tp,_N>>> cache_;
+
+private:
+	static point<_Tp,_N> lerp_point(const point<_Tp,_N>& a,const point<_Tp,_N>& b,float t) {
+		point<_Tp,_N> result;
+		const float minus_t=1-t;
+		for (std::size_t i=0;i<_N;i++) result.coords_[i]=a.coords_[i]*minus_t+b.coords_[i]*t;
+		return result;
+	}
+	point<_Tp,_N> get_cached(float position) override {
+		if (position<0 || position>1) throw std::invalid_argument("position must be between 0 and 1");
+		const int n=(int)controls_.size()+1;
+		if ((int)cache_.size()<n+1) cache_.resize(n+1);
+		cache_[0].clear();
+		cache_[0].reserve(n+1);
+		cache_[0].push_back(start_);
+		cache_[0].insert(cache_[0].end(),controls_.begin(),controls_.end());
+		cache_[0].push_back(end_);
+		for (int r=1;r<=n;r++) {
+			cache_[r].clear();
+			cache_[r].reserve(n+1-r);
+			for (int i=0;i<=n-r;i++) cache_[r].push_back(lerp_point(cache_[r-1][i],cache_[r-1][i+1],position));
 		}
-		return middle_points[size];
+		return cache_[n][0];
+	}
+	void before_get_points() override {
+		cache_.clear();
+	}
+
+public:
+	vector<point<_Tp,_N>> controls_;
+
+public:
+	curve() : line<_Tp,_N>() { }
+
+	point<_Tp,_N> get(float position) override {
+		if (position<0 || position>1) throw std::invalid_argument("position must be between 0 and 1");
+		const int n=(int)controls_.size()+1;
+		std::vector<_point<_Tp>> work;
+		work.reserve(n+1);
+		work.push_back(start_);
+		work.insert(work.end(),controls_.begin(),controls_.end());
+		work.push_back(end_);
+		for (int r=1;r<=n;r++) {
+			for (int i=0;i<=n-r;i++) work[i]=lerp_point(work[i],work[i+1],position);
+		}
+		return work[0];
 	}
 };
 
@@ -65,5 +97,4 @@ public:
 
 }
 
-//#include "trajectory.cpp"
 #endif
