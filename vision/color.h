@@ -281,10 +281,10 @@ struct cmyka {
 	float& key() { return k_; }
 	float& alpha() { return a_; }
 	std::string to_cmyk_string() {
-		uint16_t pc=static_cast<uint16_t>(std::lround(std::clamp(c_)*100.0f,0.0f,100.0f));
-		uint16_t pm=static_cast<uint16_t>(std::lround(std::clamp(m_)*100.0f,0.0f,100.0f));
-		uint16_t py=static_cast<uint16_t>(std::lround(std::clamp(y_)*100.0f,0.0f,100.0f));
-		uint16_t pk=static_cast<uint16_t>(std::lround(std::clamp(k_)*100.0f,0.0f,100.0f));
+		uint16_t pc=static_cast<uint16_t>(std::lround(std::clamp(c_,0.0f,100.0f)*100.0f));
+		uint16_t pm=static_cast<uint16_t>(std::lround(std::clamp(m_,0.0f,100.0f)*100.0f));
+		uint16_t py=static_cast<uint16_t>(std::lround(std::clamp(y_,0.0f,100.0f)*100.0f));
+		uint16_t pk=static_cast<uint16_t>(std::lround(std::clamp(k_,0.0f,100.0f)*100.0f));
 		std::stringstream ss;
 		ss<<"#CK"<<std::hex<<std::setw(4)<<std::setfill('0')<<pc<<std::setw(4)<<std::setfill('0')<<pm<<std::setw(4)<<std::setfill('0')<<py<<std::setw(4)<<std::setfill('0')<<pk;
 		return ss.str();
@@ -608,7 +608,7 @@ struct hwba {
 		set_a(real_a);
 	}
 	bool operator ==(const hwba& other) const {
-		return h_==other.h_ && w_==other.g_ && w_==other.b_ && a_==other.a_;
+		return h_==other.h_ && w_==other.w_ && b_==other.b_ && a_==other.a_;
 	}
 	bool operator !=(const hwba& other) const {
 		return !(*this==other);
