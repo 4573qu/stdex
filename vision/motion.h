@@ -26,7 +26,7 @@ struct motion_state {
 	double time_{0.0};
 
 	motion_state() = default;
-	explicit motion_state(std::size_t channels) : scalars_(channel,{0.0,0.0,0.0}) { }
+	explicit motion_state(std::size_t channels) : scalars_(channels,{0.0,0.0,0.0}) { }
 	static motion_state single(motion_scalar s,double time=0.0) {
 		motion_state result(1);
 		result.scalars_[0]=s;
@@ -39,7 +39,7 @@ enum time_behavior {
 	TB_FREE,
 	TB_CLAMP,
 	TB_LOOP,
-	TB_PINGPONG,
+	TB_OSCILLATE,
 };
 
 inline double map_time(double t,double duration,time_behavior tb) noexcept {
@@ -54,7 +54,7 @@ inline double map_time(double t,double duration,time_behavior tb) noexcept {
 		if (m<0.0) m+=duration;
 		return m;
 	}
-	if (tb==TB_PINGPONG) {
+	if (tb==TB_OSCILLATE) {
 		const double p=2.0*duration;
 		double m=std::fmod(t,p);
 		if (m<0.0) m+=p;
@@ -91,7 +91,7 @@ public:
 
 	bool empty() const noexcept { return !func_; }
 
-	std::size_t& channels() const noexcept { return channels_; }
+	std::size_t channels() const noexcept { return channels_; }
 	double& duration() const noexcept { return duration_; }
 	time_behavior& behavior() const noexcept { return behavior_; }
 
@@ -116,7 +116,7 @@ public:
 		return tt/duration_;
 	}
 	bool finished(double t) const noexcept {
-		if (behavior_==TB_LOOP || behavior_==TB_PINGPONG) return false;
+		if (behavior_==TB_LOOP || behavior_==TB_OSCILLATE) return false;
 		if (!(duration_>0.0)) return false;
 		return t>=duration_;
 	}
