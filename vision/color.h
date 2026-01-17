@@ -1,5 +1,5 @@
-//Last Modified At 2026/01/03
-//@Version 1.0.0.0
+//Last Modified At 2026/01/18
+//@Version 1.1.0.0
 #ifndef _STDEX_VISION_COLOR_H_
 #define _STDEX_VISION_COLOR_H_ 1
 
@@ -129,50 +129,61 @@ inline std::size_t parse_hex_color_to_rgba(int& r,int& g,int& b,int& a,const std
 }
 
 struct rgba {
-	int r_,g_,b_;
-	float a_;
-	rgba () : r_(0) , g_(0) , b_(0) , a_(0) { }
-	rgba (int r,int g,int b) : r_(r) , g_(g) , b_(b) , a_(0) { }
-	rgba (int r,int g,int b,float a) : r_(r) , g_(g) , b_(b) , a_(a) { }
-	rgba (int r,int g,int b,int a) : r_(r) , g_(g) , b_(b) {
-		set_a(a);
+	int r,g,b;
+	float a;
+	rgba() : r(0) , g(0) , b(0) , a(0) { }
+	rgba(int red,int green,int blue) : rgba(red,blue,green,0.0f) { }
+	rgba(int red,int green,int blue,float alpha) : {
+		set_red(red);
+		set_green(green);
+		set_blue(blue);
+		set_alpha(alpha);
 	}
-	int& red() { return r_; }
-	int& green() { return g_; }
-	int& blue() { return b_; }
-	float& alpha() { return a_; }
+	rgba(int red,int green,int blue,int alpha) : rgba(red,blue,green) {
+		set_alpha(alpha);
+	}
+	int& red() { return r; }
+	int& green() { return g; }
+	int& blue() { return b; }
+	float& alpha() { return a; }
 	std::string to_rgb_string() {
 		std::stringstream ss;
-		ss<<"#"<<std::hex<<std::setw(2)<<std::setfill('0')<<r_<<std::setw(2)<<std::setfill('0')<<g_<<std::setw(2)<<std::setfill('0')<<b_;
+		ss<<"#"<<std::hex<<std::setw(2)<<std::setfill('0')<<r<<std::setw(2)<<std::setfill('0')<<g<<std::setw(2)<<std::setfill('0')<<b;
 		return ss.str();
 	}
 	std::string to_rgba_string() {
-		return add_alpha_string(to_rgb_string(),a_);
+		return add_alpha_string(to_rgb_string(),a);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true) {
-		if (initialize) { r_=g_=b_=0; a_=0; }
-		int r=0,g=0,b=0,a=255;
-		std::size_t used=parse_hex_color_to_rgba(r,g,b,a,s,strict);
+		if (initialize) {
+			r=g=b=0;
+			a=0;
+		}
+		int red=0,green=0,blue=0,alpha=255;
+		std::size_t used=parse_hex_color_to_rgba(red,green,blue,alpha,s,strict);
 		if (!used) return 0;
-		set_rgb(r,g,b);
-		set_a(a);
+		set_rgb(red,green,blue);
+		set_alpha(alpha);
 		return used;
 	}
-	void set_r(int r) { r_=std::clamp(r,0,255); } 
-	void set_g(int g) { g_=std::clamp(g,0,255); } 
-	void set_b(int b) { b_=std::clamp(b,0,255); } 
-	void set_rgb(int r,int g,int b) {
-		set_r(r);
-		set_g(g);
-		set_b(b);
+	void set_red(int red) { r=std::clamp(red,0,255); }
+	void set_r(int red) { set_red(red); }
+	void set_green(int green) { g=std::clamp(green,0,255); }
+	void set_g(int green) { set_green(green); }
+	void set_blue(int blue) { b=std::clamp(blue,0,255); }
+	void set_b(int blue) { set_blue(blue); }
+	void set_rgb(int red,int green,int blue) {
+		set_red(red);
+		set_green(green);
+		set_blue(blue);
 	}
-	void set_a(float a) { a_=std::clamp(a,0.0f,1.0f); }
-	void set_a(int a) {
-		float real_a=a/255.0f;
-		set_a(real_a);
+	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
+	void set_alpha(int alpha) {
+		float real_a=alpha/255.0f;
+		set_alpha(real_a);
 	}
 	bool operator ==(const rgba& other) const {
-		return r_==other.r_ && g_==other.g_ && b_==other.b_ && a_==other.a_;
+		return r==other.r && g==other.g && b==other.b && a==other.a;
 	}
 	bool operator !=(const rgba& other) const {
 		return !(*this==other);
@@ -180,44 +191,52 @@ struct rgba {
 };
 
 struct hsla {
-	float h_,s_,l_,a_;
-	hsla () : h_(0) , s_(0) , l_(0) , a_(0) { }
-	hsla (float h,float s,float l) : h_(h) , s_(s) , l_(l) , a_(0) { }
-	hsla (float h,float s,float l,float a) : h_(h) , s_(s) , l_(l) , a_(a) { }
-	hsla (float h,float s,float l,int a) : h_(h) , s_(s) , l_(l) {
-		set_a(a);
+	float h,s,l,a;
+	hsla() : h(0) , s(0) , l(0) , a(0) { }
+	hsla(float hue,float saturation,float lightness) : hsla(hue,saturation,lightness,0.0f) { }
+	hsla(float hue,float saturation,float lightness,float alpha) {
+		set_hue(hue);
+		set_saturation(saturation);
+		set_lightness(lightness);
+		set_alpha(alpha);
 	}
-	float& hue() { return h_; }
-	float& saturation() { return s_; }
-	float& lightness() { return l_; }
-	float& alpha() { return a_; }
+	hsla(float hue,float saturation,float lightness,int alpha) : hsla(hue,saturation,lightness) {
+		set_alpha(alpha);
+	}
+	float& hue() { return h; }
+	float& saturation() { return s; }
+	float& lightness() { return l; }
+	float& alpha() { return a; }
 	std::string to_hsl_string() {
-		uint16_t ph=static_cast<uint16_t>(std::lround(std::clamp(h_,0.0f,360.0f)*100.0f));
-		uint16_t ps=static_cast<uint16_t>(std::lround(std::clamp(s_,0.0f,100.0f)*100.0f));
-		uint16_t pl=static_cast<uint16_t>(std::lround(std::clamp(l_,0.0f,100.0f)*100.0f));
+		uint16_t ph=static_cast<uint16_t>(std::lround(std::clamp(h,0.0f,360.0f)*100.0f));
+		uint16_t ps=static_cast<uint16_t>(std::lround(std::clamp(s,0.0f,100.0f)*100.0f));
+		uint16_t pl=static_cast<uint16_t>(std::lround(std::clamp(l,0.0f,100.0f)*100.0f));
 		std::stringstream ss;
 		ss<<"#HS"<<std::hex<<std::setw(4)<<std::setfill('0')<<ph<<std::setw(4)<<std::setfill('0')<<ps<<std::setw(4)<<std::setfill('0')<<pl;
 		return ss.str();
 	}
 	std::string to_hsla_string() {
-		return add_alpha_string(to_hsl_string(),a_);
+		return add_alpha_string(to_hsl_string(),a);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true);
-	void set_h(float h) { h_=std::clamp(h,0.0f,360.0f); } 
-	void set_s(float s) { s_=std::clamp(s,0.0f,100.0f); } 
-	void set_l(float l) { l_=std::clamp(l,0.0f,100.0f); } 
-	void set_hsl(float h,float s,float l) {
-		set_h(h);
-		set_s(s);
-		set_l(l);
+	void set_hue(float hue) { h=std::clamp(hue,0.0f,360.0f); }
+	void set_h(float hue) { set_hue(hue); }
+	void set_saturation(float saturation) { s=std::clamp(saturation,0.0f,100.0f); }
+	void set_s(float saturation) { set_saturation(saturation); }
+	void set_lightness(float lightness) { l=std::clamp(lightness,0.0f,100.0f); }
+	void set_l(float lightness) { set_lightness(lightness); }
+	void set_hsl(float hue,float saturation,float lightness) {
+		set_hue(hue);
+		set_saturation(saturation);
+		set_lightness(lightness);
 	}
-	void set_a(float a) { a_=std::clamp(a,0.0f,1.0f); }
-	void set_a(int a) {
-		float real_a=a/255.0f;
-		set_a(real_a);
+	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
+	void set_alpha(int alpha) {
+		float real_a=alpha/255.0f;
+		set_alpha(real_a);
 	}
 	bool operator ==(const hsla& other) const {
-		return h_==other.h_ && s_==other.s_ && l_==other.l_ && a_==other.a_;
+		return h==other.h && s==other.s && l==other.l && a==other.a;
 	}
 	bool operator !=(const hsla& other) const {
 		return !(*this==other);
@@ -225,44 +244,52 @@ struct hsla {
 };
 
 struct hsva {
-	float h_,s_,v_,a_;
-	hsva () : h_(0) , s_(0) , v_(0) , a_(0) { }
-	hsva (float h,float s,float v) : h_(h) , s_(s) , v_(v) , a_(0) { }
-	hsva (float h,float s,float v,float a) : h_(h) , s_(s) , v_(v) , a_(a) { }
-	hsva (float h,float s,float v,int a) : h_(h) , s_(s) , v_(v) {
-		set_a(a);
+	float h,s,v,a;
+	hsva() : h(0) , s(0) , v(0) , a(0) { }
+	hsva(float hue,float saturation,float value) : hsva(hue,saturation,value,0.0f) { }
+	hsva(float hue,float saturation,float value,float alpha) {
+		set_hue(hue);
+		set_saturation(saturation);
+		set_value(value);
+		set_alpha(alpha);
 	}
-	float& hue() { return h_; }
-	float& saturation() { return s_; }
-	float& value() { return v_; }
-	float& alpha() { return a_; }
+	hsva(float hue,float saturation,float value,int alpha) : hsva(hue,saturation,value) {
+		set_alpha(alpha);
+	}
+	float& hue() { return h; }
+	float& saturation() { return s; }
+	float& value() { return v; }
+	float& alpha() { return a; }
 	std::string to_hsv_string() {
-		uint16_t ph=static_cast<uint16_t>(std::lround(std::clamp(h_,0.0f,360.0f)*100.0f));
-		uint16_t ps=static_cast<uint16_t>(std::lround(std::clamp(s_,0.0f,100.0f)*100.0f));
-		uint16_t pv=static_cast<uint16_t>(std::lround(std::clamp(v_,0.0f,100.0f)*100.0f));
+		uint16_t ph=static_cast<uint16_t>(std::lround(std::clamp(h,0.0f,360.0f)*100.0f));
+		uint16_t ps=static_cast<uint16_t>(std::lround(std::clamp(s,0.0f,100.0f)*100.0f));
+		uint16_t pv=static_cast<uint16_t>(std::lround(std::clamp(v,0.0f,100.0f)*100.0f));
 		std::stringstream ss;
 		ss<<"#HV"<<std::hex<<std::setw(4)<<std::setfill('0')<<ph<<std::setw(4)<<std::setfill('0')<<ps<<std::setw(4)<<std::setfill('0')<<pv;
 		return ss.str();
 	}
 	std::string to_hsva_string() {
-		return add_alpha_string(to_hsv_string(),a_);
+		return add_alpha_string(to_hsv_string(),a);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true);
-	void set_h(float h) { h_=std::clamp(h,0.0f,360.0f); } 
-	void set_s(float s) { s_=std::clamp(s,0.0f,100.0f); } 
-	void set_v(float v) { v_=std::clamp(v,0.0f,100.0f); } 
-	void set_hsv(float h,float s,float v) {
-		set_h(h);
-		set_s(s);
-		set_v(v);
+	void set_hue(float hue) { h=std::clamp(hue,0.0f,360.0f); }
+	void set_h(float hue) { set_hue(hue); }
+	void set_saturation(float saturation) { s=std::clamp(saturation,0.0f,100.0f); }
+	void set_s(float saturation) { set_saturation(saturation); }
+	void set_value(float value) { v=std::clamp(value,0.0f,100.0f); }
+	void set_v(float value) { set_value(value); }
+	void set_hsv(float hue,float saturation,float value) {
+		set_hue(hue);
+		set_saturation(saturation);
+		set_value(value);
 	}
-	void set_a(float a) { a_=std::clamp(a,0.0f,1.0f); }
-	void set_a(int a) {
-		float real_a=a/255.0f;
-		set_a(real_a);
+	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
+	void set_alpha(int alpha) {
+		float real_a=alpha/255.0f;
+		set_alpha(real_a);
 	}
 	bool operator ==(const hsva& other) const {
-		return h_==other.h_ && s_==other.s_ && v_==other.v_ && a_==other.a_;
+		return h==other.h && s==other.s && v==other.v && a==other.a;
 	}
 	bool operator !=(const hsva& other) const {
 		return !(*this==other);
@@ -270,89 +297,119 @@ struct hsva {
 };
 
 struct cmyka {
-	float c_,m_,y_,k_,a_;
-	cmyka () : c_(0) , m_(0) , y_(0) , k_(0) , a_(0) { }
-	cmyka (float c,float m,float y,float k) : c_(c) , m_(m) , y_(y) , k_(k) , a_(0) { }
-	cmyka (float c,float m,float y,float k,float a) : c_(c) , m_(m) , y_(y) , k_(k) , a_(a) { }
-	cmyka (float c,float m,float y,float k,int a) : c_(c) , m_(m) , y_(y) , k_(k) { set_a(a); }
-	float& cyan() { return c_; }
-	float& magenta() { return m_; }
-	float& yellow() { return y_; }
-	float& key() { return k_; }
-	float& alpha() { return a_; }
+	float c,m,y,k,a;
+	cmyka() : c(0) , m(0) , y(0) , k(0) , a(0) { }
+	cmyka(float cyan,float magenta,float yellow,float key) : cmyka(cyan,magenta,yellow,key,0.0f) { }
+	cmyka(float cyan,float magenta,float yellow,float key,float alpha) {
+		set_cyan(cyan);
+		set_magenta(magenta);
+		set_yellow(yellow);
+		set_key(key);
+		set_alpha(alpha);
+	}
+	cmyka(float cyan,float magenta,float yellow,float key,int alpha) : cmyka(cyan,magenta,yellow,key) {
+		set_alpha(alpha);
+	}
+	float& cyan() { return c; }
+	float& magenta() { return m; }
+	float& yellow() { return y; }
+	float& key() { return k; }
+	float& alpha() { return a; }
 	std::string to_cmyk_string() {
-		uint16_t pc=static_cast<uint16_t>(std::lround(std::clamp(c_,0.0f,100.0f)*100.0f));
-		uint16_t pm=static_cast<uint16_t>(std::lround(std::clamp(m_,0.0f,100.0f)*100.0f));
-		uint16_t py=static_cast<uint16_t>(std::lround(std::clamp(y_,0.0f,100.0f)*100.0f));
-		uint16_t pk=static_cast<uint16_t>(std::lround(std::clamp(k_,0.0f,100.0f)*100.0f));
+		uint16_t pc=static_cast<uint16_t>(std::lround(std::clamp(c,0.0f,100.0f)*100.0f));
+		uint16_t pm=static_cast<uint16_t>(std::lround(std::clamp(m,0.0f,100.0f)*100.0f));
+		uint16_t py=static_cast<uint16_t>(std::lround(std::clamp(y,0.0f,100.0f)*100.0f));
+		uint16_t pk=static_cast<uint16_t>(std::lround(std::clamp(k,0.0f,100.0f)*100.0f));
 		std::stringstream ss;
 		ss<<"#CK"<<std::hex<<std::setw(4)<<std::setfill('0')<<pc<<std::setw(4)<<std::setfill('0')<<pm<<std::setw(4)<<std::setfill('0')<<py<<std::setw(4)<<std::setfill('0')<<pk;
 		return ss.str();
 	}
 	std::string to_cmyka_string() {
-		return add_alpha_string(to_cmyk_string(),a_);
+		return add_alpha_string(to_cmyk_string(),a);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true);
-	void set_c(float c) { c_=std::clamp(c,0.0f,100.0f); }
-	void set_m(float m) { m_=std::clamp(m,0.0f,100.0f); }
-	void set_y(float y) { y_=std::clamp(y,0.0f,100.0f); }
-	void set_k(float k) { k_=std::clamp(k,0.0f,100.0f); }
-	void set_cmyk(float c,float m,float y,float k) {
-		set_c(c);
-		set_m(m);
-		set_y(y);
-		set_k(k);
+	void set_cyan(float cyan) { c=std::clamp(cyan,0.0f,100.0f); }
+	void set_c(float cyan) { set_cyan(cyan); }
+	void set_magenta(float magenta) { m=std::clamp(magenta,0.0f,100.0f); }
+	void set_m(float magenta) { set_magenta(magenta); }
+	void set_yellow(float yellow) { y=std::clamp(yellow,0.0f,100.0f); }
+	void set_y(float y) { set_yellow(yellow); }
+	void set_key(float key) { k=std::clamp(key,0.0f,100.0f); }
+	void set_k(float key) { set_key(key); }
+	void set_cmyk(float cyan,float magenta,float yellow,float key) {
+		set_cyan(cyan);
+		set_magenta(magenta);
+		set_yellow(yellow);
+		set_key(key);
 	}
-	void set_a(float a) { a_=std::clamp(a,0.0f,1.0f); }
-	void set_a(int a) {
-		float real_a=a/255.0f;
-		set_a(real_a);
+	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
+	void set_alpha(int alpha) {
+		float real_a=alpha/255.0f;
+		set_alpha(real_a);
 	}
 	bool operator ==(const cmyka& other) const {
-		return c_==other.c_ && m_==other.m_ && y_==other.y_ && k_==other.k_ && a_==other.a_;
+		return c==other.c && m==other.m && y==other.y && k==other.k && a==other.a;
 	}
 	bool operator !=(const cmyka& other) const {
 		return !(*this==other);
 	}
 };
 
+//BT.709
 struct yuva {
-	float y_,u_,v_,a_;
-	yuva () : y_(0) , u_(0) , v_(0) , a_(0) { }
-	yuva (float y,float u,float v) : y_(y) , u_(u) , v_(v) , a_(0) { }
-	yuva (float y,float u,float v,float a) : y_(y) , u_(u) , v_(v) , a_(a) { }
-	yuva (float y,float u,float v,int a) : y_(y) , u_(u) , v_(v) { set_a(a); }
-	float& luma() { return y_; }
-	float& u() { return u_; }
-	float& v() { return v_; }
-	float& alpha() { return a_; }
+	float y,u,v,a;
+	yuva() : y(0) , u(0) , v(0) , a(0) { }
+	yuva(float luma,float cb,float cr) : yuva(luma,cb,cr,0.0f) { }
+	yuva(float luma,float cb,float cr,float alpha) {
+		set_luma(luma);
+		set_cb(cb);
+		set_cr(cr);
+		set_alpha(alpha);
+	}
+	yuva(float luma,float cb,float cr,int alpha) : yuva(luma,cb,cr) {
+		set_alpha(alpha);
+	}
+	float& luma() { return y; }
+	float& cb() { return u; }
+	float& u() { return u; }
+	float& cr() { return v; }
+	float& v() { return v; }
+	float& alpha() { return a; }
 	std::string to_yuv_string() {
-		uint16_t py=static_cast<uint16_t>(std::lround(std::clamp(y_,0.0f,1.0f)*65535.0f));
-		int16_t iu=static_cast<int16_t>(std::lround(std::clamp(u_,-0.5f,0.5f)*65535.0f));
-		int16_t iv=static_cast<int16_t>(std::lround(std::clamp(v_,-0.5f,0.5f)*65535.0f));
+		uint16_t py=static_cast<uint16_t>(std::lround(std::clamp(y,0.0f,1.0f)*65535.0f));
+		int16_t iu=static_cast<int16_t>(std::lround(std::clamp(u,-0.5f,0.5f)*65535.0f));
+		int16_t iv=static_cast<int16_t>(std::lround(std::clamp(v,-0.5f,0.5f)*65535.0f));
 		std::stringstream ss;
 		ss<<"#YU"<<std::hex<<std::setw(4)<<std::setfill('0')<<py<<std::setw(4)<<std::setfill('0')<<static_cast<uint16_t>(iu)<<std::setw(4)<<std::setfill('0')<<static_cast<uint16_t>(iv);
 		return ss.str();
 	}
 	std::string to_yuva_string() {
-		return add_alpha_string(to_yuv_string(),a_);
+		return add_alpha_string(to_yuv_string(),a);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true);
-	void set_y(float y) { y_=std::clamp(y,0.0f,1.0f); }
-	void set_u(float u) { u_=std::clamp(u,-0.5f,0.5f); }
-	void set_v(float v) { v_=std::clamp(v,-0.5f,0.5f); }
+	void set_luma(float luma) { y=std::clamp(luma,0.0f,1.0f); }
+	void set_y(float y) { set_luma(y); }
+	void set_cb(float cb) { u=std::clamp(cb,-0.5f,0.5f); }
+	void set_u(float u) { set_cb(u); }
+	void set_cr(float cr) { v=std::clamp(cr,-0.5f,0.5f); }
+	void set_v(float v) { set_cr(v); }
 	void set_yuv(float y,float u,float v) {
 		set_y(y);
 		set_u(u);
 		set_v(v);
 	}
-	void set_a(float a) { a_=std::clamp(a,0.0f,1.0f); }
-	void set_a(int a) {
-		float real_a=a/255.0f;
-		set_a(real_a);
+	void set_ycbcr(float luma,float cb,float cr) {
+		set_luma(luma);
+		set_cb(cb);
+		set_cr(cr);
+	}
+	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
+	void set_alpha(int alpha) {
+		float real_a=alpha/255.0f;
+		set_alpha(real_a);
 	}
 	bool operator ==(const yuva& other) const {
-		return y_==other.y_ && u_==other.u_ && v_==other.v_ && a_==other.a_;
+		return y==other.y && u==other.u && v==other.v && a==other.a;
 	}
 	bool operator !=(const yuva& other) const {
 		return !(*this==other);
@@ -360,87 +417,120 @@ struct yuva {
 };
 
 struct xyza {
-	float x_,y_,z_,a_;
-	xyza () : x_(0) , y_(0) , z_(0) , a_(0) { }
-	xyza (float x,float y,float z) : x_(x) , y_(y) , z_(z) , a_(0) { }
-	xyza (float x,float y,float z,float a) : x_(x) , y_(y) , z_(z) , a_(a) { }
-	float& x() { return x_; }
-	float& y() { return y_; }
-	float& z() { return z_; }
-	float& alpha() { return a_; }
+	float x,y,z,a;
+	xyza() : x(0) , y(0) , z(0) , a(0) { }
+	xyza(float tx,float ty,float tz) : xyza(tx,ty,tz,0.0f) { }
+	xyza(float tx,float ty,float tz,float alpha) {
+		set_x(tx);
+		set_y(ty);
+		set_z(tz);
+		set_alpha(alpha);
+	}
+	xyza(float tx,float ty,float tz,int alpha) : xyza(tx,ty,tz) {
+		set_alpha(alpha);
+	}
+	float& x() { return x; }
+	float& tx() { return x; }
+	float& y() { return y; }
+	float& ty() { return y; }
+	float& luma() { return luma; }
+	float& z() { return z; }
+	float& tz() { return z; }
+	float& alpha() { return a; }
 	std::string to_xyz_string() {
 		auto pack_u16_0_2=[](float v)->uint16_t{
 			v=std::clamp(v,0.0f,2.0f);
 			return static_cast<uint16_t>(std::lround((v/2.0f)*65535.0f));
 		};
-		uint16_t px=pack_u16_0_2(x_);
-		uint16_t py=pack_u16_0_2(y_);
-		uint16_t pz=pack_u16_0_2(z_);
+		uint16_t px=pack_u16_0_2(x);
+		uint16_t py=pack_u16_0_2(y);
+		uint16_t pz=pack_u16_0_2(z);
 		std::stringstream ss;
 		ss<<"#XZ"<<std::hex<<std::setw(4)<<std::setfill('0')<<px<<std::setw(4)<<std::setfill('0')<<py<<std::setw(4)<<std::setfill('0')<<pz;
 		return ss.str();
 	}
 	std::string to_xyza_string() {
-		return add_alpha_string(to_xyz_string(),a_);
+		return add_alpha_string(to_xyz_string(),a);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true);
-	void set_x(float x) { x_=std::max(0.0f,x); }
-	void set_y(float y) { y_=std::max(0.0f,y); }
-	void set_z(float z) { z_=std::max(0.0f,z); }
-	void set_xyz(float x,float y,float z) {
-		set_x(x);
-		set_y(y);
-		set_z(z);
+	void set_x(float tx) { x=std::max(0.0f,tx); }
+	void set_y(float ty) { y=std::max(0.0f,ty); }
+	void set_luma(float luma) { set_y(luma); }
+	void set_z(float tz) { z=std::max(0.0f,tz); }
+	void set_xyz(float tx,float ty,float tz) {
+		set_x(tx);
+		set_y(ty);
+		set_z(tz);
 	}
-	void set_a(float a) { a_=std::clamp(a,0.0f,1.0f); }
-	void set_a(int a) {
-		float real_a=a/255.0f;
+	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
+	void set_alpha(int alpha) {
+		float real_a=alpha/255.0f;
 		set_a(real_a);
 	}
 	bool operator ==(const xyza& other) const {
-		return x_==other.x_ && y_==other.y_ && z_==other.z_ && a_==other.a_;
+		return x==other.x && y==other.y && z==other.z && a==other.a;
 	}
 	bool operator !=(const xyza& other) const {
 		return !(*this==other);
 	}
 };
 
+//CIELAB
 struct laba {
-	float l_,a_,b_,alpha_;
-	laba () : l_(0) , a_(0) , b_(0) , alpha_(0) { }
-	laba (float l,float a,float b) : l_(l) , a_(a) , b_(b) , alpha_(0) { }
-	laba (float l,float a,float b,float alpha) : l_(l) , a_(a) , b_(b) , alpha_(alpha) { }
-	float& lightness() { return l_; }
-	float& a() { return a_; }
-	float& b() { return b_; }
-	float& alpha() { return alpha_; }
+	float l,as,bs,a;
+	laba() : l(0) , as(0) , bs(0) , a(0) { }
+	laba(float lightness,float a_star,float b_star) : laba(lightness,a_star,b_star,0.0f) { }
+	laba(float lightness,float a_star,float b_star,float alpha) {
+		set_lightness(lightness);
+		set_a(a_star);
+		set_b(b_star);
+		set_alpha(alpha);
+	}
+	laba(float lightness,float a_star,float b_star,int alpha) : laba(lightness,a_star,b_star) {
+		set_alpha(alpha);
+	}
+	float& lightness() { return l; }
+	float& l_star() { return l; }
+	float& a() { return as; }
+	float& green_red() { return as; }
+	float& a_star() { return as;}
+	float& b() { return bs; }
+	float& blue_yellow() { return bs; }
+	float& b_star() { return bs; }
+	float& alpha() { return a; }
 	std::string to_lab_string() {
-		uint16_t pl=static_cast<uint16_t>(std::lround(std::clamp(l_,0.0f,100.0f)*100.0f));
-		int16_t pa=static_cast<int16_t>(std::lround(std::clamp(a_,-128.0f,127.0f)*100.0f));
-		int16_t pb=static_cast<int16_t>(std::lround(std::clamp(b_,-128.0f,127.0f)*100.0f));
+		uint16_t pl=static_cast<uint16_t>(std::lround(std::clamp(l,0.0f,100.0f)*100.0f));
+		int16_t pa=static_cast<int16_t>(std::lround(std::clamp(as,-128.0f,127.0f)*100.0f));
+		int16_t pb=static_cast<int16_t>(std::lround(std::clamp(bs,-128.0f,127.0f)*100.0f));
 		std::stringstream ss;
 		ss<<"#LB"<<std::hex<<std::setw(4)<<std::setfill('0')<<pl<<std::setw(4)<<std::setfill('0')<<static_cast<uint16_t>(pa)<<std::setw(4)<<std::setfill('0')<<static_cast<uint16_t>(pb);
 		return ss.str();
 	}
 	std::string to_laba_string() {
-		return add_alpha_string(to_lab_string(),alpha_);
+		return add_alpha_string(to_lab_string(),a);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true);
-	void set_l(float l) { l_=std::clamp(l,0.0f,100.0f); }
-	void set_a(float a) { a_=a; }
-	void set_b(float b) { b_=b; }
-	void set_lab(float l,float a,float b) {
-		set_l(l);
-		set_a(a);
-		set_b(b);
+	void set_lightness(float lightness) { l=std::clamp(lightness,0.0f,100.0f); }
+	void set_l(float lightness) { set_lightness(lightness); }
+	void set_l_star(float l_star) { set_lightness(lightness); }
+	void set_a(float a_star) { as=a_star; }
+	void set_green_red(float green_red) { set_a(green_red); }
+	void set_a_star(float a_star) { set_a(a_star); }
+	void set_b(float b_star) { bs=b_star; }
+	void set_blue_yellow(float blue_yellow) { set_b(blue_yellow); }
+	void set_b_star(float b_star) { set_b(b_star); }
+	void set_lab(float lightness,float a_star,float b_star) {
+		set_lightness(l);
+		set_a(a_star);
+		set_b(b_star);
 	}
-	void set_alpha(float alpha) { alpha_=std::clamp(alpha,0.0f,1.0f); }
-	void set_alpha(int a) {
-		float real_a=a/255.0f;
-		set_a(real_a);
+	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
+	void set_alpha(int alpha) {
+		float real_a=alpha/255.0f;
+		set_alpha(real_a);
 	}
 	bool operator ==(const laba& other) const {
-		return l_==other.l_ && a_==other.a_ && b_==other.b_ && alpha_==other.alpha_;
+		return l==other.l && as==other.as && bs==other.bs && a==other.a;
 	}
 	bool operator !=(const laba& other) const {
 		return !(*this==other);
@@ -448,41 +538,52 @@ struct laba {
 };
 
 struct lcha {
-	float l_,c_,h_,alpha_;
-	lcha () : l_(0) , c_(0) , h_(0) , alpha_(0) { }
-	lcha (float l,float c,float h) : l_(l) , c_(c) , h_(h) , alpha_(0) { }
-	lcha (float l,float c,float h,float alpha) : l_(l) , c_(c) , h_(h) , alpha_(alpha) { }
-	float& lightness() { return l_; }
-	float& chroma() { return c_; }
-	float& hue() { return h_; }
-	float& alpha() { return alpha_; }
+	float l,c,h,a;
+	lcha() : l(0) , c(0) , h(0) , a(0) { }
+	lcha(float lightness,float chroma,float hue) : lcha(lightness,chroma,hue,0.0f) { }
+	lcha(float lightness,float chroma,float hue,float alpha) {
+		set_lightness(lightness);
+		set_chroma(chroma);
+		set_hue(hue);
+		set_alpha(alpha);
+	}
+	lcha(float lightness,float chroma,float hue,int alpha) : lcha(lightness,chroma,hue) {
+		set_alpha(alpha);
+	}
+	float& lightness() { return l; }
+	float& chroma() { return c; }
+	float& hue() { return h; }
+	float& alpha() { return a; }
 	std::string to_lch_string() {
-		uint16_t pl=static_cast<uint16_t>(std::lround(std::clamp(l_,0.0f,100.0f)*100.0f));
-		uint16_t pc=static_cast<uint16_t>(std::lround(std::clamp(c_,0.0f,200.0f)*100.0f)); // cap 200
-		uint16_t ph=static_cast<uint16_t>(std::lround(std::clamp(h_,0.0f,360.0f)*100.0f));
+		uint16_t pl=static_cast<uint16_t>(std::lround(std::clamp(l,0.0f,100.0f)*100.0f));
+		uint16_t pc=static_cast<uint16_t>(std::lround(std::clamp(c,0.0f,200.0f)*100.0f)); // cap 200
+		uint16_t ph=static_cast<uint16_t>(std::lround(std::clamp(h,0.0f,360.0f)*100.0f));
 		std::stringstream ss;
 		ss<<"#LC"<<std::hex<<std::setw(4)<<std::setfill('0')<<pl<<std::setw(4)<<std::setfill('0')<<pc<<std::setw(4)<<std::setfill('0')<<ph;
 		return ss.str();
 	}
 	std::string to_lcha_string() {
-		return add_alpha_string(to_lch_string(),alpha_);
+		return add_alpha_string(to_lch_string(),a);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true);
-	void set_l(float l) { l_=std::clamp(l,0.0f,100.0f); }
-	void set_c(float c) { c_=std::max(0.0f,c); }
-	void set_h(float h) { h_=std::clamp(h,0.0f,360.0f); }
-	void set_lch(float l,float c,float h) {
-		set_l(l);
-		set_c(c);
-		set_h(h);
+	void set_lightness(float lightness) { l=std::clamp(lightness,0.0f,100.0f); }
+	void set_l(float lightness) { set_lightness(lightness); }
+	void set_chroma(float chroma) { c=std::max(0.0f,chroma); }
+	void set_c(float chroma) { set_chroma(chroma); }
+	void set_hue(float hue) { h=std::clamp(hue,0.0f,360.0f); }
+	void set_h(float hue) { set_hue(hue); }
+	void set_lch(float lightness,float chroma,float hue) {
+		set_lightness(lightness);
+		set_chroma(chroma);
+		set_hue(hue);
 	}
-	void set_alpha(float alpha) { alpha_=std::clamp(alpha,0.0f,1.0f); }
-	void set_alpha(int a) {
-		float real_a=a/255.0f;
+	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
+	void set_alpha(int alpha) {
+		float real_a=alpha/255.0f;
 		set_alpha(real_a);
 	}
 	bool operator ==(const lcha& other) const {
-		return l_==other.l_ && c_==other.c_ && h_==other.h_ && alpha_==other.alpha_;
+		return l==other.l && c==other.c && h==other.h && a==other.a;
 	}
 	bool operator !=(const lcha& other) const {
 		return !(*this==other);
@@ -490,41 +591,55 @@ struct lcha {
 };
 
 struct oklaba {
-	float l_,a_,b_,alpha_;
-	oklaba () : l_(0) , a_(0) , b_(0) , alpha_(0) { }
-	oklaba (float l,float a,float b) : l_(l) , a_(a) , b_(b) , alpha_(0) { }
-	oklaba (float l,float a,float b,float alpha) : l_(l) , a_(a) , b_(b) , alpha_(alpha) { }
-	float& lightness() { return l_; }
-	float& a() { return a_; }
-	float& b() { return b_; }
-	float& alpha() { return alpha_; }
+	float lp,arg,ayb,a;
+	oklaba() : lp(0) , arg(0) , ayb(0) , a(0) { }
+	oklaba(float lightness,float a,float b) : oklaba(lightness,a,b,0.0f) { }
+	oklaba(float lightness,float a,float b,float alpha) {
+		set_lightness(lightness);
+		set_a(a);
+		set_b(b);
+		set_alpha(alpha);
+	}
+	oklaba(float lightness,float a,float b,int alpha) : oklaba(lightness,a,b) {
+		set_alpha(alpha);
+	}
+	float& lightness() { return lp; }
+	float& lightness_perceptual { return lp; }
+	float& a() { return arg; }
+	float& axis_red_green() { return arg; }
+	float& b() { return ayb; }
+	float& axis_yellow_blue() { return ayb; }
+	float& alpha() { return a; }
 	std::string to_oklab_string() {
-		uint16_t pl=static_cast<uint16_t>(std::lround(std::clamp(l_,0.0f,1.0f)*65535.0f));
-		int16_t pa=static_cast<int16_t>(std::lround(std::clamp(a_,-0.5f,0.5f)*65535.0f));
-		int16_t pb=static_cast<int16_t>(std::lround(std::clamp(b_,-0.5f,0.5f)*65535.0f));
+		uint16_t pl=static_cast<uint16_t>(std::lround(std::clamp(lp,0.0f,1.0f)*65535.0f));
+		int16_t pa=static_cast<int16_t>(std::lround(std::clamp(arg,-0.5f,0.5f)*65535.0f));
+		int16_t pb=static_cast<int16_t>(std::lround(std::clamp(ayb,-0.5f,0.5f)*65535.0f));
 		std::stringstream ss;
 		ss<<"#OB"<<std::hex<<std::setw(4)<<std::setfill('0')<<pl<<std::setw(4)<<std::setfill('0')<<static_cast<uint16_t>(pa)<<std::setw(4)<<std::setfill('0')<<static_cast<uint16_t>(pb);
 		return ss.str();
 	}
 	std::string to_oklaba_string() {
-		return add_alpha_string(to_oklab_string(),alpha_);
+		return add_alpha_string(to_oklab_string(),a);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true);
-	void set_l(float l) { l_=std::clamp(l,0.0f,1.0f); }
-	void set_a(float a) { a_=a; }
-	void set_b(float b) { b_=b; }
-	void set_oklab(float l,float a,float b) {
-		set_l(l);
+	void set_lightness(float lightness) { lp=std::clamp(lightness,0.0f,1.0f); }
+	void set_l(float lightness) { set_lightness(lightness); }
+	void set_a(float a) { arg=a; }
+	void set_axis_red_green(float a) { set_a(a); }
+	void set_b(float b) { ayb=b; }
+	void set_axis_yellow_blue(float b) { set_b(b); } 
+	void set_oklab(float lightness,float a,float b) {
+		set_lightness(l);
 		set_a(a);
 		set_b(b);
 	}
-	void set_alpha(float alpha) { alpha_=std::clamp(alpha,0.0f,1.0f); }
-	void set_alpha(int a) {
-		float real_a=a/255.0f;
+	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
+	void set_alpha(int alpha) {
+		float real_a=alpha/255.0f;
 		set_alpha(real_a);
 	}
 	bool operator ==(const oklaba& other) const {
-		return l_==other.l_ && a_==other.a_ && b_==other.b_ && alpha_==other.alpha_;
+		return lp==other.lp && arg==other.arg && ayb==other.ayb && a==other.a;
 	}
 	bool operator !=(const oklaba& other) const {
 		return !(*this==other);
@@ -532,41 +647,52 @@ struct oklaba {
 };
 
 struct oklcha {
-	float l_,c_,h_,alpha_;
-	oklcha () : l_(0) , c_(0) , h_(0) , alpha_(0) { }
-	oklcha (float l,float c,float h) : l_(l) , c_(c) , h_(h) , alpha_(0) { }
-	oklcha (float l,float c,float h,float alpha) : l_(l) , c_(c) , h_(h) , alpha_(alpha) { }
-	float& lightness() { return l_; }
-	float& chroma() { return c_; }
-	float& hue() { return h_; }
-	float& alpha() { return alpha_; }
+	float l,c,h,a;
+	oklcha() : l(0) , c(0) , h(0) , a(0) { }
+	oklcha(float lightness,float chroma,float hue) : oklcha(lightness,chroma,hue,0.0f) { }
+	oklcha(float lightness,float chroma,float hue,float alpha) {
+		set_lightness(lightness);
+		set_chroma(chroma);
+		set_hue(hue);
+		set_alpha(alpha);
+	}
+	oklcha(float lightness,float chroma,float hue,int alpha) : oklcha(lightness,chroma,hue) {
+		set_alpha(alpha);
+	}
+	float& lightness() { return l; }
+	float& chroma() { return c; }
+	float& hue() { return h; }
+	float& alpha() { return a; }
 	std::string to_oklch_string() {
-		uint16_t pl=static_cast<uint16_t>(std::lround(std::clamp(l_,0.0f,1.0f)*65535.0f));
-		uint16_t pc=static_cast<uint16_t>(std::lround(std::clamp(c_,0.0f,0.5f)*65535.0f));
-		uint16_t ph=static_cast<uint16_t>(std::lround(std::clamp(h_,0.0f,360.0f)*100.0f));
+		uint16_t pl=static_cast<uint16_t>(std::lround(std::clamp(l,0.0f,1.0f)*65535.0f));
+		uint16_t pc=static_cast<uint16_t>(std::lround(std::clamp(c,0.0f,0.5f)*65535.0f));
+		uint16_t ph=static_cast<uint16_t>(std::lround(std::clamp(h,0.0f,360.0f)*100.0f));
 		std::stringstream ss;
 		ss<<"#OC"<<std::hex<<std::setw(4)<<std::setfill('0')<<pl<<std::setw(4)<<std::setfill('0')<<pc<<std::setw(4)<<std::setfill('0')<<ph;
 		return ss.str();
 	}
 	std::string to_oklcha_string() {
-		return add_alpha_string(to_oklch_string(),alpha_);
+		return add_alpha_string(to_oklch_string(),a);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true);
-	void set_l(float l) { l_=std::clamp(l,0.0f,1.0f); }
-	void set_c(float c) { c_=std::max(0.0f,c); }
-	void set_h(float h) { h_=std::clamp(h,0.0f,360.0f); }
-	void set_oklch(float l,float c,float h) {
-		set_l(l);
-		set_c(c);
-		set_h(h);
+	void set_lightness(float lightness) { l=std::clamp(lightness,0.0f,1.0f); }
+	void set_l(float lightness) { set_lightness(lightness); }
+	void set_chroma(float chroma) { c=std::max(0.0f,chroma); }
+	void set_c(float chroma) { set_chroma(chroma); }
+	void set_hue(float hue) { h=std::clamp(hue,0.0f,360.0f); }
+	void set_h(float hue) { set_hue(hue); }
+	void set_oklch(float lightness,float chroma,float hue) {
+		set_lightness(lightness);
+		set_chroma(chroma);
+		set_hue(hue);
 	}
-	void set_alpha(float alpha) { alpha_=std::clamp(alpha,0.0f,1.0f); }
-	void set_alpha(int a) {
-		float real_a=a/255.0f;
+	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
+	void set_alpha(int alpha) {
+		float real_a=alpha/255.0f;
 		set_alpha(real_a);
 	}
 	bool operator ==(const oklcha& other) const {
-		return l_==other.l_ && c_==other.c_ && h_==other.h_ && alpha_==other.alpha_;
+		return l==other.l && c==other.c && h==other.h && a==other.a;
 	}
 	bool operator !=(const oklcha& other) const {
 		return !(*this==other);
@@ -574,41 +700,52 @@ struct oklcha {
 };
 
 struct hwba {
-	float h_,w_,b_,a_;
-	hwba () : h_(0) , w_(0) , b_(0) , a_(0) { }
-	hwba (float h,float w,float b) : h_(h) , w_(w) , b_(b) , a_(0) { }
-	hwba (float h,float w,float b,float a) : h_(h) , w_(w) , b_(b) , a_(a) { }
-	float& hue() { return h_; }
-	float& whiteness() { return w_; }
-	float& blackness() { return b_; }
-	float& alpha() { return a_; }
+	float h,w,b,a;
+	hwba() : h(0) , w(0) , b(0) , a(0) { }
+	hwba(float hue,float whiteness,float blackness) : hwba(hue,whiteness,blackness,0.0f) { }
+	hwba(float hue,float whiteness,float blackness,float alpha) {
+		set_hue(hue);
+		set_whiteness(whiteness);
+		set_blackness(blackness);
+		set_alpha(alpha);
+	}
+	hwba(float hue,float whiteness,float blackness,int alpha) : hwba(hue,whiteness,blackness) {
+		set_alpha(alpha);
+	}
+	float& hue() { return h; }
+	float& whiteness() { return w; }
+	float& blackness() { return b; }
+	float& alpha() { return a; }
 	std::string to_hwb_string() {
-		uint16_t ph=static_cast<uint16_t>(std::lround(std::clamp(h_,0.0f,360.0f)*100.0f));
-		uint16_t pw=static_cast<uint16_t>(std::lround(std::clamp(w_,0.0f,100.0f)*100.0f));
-		uint16_t pb=static_cast<uint16_t>(std::lround(std::clamp(b_,0.0f,100.0f)*100.0f));
+		uint16_t ph=static_cast<uint16_t>(std::lround(std::clamp(h,0.0f,360.0f)*100.0f));
+		uint16_t pw=static_cast<uint16_t>(std::lround(std::clamp(w,0.0f,100.0f)*100.0f));
+		uint16_t pb=static_cast<uint16_t>(std::lround(std::clamp(b,0.0f,100.0f)*100.0f));
 		std::stringstream ss;
 		ss<<"#HW"<<std::hex<<std::setw(4)<<std::setfill('0')<<ph<<std::setw(4)<<std::setfill('0')<<pw<<std::setw(4)<<std::setfill('0')<<pb;
 		return ss.str();
 	}
 	std::string to_hwba_string() {
-		return add_alpha_string(to_hwb_string(),a_);
+		return add_alpha_string(to_hwb_string(),a);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true);
-	void set_h(float h) { h_=std::clamp(h,0.0f,360.0f); }
-	void set_w(float w) { w_=std::clamp(w,0.0f,100.0f); }
-	void set_b(float b) { b_=std::clamp(b,0.0f,100.0f); }
-	void set_hwb(float h,float w,float b) {
-		set_h(h);
-		set_w(w);
-		set_b(b);
+	void set_hue(float hue) { h=std::clamp(hue,0.0f,360.0f); }
+	void set_h(float hue) { set_hue(hue); }
+	void set_whiteness(float whiteness) { w=std::clamp(whiteness,0.0f,100.0f); }
+	void set_w(float whiteness) { set_whiteness(whiteness); }
+	void set_blackness(float blackness) { b=std::clamp(blackness,0.0f,100.0f); }
+	void set_b(float blackness) { set_blackness(blackness); }
+	void set_hwb(float hue,float whiteness,float blackness) {
+		set_hue(hue);
+		set_whiteness(whiteness);
+		set_blackness(blackness);
 	}
-	void set_a(float a) { a_=std::clamp(a,0.0f,1.0f); }
-	void set_a(int a) {
-		float real_a=a/255.0f;
-		set_a(real_a);
+	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
+	void set_alpha(int alpha) {
+		float real_a=alpha/255.0f;
+		set_alpha(real_a);
 	}
 	bool operator ==(const hwba& other) const {
-		return h_==other.h_ && w_==other.w_ && b_==other.b_ && a_==other.a_;
+		return h==other.h && w==other.w && b==other.b && a==other.a;
 	}
 	bool operator !=(const hwba& other) const {
 		return !(*this==other);
@@ -665,36 +802,38 @@ inline bool read_hex_u8(const std::string& s,std::size_t off,uint8_t& v) {
 }
 
 inline hsla rgba_to_hsla(rgba color) {
-	float r=color.r_/255.0f;
-	float g=color.g_/255.0f;
-	float b=color.b_/255.0f;
+	float r=std::clamp(color.red()/255.0f,0.0f,1.0f);
+	float g=std::clamp(color.green()/255.0f,0.0f,1.0f);
+	float b=std::clamp(color.blue()/255.0f,0.0f,1.0f);
 	float max_val=std::max({r,g,b});
 	float min_val=std::min({r,g,b});
 	float delta=max_val-min_val;
 	hsla result;
-	result.l_=(max_val+min_val)/2.0f;
-	if (delta<1e-5) result.h_=result.s_=0;
-	else  {
-		result.s_=(result.l_>0.5f)?(delta/(2.0f-max_val-min_val)):(delta/(max_val+min_val));
-		if (max_val==r) result.h_=(g-b)/delta+((g<b)?6.0f:0.0f);
-		else if (max_val==g) result.h_=(b-r)/delta+2.0f;
-		else result.h_=(r-g)/delta+4.0f;
-		result.h_*=60.0f;
-		if (result.h_<0) result.h_+=360.0f;
+	result.lightness()=(max_val+min_val)/2.0f;
+	if (delta<1e-5) {
+		result.set_hue(0);
+		result.set_saturation(0);
+	} else  {
+		result.set_saturation((result.lightness()>0.5f)?(delta/(2.0f-max_val-min_val)):(delta/(max_val+min_val)));
+		if (max_val==r) result.hue()=(g-b)/delta+((g<b)?6.0f:0.0f);
+		else if (max_val==g) result.hue()=(b-r)/delta+2.0f;
+		else result.hue()=(r-g)/delta+4.0f;
+		result.hue()*=60.0f;
+		if (result.hue()<0) result.hue()+=360.0f;
 	}
-	result.s_*=100.0f;
-	result.l_*=100.0f;
-	result.a_=color.a_;
+	result.saturation()*=100.0f;
+	result.lightness()*=100.0f;
+	result.set_alpha(color.alpha());
 	return result;
 }
 
 inline rgba hsla_to_rgba(hsla color) {
-	float h=color.h_/360.0f;
-	float s=color.s_/100.0f;
-	float l=color.l_/100.0f;
+	float h=color.hue()/360.0f;
+	float s=color.saturation/100.0f;
+	float l=color.lightness()/100.0f;
 	if (s<1e-5) {
 		int val=static_cast<int>(l*255.0f);
-		return rgba(val,val,val,color.a_);
+		return rgba(val,val,val,color.alpha());
 	}
 	auto hue_to_rgb=[](float p,float q,float t) {
 		while (t<0) t+=1;
@@ -709,35 +848,37 @@ inline rgba hsla_to_rgba(hsla color) {
 	float r=hue_to_rgb(p,q,h+1.0f/3);
 	float g=hue_to_rgb(p,q,h);
 	float b=hue_to_rgb(p,q,h-1.0f/3);
-	return rgba(static_cast<int>(r*255),static_cast<int>(g*255),static_cast<int>(b*255),color.a_);
+	return rgba(static_cast<int>(r*255),static_cast<int>(g*255),static_cast<int>(b*255),color.alpha());
 }
 
 inline hsva rgba_to_hsva(rgba color) {
-	float r=color.r_/255.0f;
-	float g=color.g_/255.0f;
-	float b=color.b_/255.0f;
+	float r=std::clamp(color.red()/255.0f,0.0f,1.0f);
+	float g=std::clamp(color.green()/255.0f,0.0f,1.0f);
+	float b=std::clamp(color.blue()/255.0f,0.0f,1.0f);
 	float max_val=std::max({r,g,b});
 	float min_val=std::min({r,g,b});
 	float delta=max_val-min_val;
 	hsva result;
-	result.v_=max_val*100.0f;
-	if (delta<1e-5) result.h_=result.s_=0;
-	else  {
-		result.s_=(delta/max_val)*100.0f;
-		if (max_val==r) result.h_=(g-b)/delta+((g<b)?6.0f:0.0f);
-		else if (max_val==g) result.h_=(b-r)/delta+2.0f;
-		else result.h_=(r-g)/delta+4.0f;
-		result.h_*=60.0f;
-		if (result.h_<0) result.h_+=360.0f;
+	result.v=max_val*100.0f;
+	if (delta<1e-5) {
+		result.set_hue(0);
+		result.set_saturation(0);
+	} else {
+		result.set_saturation((delta/max_val)*100.0f);
+		if (max_val==r) result.hue()=(g-b)/delta+((g<b)?6.0f:0.0f);
+		else if (max_val==g) result.hue()=(b-r)/delta+2.0f;
+		else result.hue()=(r-g)/delta+4.0f;
+		result.hue()*=60.0f;
+		if (result.hue()<0) result.hue()+=360.0f;
 	}
-	result.a_=color.a_;
+	result.set_alpha(color.alpha());
 	return result;
 }
 
 inline rgba hsva_to_rgba(hsva color) {
-	float h=color.h_/360.0f;
-	float s=color.s_/100.0f;
-	float v=color.v_/100.0f;
+	float h=color.hue()/360.0f;
+	float s=color.saturation()/100.0f;
+	float v=color.value()/100.0f;
 	int i=static_cast<int>(h*6);
 	float f=h*6-i;
 	float p=v*(1-s);
@@ -752,7 +893,7 @@ inline rgba hsva_to_rgba(hsva color) {
 		case 4: { r=t,g=p,b=v; break; }
 		case 5: { r=v,g=p,b=q; break; }
 	}
-	return rgba(static_cast<int>(r*255),static_cast<int>(g*255),static_cast<int>(b*255),color.a_);
+	return rgba(static_cast<int>(r*255),static_cast<int>(g*255),static_cast<int>(b*255),color.alpha());
 }
 
 hsva hsla_to_hsva(hsla color) {
@@ -764,9 +905,9 @@ hsla hsva_to_hsla(hsva color) {
 }
 
 inline cmyka rgba_to_cmyka(rgba color) {
-	float r=std::clamp(color.r_/255.0f,0.0f,1.0f);
-	float g=std::clamp(color.g_/255.0f,0.0f,1.0f);
-	float b=std::clamp(color.b_/255.0f,0.0f,1.0f);
+	float r=std::clamp(color.red()/255.0f,0.0f,1.0f);
+	float g=std::clamp(color.green()/255.0f,0.0f,1.0f);
+	float b=std::clamp(color.blue()/255.0f,0.0f,1.0f);
 	float k=1.0f-std::max({r,g,b});
 	float c=0,m=0,y=0;
 	if (k<0.999999f) {
@@ -774,48 +915,37 @@ inline cmyka rgba_to_cmyka(rgba color) {
 		m=(1.0f-g-k)/(1.0f-k);
 		y=(1.0f-b-k)/(1.0f-k);
 	}
-	cmyka result;
-	result.c_=std::clamp(c*100.0f,0.0f,100.0f);
-	result.m_=std::clamp(m*100.0f,0.0f,100.0f);
-	result.y_=std::clamp(y*100.0f,0.0f,100.0f);
-	result.k_=std::clamp(k*100.0f,0.0f,100.0f);
-	result.a_=std::clamp(color.a_,0.0f,1.0f);
-	return result;
+	return cmyka(std::clamp(c*100.0f,0.0f,100.0f),std::clamp(m*100.0f,0.0f,100.0f),std::clamp(y*100.0f,0.0f,100.0f),std::clamp(k*100.0f,0.0f,100.0f),std::clamp(color.a_,0.0f,1.0f));
 }
 inline rgba cmyka_to_rgba(cmyka color) {
-	float c=std::clamp(color.c_,0.0f,100.0f)/100.0f;
-	float m=std::clamp(color.m_,0.0f,100.0f)/100.0f;
-	float y=std::clamp(color.y_,0.0f,100.0f)/100.0f;
-	float k=std::clamp(color.k_,0.0f,100.0f)/100.0f;
+	float c=std::clamp(color.cyan(),0.0f,100.0f)/100.0f;
+	float m=std::clamp(color.magenta(),0.0f,100.0f)/100.0f;
+	float y=std::clamp(color.yellow(),0.0f,100.0f)/100.0f;
+	float k=std::clamp(color.key(),0.0f,100.0f)/100.0f;
 	float r=(1.0f-c)*(1.0f-k);
 	float g=(1.0f-m)*(1.0f-k);
 	float b=(1.0f-y)*(1.0f-k);
-	return rgba(round_u8_from01(r),round_u8_from01(g),round_u8_from01(b),std::clamp(color.a_,0.0f,1.0f));
+	return rgba(round_u8_from01(r),round_u8_from01(g),round_u8_from01(b),color.alpha());
 }
 
 inline yuva rgba_to_yuva(rgba color) {
-	float r=std::clamp(color.r_/255.0f,0.0f,1.0f);
-	float g=std::clamp(color.g_/255.0f,0.0f,1.0f);
-	float b=std::clamp(color.b_/255.0f,0.0f,1.0f);
+	float r=std::clamp(color.red()/255.0f,0.0f,1.0f);
+	float g=std::clamp(color.green()/255.0f,0.0f,1.0f);
+	float b=std::clamp(color.blue()/255.0f,0.0f,1.0f);
 	float y=0.299f*r+0.587f*g+0.114f*b;
 	float u=0.492f*(b-y);
 	float v=0.877f*(r-y);
-	yuva result;
-	result.y_=std::clamp(y,0.0f,1.0f);
-	result.u_=std::clamp(u,-0.5f,0.5f);
-	result.v_=std::clamp(v,-0.5f,0.5f);
-	result.a_=std::clamp(color.a_,0.0f,1.0f);
-	return result;
+	return yuva(std::clamp(y,0.0f,1.0f),std::clamp(u,-0.5f,0.5f),std::clamp(v,-0.5f,0.5f),color.alpha());
 }
 
 inline rgba yuva_to_rgba(yuva color) {
-	float y=std::clamp(color.y_,0.0f,1.0f);
-	float u=std::clamp(color.u_,-0.5f,0.5f);
-	float v=std::clamp(color.v_,-0.5f,0.5f);
+	float y=std::clamp(color.luma(),0.0f,1.0f);
+	float u=std::clamp(color.cb(),-0.5f,0.5f);
+	float v=std::clamp(color.cr(),-0.5f,0.5f);
 	float r=y+v/0.877f;
 	float b=y+u/0.492f;
 	float g=(y-0.299f*r-0.114f*b)/0.587f;
-	return rgba(round_u8_from01(r),round_u8_from01(g),round_u8_from01(b),std::clamp(color.a_,0.0f,1.0f));
+	return rgba(round_u8_from01(r),round_u8_from01(g),round_u8_from01(b),color.alpha());
 }
 
 inline cmyka hsla_to_cmyka(hsla c) {
@@ -862,14 +992,14 @@ enum rgb_transfer {
 };
 
 struct rgb_profile {
-	rgb_working_space space_;
-	rgb_transfer transfer_;
-	rgb_profile() : space_(RWS_SRGB),transfer_(RT_SRGB) { }
-	rgb_profile(rgb_working_space s,rgb_transfer t) : space_(s),transfer_(t) { }
+	rgb_working_space space;
+	rgb_transfer transfer;
+	rgb_profile() : space(RWS_SRGB),transfer(RT_SRGB) { }
+	rgb_profile(rgb_working_space s,rgb_transfer t) : space(s),transfer(t) { }
 };
 
 struct white_point {
-	float x_,y_,z_;
+	float x,y,z;
 };
 
 inline white_point wp_d65() {
@@ -926,30 +1056,26 @@ inline void xyz_to_rgb_matrix(rgb_working_space s,float& m00,float& m01,float& m
 	m20= 0.0556434f; m21=-0.2040259f; m22= 1.0572252f;
 }
 
-inline xyza rgba_to_xyza(rgba c,rgb_profile p=rgb_profile()) {
-	float r=to_linear(p.transfer_,std::clamp(c.r_/255.0f,0.0f,1.0f));
-	float g=to_linear(p.transfer_,std::clamp(c.g_/255.0f,0.0f,1.0f));
-	float b=to_linear(p.transfer_,std::clamp(c.b_/255.0f,0.0f,1.0f));
+inline xyza rgba_to_xyza(rgba color,rgb_profile profile=rgb_profile()) {
+	float r=to_linear(profile.transfer,std::clamp(color.red()/255.0f,0.0f,1.0f));
+	float g=to_linear(profile.transfer,std::clamp(color.green()/255.0f,0.0f,1.0f));
+	float b=to_linear(profile.transfer,std::clamp(color.blue()/255.0f,0.0f,1.0f));
 	float m00,m01,m02,m10,m11,m12,m20,m21,m22;
-	rgb_to_xyz_matrix(p.space_,m00,m01,m02,m10,m11,m12,m20,m21,m22);
-	xyza result;
-	result.x_=m00*r+m01*g+m02*b;
-	result.y_=m10*r+m11*g+m12*b;
-	result.z_=m20*r+m21*g+m22*b;
-	result.a_=std::clamp(c.a_,0.0f,1.0f);
+	rgb_to_xyz_matrix(p.space,m00,m01,m02,m10,m11,m12,m20,m21,m22);
+	xyza result(m00*r+m01*g+m02*b,m10*r+m11*g+m12*b,m20*r+m21*g+m22*b,color.alpha());
 	return result;
 }
 
-inline rgba xyza_to_rgba(xyza c,rgb_profile p=rgb_profile()) {
+inline rgba xyza_to_rgba(xyza color,rgb_profile profile=rgb_profile()) {
 	float m00,m01,m02,m10,m11,m12,m20,m21,m22;
-	xyz_to_rgb_matrix(p.space_,m00,m01,m02,m10,m11,m12,m20,m21,m22);
-	float r=m00*c.x_+m01*c.y_+m02*c.z_;
-	float g=m10*c.x_+m11*c.y_+m12*c.z_;
-	float b=m20*c.x_+m21*c.y_+m22*c.z_;
-	r=to_nonlinear(p.transfer_,r);
-	g=to_nonlinear(p.transfer_,g);
-	b=to_nonlinear(p.transfer_,b);
-	return rgba(round_u8_from01(r),round_u8_from01(g),round_u8_from01(b),std::clamp(c.a_,0.0f,1.0f));
+	xyz_to_rgb_matrix(profile.space,m00,m01,m02,m10,m11,m12,m20,m21,m22);
+	float r=m00*color.x()+m01*color.y()+m02*color.z();
+	float g=m10*color.x()+m11*color.y()+m12*color.z();
+	float b=m20*color.x()+m21*color.y()+m22*color.z();
+	r=to_nonlinear(profile.transfer,r);
+	g=to_nonlinear(profile.transfer,g);
+	b=to_nonlinear(profile.transfer,b);
+	return rgba(round_u8_from01(r),round_u8_from01(g),round_u8_from01(b),color.alpha());
 }
 
 inline float lab_f(float t) {
@@ -964,85 +1090,70 @@ inline float lab_f_inv(float t) {
 	return 3*delta*delta*(t-4.0f/29.0f);
 }
 
-inline laba xyza_to_laba(xyza c,white_point wp=wp_d65()) {
-	float x=c.x_/wp.x_;
-	float y=c.y_/wp.y_;
-	float z=c.z_/wp.z_;
+inline laba xyza_to_laba(xyza color,white_point wp=wp_d65()) {
+	float x=color.x()/wp.x;
+	float y=color.y()/wp.y;
+	float z=color.z()/wp.z;
 	float fx=lab_f(x);
 	float fy=lab_f(y);
 	float fz=lab_f(z);
-	laba result;
-	result.l_=std::max(0.0f,116.0f*fy-16.0f);
-	result.a_=500.0f*(fx-fy);
-	result.b_=200.0f*(fy-fz);
-	result.alpha_=std::clamp(c.a_,0.0f,1.0f);
-	return result;
+	return laba(std::max(0.0f,116.0f*fy-16.0f),500.0f*(fx-fy),200.0f*(fy-fz),color.alpha());
 }
 
-inline xyza laba_to_xyza(laba c,white_point wp=wp_d65()) {
-	float fy=(c.l_+16.0f)/116.0f;
-	float fx=fy+c.a_/500.0f;
-	float fz=fy-c.b_/200.0f;
-	xyza result;
-	result.x_=wp.x_*lab_f_inv(fx);
-	result.y_=wp.y_*lab_f_inv(fy);
-	result.z_=wp.z_*lab_f_inv(fz);
-	result.a_=std::clamp(c.alpha_,0.0f,1.0f);
-	return result;
+inline xyza laba_to_xyza(laba color,white_point wp=wp_d65()) {
+	float fy=(color.l()+16.0f)/116.0f;
+	float fx=fy+color.a()/500.0f;
+	float fz=fy-color.b()/200.0f;
+	return xyza(wp.x*lab_f_inv(fx),wp.y*lab_f_inv(fy),wp.z*lab_f_inv(fz),color.alpha());
 }
 
-inline laba rgba_to_laba(rgba c,rgb_profile p=rgb_profile(),white_point wp=wp_d65()) {
-	return xyza_to_laba(rgba_to_xyza(c,p),wp);
+inline laba rgba_to_laba(rgba color,rgb_profile profile=rgb_profile(),white_point wp=wp_d65()) {
+	return xyza_to_laba(rgba_to_xyza(color,profile),wp);
 }
 
-inline rgba laba_to_rgba(laba c,rgb_profile p=rgb_profile(),white_point wp=wp_d65()) {
-	return xyza_to_rgba(laba_to_xyza(c,wp),p);
+inline rgba laba_to_rgba(laba color,rgb_profile profile=rgb_profile(),white_point wp=wp_d65()) {
+	return xyza_to_rgba(laba_to_xyza(color,wp),profile);
 }
 
-inline lcha laba_to_lcha(laba c) {
-	float C=std::sqrt(c.a_*c.a_+c.b_*c.b_);
-	float H=std::atan2(c.b_,c.a_)*180.0f/3.14159265358979323846f;
+inline lcha laba_to_lcha(laba color) {
+	float C=std::sqrt(color.a()*color.a()+color.b()*color.b());
+	float H=std::atan2(color.b(),color.a())*180.0f/3.14159265358979323846f;
 	if (H<0) H+=360.0f;
-	return lcha(c.l_,C,H,c.alpha_);
+	return lcha(color.lightness(),C,H,color.alpha());
 }
 
-inline laba lcha_to_laba(lcha c) {
-	float hr=c.h_*3.14159265358979323846f/180.0f;
-	float a=c.c_*std::cos(hr);
-	float b=c.c_*std::sin(hr);
-	return laba(c.l_,a,b,c.alpha_);
+inline laba lcha_to_laba(lcha color) {
+	float hr=color.hue()*3.14159265358979323846f/180.0f;
+	float a=color.chroma()*std::cos(hr);
+	float b=color.chroma()*std::sin(hr);
+	return laba(color.lightness(),a,b,color.alpha());
 }
 
-inline lcha rgba_to_lcha(rgba c,rgb_profile p=rgb_profile(),white_point wp=wp_d65()) {
-	return laba_to_lcha(rgba_to_laba(c,p,wp));
+inline lcha rgba_to_lcha(rgba color,rgb_profile profile=rgb_profile(),white_point wp=wp_d65()) {
+	return laba_to_lcha(rgba_to_laba(color,profile,wp));
 }
 
-inline rgba lcha_to_rgba(lcha c,rgb_profile p=rgb_profile(),white_point wp=wp_d65()) {
-	return laba_to_rgba(lcha_to_laba(c),p,wp);
+inline rgba lcha_to_rgba(lcha color,rgb_profile profile=rgb_profile(),white_point wp=wp_d65()) {
+	return laba_to_rgba(lcha_to_laba(color),profile,wp);
 }
 
-inline oklaba rgba_to_oklaba(rgba c) {
-	float r=srgb_to_linear(std::clamp(c.r_/255.0f,0.0f,1.0f));
-	float g=srgb_to_linear(std::clamp(c.g_/255.0f,0.0f,1.0f));
-	float b=srgb_to_linear(std::clamp(c.b_/255.0f,0.0f,1.0f));
+inline oklaba rgba_to_oklaba(rgba color) {
+	float r=srgb_to_linear(std::clamp(color.red()/255.0f,0.0f,1.0f));
+	float g=srgb_to_linear(std::clamp(color.green()/255.0f,0.0f,1.0f));
+	float b=srgb_to_linear(std::clamp(color.blue()/255.0f,0.0f,1.0f));
 	float l=0.4122214708f*r+0.5363325363f*g+0.0514459929f*b;
 	float m=0.2119034982f*r+0.6806995451f*g+0.1073969566f*b;
 	float s=0.0883024619f*r+0.2817188376f*g+0.6299787005f*b;
 	float l3=std::cbrt(l);
 	float m3=std::cbrt(m);
 	float s3=std::cbrt(s);
-	oklaba result;
-	result.l_=0.2104542553f*l3+0.7936177850f*m3-0.0040720468f*s3;
-	result.a_=1.9779984951f*l3-2.4285922050f*m3+0.4505937099f*s3;
-	result.b_=0.0259040371f*l3+0.7827717662f*m3-0.8086757660f*s3;
-	result.alpha_=std::clamp(c.a_,0.0f,1.0f);
-	return result;
+	return oklaba(0.2104542553f*l3+0.7936177850f*m3-0.0040720468f*s3,1.9779984951f*l3-2.4285922050f*m3+0.4505937099f*s3,0.0259040371f*l3+0.7827717662f*m3-0.8086757660f*s3,color.alpha());
 }
 
-inline rgba oklaba_to_rgba(oklaba c) {
-	float l_=c.l_+0.3963377774f*c.a_+0.2158037573f*c.b_;
-	float m_=c.l_-0.1055613458f*c.a_-0.0638541728f*c.b_;
-	float s_=c.l_-0.0894841775f*c.a_-1.2914855480f*c.b_;
+inline rgba oklaba_to_rgba(oklaba color) {
+	float l_=color.lightness()+0.3963377774f*color.a()+0.2158037573f*color.b();
+	float m_=color.lightness()-0.1055613458f*color.a()-0.0638541728f*color.b();
+	float s_=color.lightness()-0.0894841775f*color.a()-1.2914855480f*color.b();
 	float l=l_*l_*l_;
 	float m=m_*m_*m_;
 	float s=s_*s_*s_;
@@ -1052,63 +1163,63 @@ inline rgba oklaba_to_rgba(oklaba c) {
 	r=linear_to_srgb(r);
 	g=linear_to_srgb(g);
 	b=linear_to_srgb(b);
-	return rgba(round_u8_from01(r),round_u8_from01(g),round_u8_from01(b),std::clamp(c.alpha_,0.0f,1.0f));
+	return rgba(round_u8_from01(r),round_u8_from01(g),round_u8_from01(b),color.alpha());
 }
 
-inline oklcha oklaba_to_oklcha(oklaba c) {
-	float C=std::sqrt(c.a_*c.a_+c.b_*c.b_);
-	float H=std::atan2(c.b_,c.a_)*180.0f/3.14159265358979323846f;
+inline oklcha oklaba_to_oklcha(oklaba color) {
+	float C=std::sqrt(color.a()*color.a()+color.b()*color.b());
+	float H=std::atan2(color.b(),color.a())*180.0f/3.14159265358979323846f;
 	if (H<0) H+=360.0f;
-	return oklcha(c.l_,C,H,c.alpha_);
+	return oklcha(color.lightness(),C,H,color.alpha());
 }
 
-inline oklaba oklcha_to_oklaba(oklcha c) {
-	float hr=c.h_*3.14159265358979323846f/180.0f;
-	float a=c.c_*std::cos(hr);
-	float b=c.c_*std::sin(hr);
-	return oklaba(c.l_,a,b,c.alpha_);
+inline oklaba oklcha_to_oklaba(oklcha color) {
+	float hr=color.hue()*3.14159265358979323846f/180.0f;
+	float a=color.chroma()*std::cos(hr);
+	float b=color.chroma()*std::sin(hr);
+	return oklaba(color.lightness(),a,b,color.alpha());
 }
 
-inline oklcha rgba_to_oklcha(rgba c) {
-	return oklaba_to_oklcha(rgba_to_oklaba(c));
+inline oklcha rgba_to_oklcha(rgba color) {
+	return oklaba_to_oklcha(rgba_to_oklaba(color));
 }
 
-inline rgba oklcha_to_rgba(oklcha c) {
-	return oklaba_to_rgba(oklcha_to_oklaba(c));
+inline rgba oklcha_to_rgba(oklcha color) {
+	return oklaba_to_rgba(oklcha_to_oklaba(color));
 }
 
-inline hsva hwba_to_hsva(hwba c) {
+inline hsva hwba_to_hsva(hwba color) {
 	hsva result;
-	result.h_=std::clamp(c.h_,0.0f,360.0f);
-	float w=std::clamp(c.w_,0.0f,100.0f)/100.0f;
-	float b=std::clamp(c.b_,0.0f,100.0f)/100.0f;
+	result.set_hue(color.hue());
+	float w=std::clamp(color.whiteness(),0.0f,100.0f)/100.0f;
+	float b=std::clamp(color.blackness(),0.0f,100.0f)/100.0f;
 	float v=1.0f-b;
 	float s=(v<=1e-6f)?0.0f:1.0f-(w/v);
-	result.s_=std::clamp(s*100.0f,0.0f,100.0f);
-	result.v_=std::clamp(v*100.0f,0.0f,100.0f);
-	result.a_=std::clamp(c.a_,0.0f,1.0f);
+	result.saturation()=std::clamp(s*100.0f,0.0f,100.0f);
+	result.value()=std::clamp(v*100.0f,0.0f,100.0f);
+	result.set_alpha(color.alpha());
 	return result;
 }
 
-inline hwba hsva_to_hwba(hsva c) {
+inline hwba hsva_to_hwba(hsva color) {
 	hwba result;
-	result.h_=std::clamp(c.h_,0.0f,360.0f);
-	float s=std::clamp(c.s_,0.0f,100.0f)/100.0f;
-	float v=std::clamp(c.v_,0.0f,100.0f)/100.0f;
+	result.set_hue(color.hue());
+	float s=std::clamp(color.saturation(),0.0f,100.0f)/100.0f;
+	float v=std::clamp(color.value(),0.0f,100.0f)/100.0f;
 	float w=(1.0f-s)*v;
 	float b=1.0f-v;
-	result.w_=std::clamp(w*100.0f,0.0f,100.0f);
-	result.b_=std::clamp(b*100.0f,0.0f,100.0f);
-	result.a_=std::clamp(c.a_,0.0f,1.0f);
+	result.whiteness()=std::clamp(w*100.0f,0.0f,100.0f);
+	result.blackness()=std::clamp(b*100.0f,0.0f,100.0f);
+	result.set_alpha(color.alpha());
 	return result;
 }
 
-inline rgba hwba_to_rgba(hwba c) {
-	return hsva_to_rgba(hwba_to_hsva(c));
+inline rgba hwba_to_rgba(hwba color) {
+	return hsva_to_rgba(hwba_to_hsva(color));
 }
 
-inline hwba rgba_to_hwba(rgba c) {
-	return hsva_to_hwba(rgba_to_hsva(c));
+inline hwba rgba_to_hwba(rgba color) {
+	return hsva_to_hwba(rgba_to_hsva(color));
 }
 
 inline float wrap_hue_360(float h) {
@@ -1127,34 +1238,24 @@ inline float lerp_hue_shortest(float h1,float h2,float t) {
 
 inline lcha lerp_lcha(lcha a,lcha b,float t) {
 	t=std::clamp(t,0.0f,1.0f);
-	lcha result;
-	result.l_=a.l_+(b.l_-a.l_)*t;
-	result.c_=a.c_+(b.c_-a.c_)*t;
-	result.h_=lerp_hue_shortest(a.h_,b.h_,t);
-	result.alpha_=a.alpha_+(b.alpha_-a.alpha_)*t;
-	return result;
+	lcha result(a.lightness()+(b.lightness()-a.lightness())*t,a.chroma()+(b.chroma()-a.chroma())*t,lerp_hue_shortest(a.hue(),b.hue(),t),a.alpha()+(b.alpha()-a.alpha())*t);
 }
 
 inline oklcha lerp_oklcha(oklcha a,oklcha b,float t) {
 	t=std::clamp(t,0.0f,1.0f);
-	oklcha result;
-	result.l_=a.l_+(b.l_-a.l_)*t;
-	result.c_=a.c_+(b.c_-a.c_)*t;
-	result.h_=lerp_hue_shortest(a.h_,b.h_,t);
-	result.alpha_=a.alpha_+(b.alpha_-a.alpha_)*t;
-	return result;
+	oklcha result(a.lightness()+(b.lightness()-a.lightness())*t,a.chroma()+(b.chroma()-a.chroma())*t,lerp_hue_shortest(a.hue(),b.hue(),t),a.alpha()+(b.alpha()-a.alpha())*t);
 }
 
 inline float delta_e76(laba a,laba b) {
-	float dl=a.l_-b.l_;
-	float da=a.a_-b.a_;
-	float db=a.b_-b.b_;
+	float dl=a.lightness()-b.lightness();
+	float da=a.a()-b.a();
+	float db=a.b()-b.b();
 	return std::sqrt(dl*dl+da*da+db*db);
 }
 inline float delta_e_ok(oklaba a,oklaba b) {
-	float dl=a.l_-b.l_;
-	float da=a.a_-b.a_;
-	float db=a.b_-b.b_;
+	float dl=a.lightness()-b.lightness();
+	float da=a.a()-b.a();
+	float db=a.b()-b.b();
 	return std::sqrt(dl*dl+da*da+db*db);
 }
 
@@ -1174,13 +1275,13 @@ inline rgba kelvin_to_rgba(float kelvin,float alpha=1.0f) {
 	if (t>=66.0f) b=1.0f;
 	else if (t<=19.0f) b=0.0f;
 	else b=(138.5177312231f*std::log(t-10.0f)-305.0447927307f)/255.0f;
-	return rgba(round_u8_from01(r),round_u8_from01(g),round_u8_from01(b),std::clamp(alpha,0.0f,1.0f));
+	return rgba(round_u8_from01(r),round_u8_from01(g),round_u8_from01(b),alpha);
 }
 
-inline float relative_luminance(rgba c) {
-	float r=srgb_to_linear(std::clamp(c.r_/255.0f,0.0f,1.0f));
-	float g=srgb_to_linear(std::clamp(c.g_/255.0f,0.0f,1.0f));
-	float b=srgb_to_linear(std::clamp(c.b_/255.0f,0.0f,1.0f));
+inline float relative_luminance(rgba color) {
+	float r=srgb_to_linear(std::clamp(color.red()/255.0f,0.0f,1.0f));
+	float g=srgb_to_linear(std::clamp(color.green()/255.0f,0.0f,1.0f));
+	float b=srgb_to_linear(std::clamp(color.blue()/255.0f,0.0f,1.0f));
 	return 0.2126f*r+0.7152f*g+0.0722f*b;
 }
 
@@ -1193,16 +1294,16 @@ inline float contrast_ratio(rgba a,rgba b) {
 }
 
 inline rgba composite_over(rgba src,rgba dst) {
-	float sa=std::clamp(src.a_,0.0f,1.0f);
-	float da=std::clamp(dst.a_,0.0f,1.0f);
+	float sa=std::clamp(src.alpha(),0.0f,1.0f);
+	float da=std::clamp(dst.alpha(),0.0f,1.0f);
 	float out_a=sa+da*(1.0f-sa);
 	if (out_a<1e-6f) return rgba(0,0,0,0.0f);
-	float sr=std::clamp(src.r_/255.0f,0.0f,1.0f);
-	float sg=std::clamp(src.g_/255.0f,0.0f,1.0f);
-	float sb=std::clamp(src.b_/255.0f,0.0f,1.0f);
-	float dr=std::clamp(dst.r_/255.0f,0.0f,1.0f);
-	float dg=std::clamp(dst.g_/255.0f,0.0f,1.0f);
-	float db=std::clamp(dst.b_/255.0f,0.0f,1.0f);
+	float sr=std::clamp(src.red()/255.0f,0.0f,1.0f);
+	float sg=std::clamp(src.green()/255.0f,0.0f,1.0f);
+	float sb=std::clamp(src.blue()/255.0f,0.0f,1.0f);
+	float dr=std::clamp(dst.red()/255.0f,0.0f,1.0f);
+	float dg=std::clamp(dst.green()/255.0f,0.0f,1.0f);
+	float db=std::clamp(dst.blue()/255.0f,0.0f,1.0f);
 	float out_r=(sr*sa+dr*da*(1.0f-sa))/out_a;
 	float out_g=(sg*sa+dg*da*(1.0f-sa))/out_a;
 	float out_b=(sb*sa+db*da*(1.0f-sa))/out_a;
@@ -1212,29 +1313,29 @@ inline rgba composite_over(rgba src,rgba dst) {
 
 inline rgba lerp_rgba(rgba a,rgba b,float t) {
 	t=std::clamp(t,0.0f,1.0f);
-	int r=static_cast<int>(std::lround(a.r_+(b.r_-a.r_)*t));
-	int g=static_cast<int>(std::lround(a.g_+(b.g_-a.g_)*t));
-	int bl=static_cast<int>(std::lround(a.b_+(b.b_-a.b_)*t));
-	float al=a.a_+(b.a_-a.a_)*t;
-	return rgba(clamp_u8(r),clamp_u8(g),clamp_u8(bl),std::clamp(al,0.0f,1.0f));
+	int r=static_cast<int>(std::lround(a.red()+(b.red()-a.red())*t));
+	int g=static_cast<int>(std::lround(a.green()+(b.green()-a.green())*t));
+	int bl=static_cast<int>(std::lround(a.blue()+(b.blue()-a.blue())*t));
+	float alpha=a.alpha()+(b.alpha()-a.alpha())*t;
+	return rgba(clamp_u8(r),clamp_u8(g),clamp_u8(bl),alpha);
 }
 
 inline rgba lerp_rgba_linear(rgba a,rgba b,float t) {
 	t=std::clamp(t,0.0f,1.0f);
-	float ar=srgb_to_linear(std::clamp(a.r_/255.0f,0.0f,1.0f));
-	float ag=srgb_to_linear(std::clamp(a.g_/255.0f,0.0f,1.0f));
-	float ab=srgb_to_linear(std::clamp(a.b_/255.0f,0.0f,1.0f));
-	float br=srgb_to_linear(std::clamp(b.r_/255.0f,0.0f,1.0f));
-	float bg=srgb_to_linear(std::clamp(b.g_/255.0f,0.0f,1.0f));
-	float bb=srgb_to_linear(std::clamp(b.b_/255.0f,0.0f,1.0f));
+	float ar=srgb_to_linear(std::clamp(a.red()/255.0f,0.0f,1.0f));
+	float ag=srgb_to_linear(std::clamp(a.green()/255.0f,0.0f,1.0f));
+	float ab=srgb_to_linear(std::clamp(a.blue()/255.0f,0.0f,1.0f));
+	float br=srgb_to_linear(std::clamp(b.red()/255.0f,0.0f,1.0f));
+	float bg=srgb_to_linear(std::clamp(b.green()/255.0f,0.0f,1.0f));
+	float bb=srgb_to_linear(std::clamp(b.blue()/255.0f,0.0f,1.0f));
 	float rr=ar+(br-ar)*t;
 	float rg=ag+(bg-ag)*t;
 	float rb=ab+(bb-ab)*t;
 	int r=round_u8_from01(linear_to_srgb(rr));
 	int g=round_u8_from01(linear_to_srgb(rg));
 	int bl=round_u8_from01(linear_to_srgb(rb));
-	float al=a.a_+(b.a_-a.a_)*t;
-	return rgba(r,g,bl,std::clamp(al,0.0f,1.0f));
+	float alpha=a.alpha()+(b.alpha()-a.alpha())*t;
+	return rgba(r,g,bl,alpha);
 }
 
 enum blend_mode {
@@ -1252,9 +1353,9 @@ enum blend_mode {
 	BM_EXCLUSION,
 };
 
-inline float blend_channel(blend_mode mode,float b,float s) {
-	b=std::clamp(b,0.0f,1.0f);
-	s=std::clamp(s,0.0f,1.0f);
+inline float blend_channel(blend_mode mode,float backdrop,float source) {
+	float b=std::clamp(backdrop,0.0f,1.0f);
+	float s=std::clamp(source,0.0f,1.0f);
 	switch (mode) {
 		case BM_NORMAL: {
 			return s;
@@ -1299,16 +1400,16 @@ inline float blend_channel(blend_mode mode,float b,float s) {
 }
 
 inline rgba blend_rgb(rgba base,rgba blend,blend_mode mode) {
-	float br=std::clamp(base.r_/255.0f,0.0f,1.0f);
-	float bg=std::clamp(base.g_/255.0f,0.0f,1.0f);
-	float bb=std::clamp(base.b_/255.0f,0.0f,1.0f);
-	float sr=std::clamp(blend.r_/255.0f,0.0f,1.0f);
-	float sg=std::clamp(blend.g_/255.0f,0.0f,1.0f);
-	float sb=std::clamp(blend.b_/255.0f,0.0f,1.0f);
+	float br=std::clamp(base.red()/255.0f,0.0f,1.0f);
+	float bg=std::clamp(base.green()/255.0f,0.0f,1.0f);
+	float bb=std::clamp(base.blue()/255.0f,0.0f,1.0f);
+	float sr=std::clamp(blend.red()/255.0f,0.0f,1.0f);
+	float sg=std::clamp(blend.green()/255.0f,0.0f,1.0f);
+	float sb=std::clamp(blend.blue()/255.0f,0.0f,1.0f);
 	float rr=blend_channel(mode,br,sr);
 	float rg=blend_channel(mode,bg,sg);
 	float rb=blend_channel(mode,bb,sb);
-	return rgba(round_u8_from01(rr),round_u8_from01(rg),round_u8_from01(rb),std::clamp(blend.a_,0.0f,1.0f));
+	return rgba(round_u8_from01(rr),round_u8_from01(rg),round_u8_from01(rb),blend.alpha());
 }
 
 inline rgba blend_and_composite(rgba base,rgba blend,blend_mode mode) {
@@ -1317,13 +1418,13 @@ inline rgba blend_and_composite(rgba base,rgba blend,blend_mode mode) {
 }
 
 inline std::size_t hsla::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) h_=s_=l_=a_=0;
+	if (initialize) h=s=l=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'H','S')) {
-		rgba tmp;
-		std::size_t used=tmp.from_string(s,false,strict);
+		rgba temp;
+		std::size_t used=temp.from_string(s,initialize,strict);
 		if (!used) return 0;
-		*this=rgba_to_hsla(tmp);
+		*this=rgba_to_hsla(temp);
 		return used;
 	}
 	std::size_t remain=s.size()-pos;
@@ -1336,28 +1437,28 @@ inline std::size_t hsla::from_string(const std::string& s,bool initialize,bool s
 	if (!read_hex_u16(s,pos+0,ph)) return 0;
 	if (!read_hex_u16(s,pos+4,ps)) return 0;
 	if (!read_hex_u16(s,pos+8,pl)) return 0;
-	h_=std::clamp(ph/100.0f,0.0f,360.0f);
-	s_=std::clamp(ps/100.0f,0.0f,100.0f);
-	l_=std::clamp(pl/100.0f,0.0f,100.0f);
-	a_=1.0f;
+	set_hue(ph/100.0f);
+	set_saturation(ps/100.0f);
+	set_lightness(pl/100.0f);
+	set_alpha(1.0f);
 	std::size_t used=pos+12;
 	if (remain>=14) {
 		uint8_t aa=0;
 		if (!read_hex_u8(s,pos+12,aa)) return 0;
-		set_a(static_cast<int>(aa));
+		set_alpha(static_cast<int>(aa));
 		used=pos+14;
 	}
 	return used;
 }
 
 inline std::size_t hsva::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) h_=s_=v_=a_=0;
+	if (initialize) h=s=v=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'H','V')) {
-		rgba tmp;
-		std::size_t used=tmp.from_string(s,false,strict);
+		rgba temp;
+		std::size_t used=temp.from_string(s,initialize,strict);
 		if (!used) return 0;
-		*this=rgba_to_hsva(tmp);
+		*this=rgba_to_hsva(temp);
 		return used;
 	}
 	std::size_t remain=s.size()-pos;
@@ -1370,28 +1471,28 @@ inline std::size_t hsva::from_string(const std::string& s,bool initialize,bool s
 	if (!read_hex_u16(s,pos+0,ph)) return 0;
 	if (!read_hex_u16(s,pos+4,ps)) return 0;
 	if (!read_hex_u16(s,pos+8,pv)) return 0;
-	h_=std::clamp(ph/100.0f,0.0f,360.0f);
-	s_=std::clamp(ps/100.0f,0.0f,100.0f);
-	v_=std::clamp(pv/100.0f,0.0f,100.0f);
-	a_=1.0f;
+	set_hue(ph/100.0f);
+	set_saturation(ps/100.0f);
+	set_value(pv/100.0f);
+	set_alpha(1.0f);
 	std::size_t used=pos+12;
 	if (remain>=14) {
 		uint8_t aa=0;
 		if (!read_hex_u8(s,pos+12,aa)) return 0;
-		set_a(static_cast<int>(aa));
+		set_alpha(static_cast<int>(aa));
 		used=pos+14;
 	}
 	return used;
 }
 
 inline std::size_t cmyka::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) c_=m_=y_=k_=a_=0;
+	if (initialize) c=m=y=k=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'C','K')) {
-		rgba tmp;
-		std::size_t used=tmp.from_string(s,false,strict);
+		rgba temp;
+		std::size_t used=temp.from_string(s,initialize,strict);
 		if (!used) return 0;
-		*this=rgba_to_cmyka(tmp);
+		*this=rgba_to_cmyka(temp);
 		return used;
 	}
 	std::size_t remain=s.size()-pos;
@@ -1405,29 +1506,29 @@ inline std::size_t cmyka::from_string(const std::string& s,bool initialize,bool 
 	if (!read_hex_u16(s,pos+4,pm)) return 0;
 	if (!read_hex_u16(s,pos+8,py)) return 0;
 	if (!read_hex_u16(s,pos+12,pk)) return 0;
-	c_=std::clamp(pc/100.0f,0.0f,100.0f);
-	m_=std::clamp(pm/100.0f,0.0f,100.0f);
-	y_=std::clamp(py/100.0f,0.0f,100.0f);
-	k_=std::clamp(pk/100.0f,0.0f,100.0f);
-	a_=1.0f;
+	set_cyan(pc/100.0f);
+	set_magenta(pm/100.0f);
+	set_yellow(py/100.0f);
+	set_key(pk/100.0f);
+	set_alpha(1.0f);
 	std::size_t used=pos+16;
 	if (remain>=18) {
 		uint8_t aa=0;
 		if (!read_hex_u8(s,pos+16,aa)) return 0;
-		set_a(static_cast<int>(aa));
+		set_alpha(static_cast<int>(aa));
 		used=pos+18;
 	}
 	return used;
 }
 
 inline std::size_t yuva::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) y_=u_=v_=a_=0;
+	if (initialize) y=u=v=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'Y','U')) {
-		rgba tmp;
-		std::size_t used=tmp.from_string(s,false,strict);
+		rgba temp;
+		std::size_t used=temp.from_string(s,initialize,strict);
 		if (!used) return 0;
-		*this=rgba_to_yuva(tmp);
+		*this=rgba_to_yuva(temp);
 		return used;
 	}
 	std::size_t remain=s.size()-pos;
@@ -1440,30 +1541,30 @@ inline std::size_t yuva::from_string(const std::string& s,bool initialize,bool s
 	if (!read_hex_u16(s,pos+0,py)) return 0;
 	if (!read_hex_u16(s,pos+4,pu)) return 0;
 	if (!read_hex_u16(s,pos+8,pv)) return 0;
-	y_=std::clamp(py/65535.0f,0.0f,1.0f);
+	set_luma(py/65535.0f);
 	int16_t iu=static_cast<int16_t>(pu);
 	int16_t iv=static_cast<int16_t>(pv);
-	u_=std::clamp(iu/65535.0f,-0.5f,0.5f);
-	v_=std::clamp(iv/65535.0f,-0.5f,0.5f);
-	a_=1.0f;
+	set_cb(iu/65535.0f);
+	set_cr(iv/65535.0f);
+	set_alpha(1.0f);
 	std::size_t used=pos+12;
 	if (remain>=14) {
 		uint8_t aa=0;
 		if (!read_hex_u8(s,pos+12,aa)) return 0;
-		set_a(static_cast<int>(aa));
+		set_alpha(static_cast<int>(aa));
 		used=pos+14;
 	}
 	return used;
 }
 
 inline std::size_t xyza::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) x_=y_=z_=a_=0;
+	if (initialize) x=y=z=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'X','Z')) {
-		rgba tmp;
-		std::size_t used=tmp.from_string(s,false,strict);
+		rgba temp;
+		std::size_t used=temp.from_string(s,initialize,strict);
 		if (!used) return 0;
-		*this=rgba_to_xyza(tmp);
+		*this=rgba_to_xyza(temp);
 		return used;
 	}
 	std::size_t remain=s.size()-pos;
@@ -1476,28 +1577,28 @@ inline std::size_t xyza::from_string(const std::string& s,bool initialize,bool s
 	if (!read_hex_u16(s,pos+0,px)) return 0;
 	if (!read_hex_u16(s,pos+4,py)) return 0;
 	if (!read_hex_u16(s,pos+8,pz)) return 0;
-	x_=(px/65535.0f)*2.0f;
-	y_=(py/65535.0f)*2.0f;
-	z_=(pz/65535.0f)*2.0f;
-	a_=1.0f;
+	set_x((px/65535.0f)*2.0f);
+	set_y((py/65535.0f)*2.0f);
+	set_z((pz/65535.0f)*2.0f);
+	set_alpha(1.0f);
 	std::size_t used=pos+12;
 	if (remain>=14) {
 		uint8_t aa=0;
 		if (!read_hex_u8(s,pos+12,aa)) return 0;
-		set_a(static_cast<int>(aa));
+		set_alpha(static_cast<int>(aa));
 		used=pos+14;
 	}
 	return used;
 }
 
 inline std::size_t laba::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) l_=a_=b_=alpha_=0;
+	if (initialize) lp=arg=ayb=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'L','B')) {
-		rgba tmp;
-		std::size_t used=tmp.from_string(s,false,strict);
+		rgba temp;
+		std::size_t used=temp.from_string(s,initialize,strict);
 		if (!used) return 0;
-		*this=rgba_to_laba(tmp);
+		*this=rgba_to_laba(temp);
 		return used;
 	}
 	std::size_t remain=s.size()-pos;
@@ -1510,10 +1611,10 @@ inline std::size_t laba::from_string(const std::string& s,bool initialize,bool s
 	if (!read_hex_u16(s,pos+0,pl)) return 0;
 	if (!read_hex_u16(s,pos+4,pa)) return 0;
 	if (!read_hex_u16(s,pos+8,pb)) return 0;
-	l_=std::clamp(pl/100.0f,0.0f,100.0f);
-	a_=static_cast<int16_t>(pa)/100.0f;
-	b_=static_cast<int16_t>(pb)/100.0f;
-	alpha_=1.0f;
+	set_lightness(pl/100.0f);
+	set_a(static_cast<int16_t>(pa)/100.0f);
+	set_b(static_cast<int16_t>(pb)/100.0f);
+	set_alpha(1.0f);
 	std::size_t used=pos+12;
 	if (remain>=14) {
 		uint8_t aa=0;
@@ -1525,13 +1626,13 @@ inline std::size_t laba::from_string(const std::string& s,bool initialize,bool s
 }
 
 inline std::size_t lcha::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) l_=c_=h_=alpha_=0;
+	if (initialize) l=c=h=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'L','C'))  {
-		rgba tmp;
-		std::size_t used=tmp.from_string(s,false,strict);
+		rgba temp;
+		std::size_t used=temp.from_string(s,initialize,strict);
 		if (!used) return 0;
-		*this=rgba_to_lcha(tmp);
+		*this=rgba_to_lcha(temp);
 		return used;
 	}
 	std::size_t remain=s.size()-pos;
@@ -1544,10 +1645,10 @@ inline std::size_t lcha::from_string(const std::string& s,bool initialize,bool s
 	if (!read_hex_u16(s,pos+0,pl)) return 0;
 	if (!read_hex_u16(s,pos+4,pc)) return 0;
 	if (!read_hex_u16(s,pos+8,ph)) return 0;
-	l_=std::clamp(pl/100.0f,0.0f,100.0f);
-	c_=std::clamp(pc/100.0f,0.0f,200.0f);
-	h_=std::clamp(ph/100.0f,0.0f,360.0f);
-	alpha_=1.0f;
+	set_lightness(pl/100.0f);
+	set_chroma(pc/100.0f);
+	set_hue(ph/100.0f);
+	set_alpha(1.0f);
 	std::size_t used=pos+12;
 	if (remain>=14) {
 		uint8_t aa=0;
@@ -1559,13 +1660,13 @@ inline std::size_t lcha::from_string(const std::string& s,bool initialize,bool s
 }
 
 inline std::size_t oklaba::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) l_=a_=b_=alpha_=0;
+	if (initialize) lp=arg=ayb=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'O','B'))  {
-		rgba tmp;
-		std::size_t used=tmp.from_string(s,false,strict);
+		rgba temp;
+		std::size_t used=temp.from_string(s,false,strict);
 		if (!used) return 0;
-		*this=rgba_to_oklaba(tmp);
+		*this=rgba_to_oklaba(temp);
 		return used;
 	}
 	std::size_t remain=s.size()-pos;
@@ -1576,10 +1677,10 @@ inline std::size_t oklaba::from_string(const std::string& s,bool initialize,bool
 	if (!read_hex_u16(s,pos+0,pl)) return 0;
 	if (!read_hex_u16(s,pos+4,pa)) return 0;
 	if (!read_hex_u16(s,pos+8,pb)) return 0;
-	l_=pl/65535.0f;
-	a_=std::clamp(static_cast<int16_t>(pa)/65535.0f,-0.5f,0.5f);
-	b_=std::clamp(static_cast<int16_t>(pb)/65535.0f,-0.5f,0.5f);
-	alpha_=1.0f;
+	set_lightness(pl/65535.0f);
+	set_a(static_cast<int16_t>(pa)/65535.0f);
+	set_b(static_cast<int16_t>(pb)/65535.0f);
+	set_alpha(1.0f);
 	std::size_t used=pos+12;
 	if (remain>=14) {
 		uint8_t aa=0;
@@ -1591,13 +1692,13 @@ inline std::size_t oklaba::from_string(const std::string& s,bool initialize,bool
 }
 
 inline std::size_t oklcha::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) l_=c_=h_=alpha_=0;
+	if (initialize) l=c=h=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'O','C'))  {
-		rgba tmp;
-		std::size_t used=tmp.from_string(s,false,strict);
+		rgba temp;
+		std::size_t used=temp.from_string(s,false,strict);
 		if (!used) return 0;
-		*this=rgba_to_oklcha(tmp);
+		*this=rgba_to_oklcha(temp);
 		return used;
 	}
 	std::size_t remain=s.size()-pos;
@@ -1610,10 +1711,10 @@ inline std::size_t oklcha::from_string(const std::string& s,bool initialize,bool
 	if (!read_hex_u16(s,pos+0,pl)) return 0;
 	if (!read_hex_u16(s,pos+4,pc)) return 0;
 	if (!read_hex_u16(s,pos+8,ph)) return 0;
-	l_=pl/65535.0f;
-	c_=std::clamp(pc/65535.0f,0.0f,0.5f);
-	h_=std::clamp(ph/100.0f,0.0f,360.0f);
-	alpha_=1.0f;
+	set_lightness(pl/65535.0f);
+	set_chroma(pc/65535.0f);
+	set_hue(ph/100.0f);
+	set_alpha(1.0f);
 	std::size_t used=pos+12;
 	if (remain>=14) {
 		uint8_t aa=0;
@@ -1625,13 +1726,13 @@ inline std::size_t oklcha::from_string(const std::string& s,bool initialize,bool
 }
 
 inline std::size_t hwba::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) h_=w_=b_=a_=0;
+	if (initialize) h=w=b=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'H','W')) {
-		rgba tmp;
-		std::size_t used=tmp.from_string(s,false,strict);
+		rgba temp;
+		std::size_t used=temp.from_string(s,false,strict);
 		if (!used) return 0;
-		*this=rgba_to_hwba(tmp);
+		*this=rgba_to_hwba(temp);
 		return used;
 	}
 	std::size_t remain=s.size()-pos;
@@ -1644,41 +1745,39 @@ inline std::size_t hwba::from_string(const std::string& s,bool initialize,bool s
 	if (!read_hex_u16(s,pos+0,ph)) return 0;
 	if (!read_hex_u16(s,pos+4,pw)) return 0;
 	if (!read_hex_u16(s,pos+8,pb)) return 0;
-	h_=std::clamp(ph/100.0f,0.0f,360.0f);
-	w_=std::clamp(pw/100.0f,0.0f,100.0f);
-	b_=std::clamp(pb/100.0f,0.0f,100.0f);
-	a_=1.0f;
+	set_hue(ph/100.0f);
+	set_whiteness(pw/100.0f);
+	set_blackness(pb/100.0f);
+	set_alpha(1.0f);
 	std::size_t used=pos+12;
 	if (remain>=14) {
 		uint8_t aa=0;
 		if (!read_hex_u8(s,pos+12,aa)) return 0;
-		set_a(static_cast<int>(aa));
+		set_alpha(static_cast<int>(aa));
 		used=pos+14;
 	}
 	return used;
 }
 
-inline rgba with_alpha(rgba c,float a) {
-	c.set_a(a);
-	return c;
+inline rgba with_alpha(rgba color,float a) {
+	color.set_alpha(a);
+	return color;
 }
 
-inline rgba invert_rgb(rgba c) {
-	return rgba(255-clamp_u8(c.r_),255-clamp_u8(c.g_),255-clamp_u8(c.b_),std::clamp(c.a_,0.0f,1.0f));
+inline rgba invert_rgb(rgba color) {
+	return rgba(255-clamp_u8(c.red()),255-clamp_u8(color.green()),255-clamp_u8(color.blue()),color.alpha());
 }
 
-inline rgba adjust_brightness(rgba c,float amount) {
-	hsva h=rgba_to_hsva(c);
-	h.v_=std::clamp(h.v_+amount*100.0f,0.0f,100.0f);
-	h.a_=c.a_;
+inline rgba adjust_brightness(rgba color,float amount) {
+	hsva h=rgba_to_hsva(color);
+	h.set_value(h.value()+amount*100.0f);
 	return hsva_to_rgba(h);
 }
 
-inline rgba adjust_saturation(rgba c,float factor) {
+inline rgba adjust_saturation(rgba color,float factor) {
 	factor=std::max(0.0f,factor);
-	hsla h=rgba_to_hsla(c);
-	h.s_=std::clamp(h.s_*factor,0.0f,100.0f);
-	h.a_=c.a_;
+	hsla h=rgba_to_hsla(color);
+	h.set_saturation(h.saturation()*factor);
 	return hsla_to_rgba(h);
 }
 
@@ -1691,76 +1790,76 @@ inline rgba rgba_from_string(const std::string& s,bool strict=true,bool* success
 	}
 	std::size_t pos=0;
 	if (parse_packed_prefix(s,pos,'H','S')) {
-		hsla c;
-		if (c.from_string(s,true,strict)) {
+		hsla color;
+		if (color.from_string(s,true,strict)) {
 			if (success) *success=true;
-			return hsla_to_rgba(c);
+			return hsla_to_rgba(color);
 		}
 	}
 	if (parse_packed_prefix(s,pos,'H','V')) {
-		hsva c;
-		if (c.from_string(s,true,strict)) {
+		hsva color;
+		if (color.from_string(s,true,strict)) {
 			if (success) *success=true;
-			return hsva_to_rgba(c);
+			return hsva_to_rgba(color);
 		}
 	}
 	if (parse_packed_prefix(s,pos,'C','K')) {
-		cmyka c;
-		if (c.from_string(s,true,strict)) {
+		cmyka color;
+		if (color.from_string(s,true,strict)) {
 			if (success) *success=true;
-			return cmyka_to_rgba(c);
+			return cmyka_to_rgba(color);
 		}
 	}
 	if (parse_packed_prefix(s,pos,'Y','U')) {
-		yuva c;
-		if (c.from_string(s,true,strict)) {
+		yuva color;
+		if (color.from_string(s,true,strict)) {
 			if (success) *success=true;
-			return yuva_to_rgba(c);
+			return yuva_to_rgba(color);
 		}
 	}
 	if (parse_packed_prefix(s,pos,'X','Z')) {
-		xyza c;
-		if (c.from_string(s,true,strict)) {
+		xyza color;
+		if (color.from_string(s,true,strict)) {
 			if (success) *success=true;
-			return xyza_to_rgba(c,rgb_profile());
+			return xyza_to_rgba(color,rgb_profile());
 		}
 	}
 	if (parse_packed_prefix(s,pos,'L','B')) {
-		laba c;
-		if (c.from_string(s,true,strict)) {
+		laba color;
+		if (color.from_string(s,true,strict)) {
 			if (success) *success=true;
-			return laba_to_rgba(c,rgb_profile(),wp_d65());
+			return laba_to_rgba(color,rgb_profile(),wp_d65());
 		}
 	}
 	if (parse_packed_prefix(s,pos,'L','C')) {
-		lcha c;
-		if (c.from_string(s,true,strict)) {
+		lcha color;
+		if (color.from_string(s,true,strict)) {
 			if (success) *success=true;
-			return lcha_to_rgba(c,rgb_profile(),wp_d65());
+			return lcha_to_rgba(color,rgb_profile(),wp_d65());
 		}
 	}
 	if (parse_packed_prefix(s,pos,'O','B')) {
-		oklaba c;
-		if (c.from_string(s,true,strict)) {
+		oklaba color;
+		if (color.from_string(s,true,strict)) {
 			if (success) *success=true;
-			return oklaba_to_rgba(c);
+			return oklaba_to_rgba(color);
 		}
 	}
 	if (parse_packed_prefix(s,pos,'O','C')) {
-		oklcha c;
-		if (c.from_string(s,true,strict)) {
+		oklcha color;
+		if (color.from_string(s,true,strict)) {
 			if (success) *success=true;
-			return oklcha_to_rgba(c);
+			return oklcha_to_rgba(color);
 		}
 	}
 	if (parse_packed_prefix(s,pos,'H','W')) {
-		hwba c;
-		if (c.from_string(s,true,strict)) {
+		hwba color;
+		if (color.from_string(s,true,strict)) {
 			if (success) *success=true;
-			return hwba_to_rgba(c);
+			return hwba_to_rgba(color);
 		}
 	}
-	return rgba(0,0,0,0.0f);
+	return rgba();
 }
 	
 }
