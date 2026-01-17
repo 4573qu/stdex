@@ -46,7 +46,7 @@ public:
 };
 
 template <typename _Func>
-lazy(_Func) -> lazy<_Func>;
+lazy(_Func)->lazy<_Func>;
 
 template <typename _Func>
 auto make_lazy(_Func&& func) {

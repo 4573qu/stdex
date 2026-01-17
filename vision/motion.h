@@ -1,5 +1,5 @@
-//Last Modified At 2026/01/06
-//@Version 1.0.0.0
+//Last Modified At 2026/01/17
+//@Version 1.0.1.0
 #ifndef _STDEX_VISION_MOTION_H_
 #define _STDEX_VISION_MOTION_H_ 1
 
@@ -16,21 +16,21 @@ namespace stdex {
 namespace vision {
 
 struct motion_scalar {
-	double position_{0.0};
-	double velocity_{0.0};
-	double acceleration_{0.0};
+	double position{0.0};
+	double velocity{0.0};
+	double acceleration{0.0};
 };
 
 struct motion_state {
-	std::vector<motion_scalar> scalars_;
-	double time_{0.0};
+	std::vector<motion_scalar> scalars;
+	double time{0.0};
 
-	motion_state() = default;
-	explicit motion_state(std::size_t channels) : scalars_(channels,{0.0,0.0,0.0}) { }
+	motion_state()=default;
+	explicit motion_state(std::size_t channels) : scalars(channels,{0.0,0.0,0.0}) { }
 	static motion_state single(motion_scalar s,double time=0.0) {
 		motion_state result(1);
-		result.scalars_[0]=s;
-		result.time_=time;
+		result.scalars[0]=s;
+		result.time=time;
 		return result;
 	}
 };
@@ -78,8 +78,8 @@ private:
 	time_behavior behavior_{TB_FREE};
 
 	static motion_state ensure(motion_state s,std::size_t ch,double mapped_t) {
-		if (s.scalars_.size()!=ch) s.scalars_.resize(ch,0.0);
-		s.time_=mapped_t;
+		if (s.scalars.size()!=ch) s.scalars.resize(ch,{0.0,0.0,0.0});
+		s.time=mapped_t;
 		return s;
 	}
 
@@ -92,8 +92,10 @@ public:
 	bool empty() const noexcept { return !func_; }
 
 	std::size_t channels() const noexcept { return channels_; }
-	double& duration() const noexcept { return duration_; }
-	time_behavior& behavior() const noexcept { return behavior_; }
+	double& duration() noexcept { return duration_; }
+	const double& duration() const noexcept { return duration_; }
+	time_behavior& behavior() noexcept { return behavior_; }
+	time_behavior behavior() const noexcept { return behavior_; }
 
 	motion with_duration(double d) const {
 		motion r=*this;
@@ -137,9 +139,9 @@ public:
 		if (channel>=channels_) throw std::out_of_range("channel out of range");
 		std::vector<double> result;
 		result.reserve(n+1);
-		if (n==0) return {eval(t0).position_[channel]};
+		if (n==0) return {eval(t0).scalars[channel].position};
 		const double dt=(t1-t0)/static_cast<double>(n);
-		for (std::size_t i=0;i<=n;i++) result.push_back(eval(t0+dt*static_cast<double>(i))).position_[channel];
+		for (std::size_t i=0;i<=n;i++) result.push_back(eval(t0+dt*static_cast<double>(i)).scalars[channel].position);
 		return result;
 	}
 	motion shift(double dt) const {
@@ -155,30 +157,40 @@ public:
 		return motion([base,k](double t)->motion_state{
 			motion_state s=base.eval(k*t);
 			for (std::size_t i=0;i<s.scalars.size();i++) {
-				s.scalars_[i].velocity_*=k;
-				s.scalars_[i].acceleration_*=k*k;
+				s.scalars[i].velocity*=k;
+				s.scalars[i].acceleration*=k*k;
 			}
 			return s;
 		},channels_,new_duration,behavior_);
 	}
-	motion value_offset(const std::vector<double>& offset) const {
-		if (offset.size()!=channels_) throw std::invalid_argument("value_offset size mismatch");
+	motion value_offset(const double& offset) const {
+		std::vector<double> offsets(channels_);
+		for (int i=0;i<channels_;i++) offsets[i]=offset;
+		return value_offset(offsets);
+	}
+	motion value_offset(const std::vector<double>& offsets) const {
+		if (offsets.size()!=channels_) throw std::invalid_argument("value_offset size mismatch");
 		motion base=*this;
-		return motion([base,offset](double t)->motion_state{
+		return motion([base,offsets](double t)->motion_state{
 			motion_state s=base.eval(t);
-			for (std::size_t i=0;i<s.scalars_.size();i++) s.scalars_[i].position_+=offset[i];
+			for (std::size_t i=0;i<s.scalars.size();i++) s.scalars[i].position+=offsets[i];
 			return s;
 		},channels_,duration_,behavior_);
 	}
-	motion value_scale(const std::vector<double>& scale) const {
-		if (scale.size()!=channels_) throw std::invalid_argument("value_scale size mismatch");
+	motion value_scale(const double& scale) const {
+		std::vector<double> scales(channels_);
+		for (int i=0;i<channels_;i++) scales[i]=scale;
+		return value_offset(scales);
+	}
+	motion value_scale(const std::vector<double>& scales) const {
+		if (scales.size()!=channels_) throw std::invalid_argument("value_scale size mismatch");
 		motion base=*this;
-		return motion([base,scale](double t)->motion_state{
+		return motion([base,scales](double t)->motion_state{
 			motion_state s=base.eval(t);
-			for (std::size_t i=0;i<s.scalars_.size();i++) {
-				s.scalars_[i].position_*=scale[i];
-				s.scalars_[i].velocity_*=scale[i];
-				s.scalars_[i].acceleration_*=scale[i];
+			for (std::size_t i=0;i<s.scalars.size();i++) {
+				s.scalars[i].position*=scales[i];
+				s.scalars[i].velocity*=scales[i];
+				s.scalars[i].acceleration*=scales[i];
 			}
 			return s;
 		},channels_,duration_,behavior_);
@@ -190,10 +202,10 @@ public:
 		return motion([ma,mb](double t)->motion_state{
 			motion_state sa=ma.eval(t);
 			motion_state sb=mb.eval(t);
-			for (std::size_t i=0;i<sa.scalars_.size();i++) {
-				sa.scalars_[i].position_+=sb.scalars_[i].position_;
-				sa.scalars_[i].velocity_+=sb.scalars_[i].velocity_;
-				sa.scalars_[i].acceleration_+=sb.scalars_[i].acceleration_;
+			for (std::size_t i=0;i<sa.scalars.size();i++) {
+				sa.scalars[i].position+=sb.scalars[i].position;
+				sa.scalars[i].velocity+=sb.scalars[i].velocity;
+				sa.scalars[i].acceleration+=sb.scalars[i].acceleration;
 			}
 			return sa;
 		},channels_,duration_,behavior_);
@@ -204,18 +216,18 @@ public:
 		if (t1<t0) std::swap(t0,t1);
 		for (double t=t0;t<=t1+step*0.5;t+=step) {
 			motion_state s=eval(t);
-			for (auto it:s.scalars_) {
-				if (!std::isfinite(it.position_)) return false;
-				if (!std::isfinite(it.velocity_)) return false;
-				if (!std::isfinite(it.acceleration_)) return false;
+			for (auto it:s.scalars) {
+				if (!std::isfinite(it.position)) return false;
+				if (!std::isfinite(it.velocity)) return false;
+				if (!std::isfinite(it.acceleration)) return false;
 			}
 		}
 		return true;
 	}
 	struct continuity_issue {
-		double t_;
-		std::vector<double> left_;
-		std::vector<double> right_;
+		double t;
+		std::vector<double> left;
+		std::vector<double> right;
 	};
 	std::vector<continuity_issue> check_continuity(const std::vector<double>& times,double eps) const {
 		if (eps<0.0) throw std::invalid_argument("eps cannot be negative");
@@ -226,17 +238,17 @@ public:
 			motion_state r=eval(it+h);
 			bool bad=false;
 			for (std::size_t i=0;i<channels_;i++) {
-				if (fabs(l.scalars_[i].position_-r.scalars_[i].position_)>eps) {
+				if (fabs(l.scalars[i].position-r.scalars[i].position)>eps) {
 					bad=true;
 					break;
 				}
 			}
 			if (bad) {
 				continuity_issue issue;
-				issue.t_=it;
+				issue.t=it;
 				for (std::size_t i=0;i<channels_;i++) {
-					issue.left_.push_back(l.scalars_[i].position_);
-					issue.right_.push_back(r.scalars_[i].position_);
+					issue.left.push_back(l.scalars[i].position);
+					issue.right.push_back(r.scalars[i].position);
 				}
 				issues.push_back(issue);
 			}
@@ -272,20 +284,20 @@ public:
 			motion_state s(channels);
 			for (std::size_t i=0;i<channels;i++) {
 				const motion_scalar k=func(i,t);
-				s.scalars_[i]=k;
+				s.scalars[i]=k;
 			}
 			return s;
 		},channels,duration,tb);
 	}
 
 	static motion pack_channels(const std::vector<motion>& channels,double duration=0.0,time_behavior tb=TB_FREE) {
-		if (channels.empty()) throw invalid_argument("channels cannot be empty");
+		if (channels.empty()) throw std::invalid_argument("channels cannot be empty");
 		for (const auto& it:channels) {
-			if (m.channels()!=1) throw std::invalid_argument("each element must be 1D motion");
+			if (it.channels()!=1) throw std::invalid_argument("each element must be 1D motion");
 		}
 		const std::size_t n=channels.size();
 		double curr_duration=duration;
-		if (!(curr_duration>0.0)) {
+		if (!(curr_duration>=0.0)) {
 			double mx=0.0;
 			bool any=false;
 			for (const auto& it:channels) {
@@ -296,23 +308,23 @@ public:
 			}
 			curr_duration=any?mx:0.0;
 		}
-		return motion([chans,n](double t)->motion_state{
-			motion_state s(ch);
+		return motion([channels,n](double t)->motion_state{
+			motion_state s(n);
 			for (std::size_t i=0;i<n;i++) {
 				motion_state si=channels[i].eval(t);
-				s.scalars_[i]=si.scalars_[0];
+				s.scalars[i]=si.scalars[0];
 			}
 			return s;
 		},n,curr_duration,tb);
 	}
 	static motion set_channel(const motion& base,std::size_t index,const motion& channel) {
-		if (base.channels()<=0) throw std::invalid_argument"base invalid");
+		if (base.channels()<=0) throw std::invalid_argument("invalid base");
 		if (channel.channels()!=1) throw std::invalid_argument("source must be 1D");
 		if (index>=base.channels()) throw std::out_of_range("index out of range");
 		return motion([base,channel,index](double t)->motion_state{
 			motion_state s=base.eval(t);
 			motion_state c=channel.eval(t);
-			s.scalars_[index]=c.scalars_[0];
+			s.scalars[index]=c.scalars[0];
 			return s;
 		},base.channels(),base.duration(),base.behavior());
 	}
@@ -321,60 +333,66 @@ public:
 		*this=set_channel(*this,index,channel);
 	}
 
-	class piecewise_builder {
-		struct segment {
-			double start_;
-			motion m_;
-		};
-		std::vector<segment> segs_;
-		double duration_{0.0};
-		time_behavior behavior_{TB_FREE};
-
-	public:
-		piecewise_builder()=default;
-
-		piecewise_builder& with_duration(double d) noexcept {
-			duration_=d;
-			return *this;
-		}
-		piecewise_builder& with_time_behavior(time_behavior tb) noexcept {
-			behavior_=tb;
-			return *this;
-		}
-		piecewise_builder& add(const motion& m,double start_time) {
-			segs_.push_back(segment{start_time,m});
-			return *this;
-		}
-		motion build(bool require_sorted=true) const {
-			if (segs_.empty()) return motion();
-			auto segs=segs_;
-			if (require_sorted) {
-				for (std::size_t i=1;i<segs.size();i++) {
-					if (segs[i].start_<segs[i-1].start_) throw std::invalid_argument("segments must be sorted");
-				}
-			} else std::sort(segs.begin(),segs.end(),[](const segment& a,const segment& b){ return a.start_<b.start_; });
-			std::size_t ch=segs[0].m.channels();
-			for (const auto& it:segs) {
-				if (it.m_.channels()!=ch) throw std::invalid_argument("channel mismatch");
-			}
-			double curr_duration=duration_;
-			if (!(curr_duration>0.0)) {
-				const auto& last=segs.back();
-				if (last.m_.duration()>0.0) curr_duration_=last.start_+last.m_.duration();
-			}
-			return motion([segs](double t)->motion_state{
-				std::size_t index=0;
-				for (std::size_t i=1;i<segs.size();i++) {
-					if (segs[i].start<=t) index=i;
-					else break;
-				}
-				const auto& it=segs[index];
-				return it.m_.eval(t-it.start_);
-			},ch,curr_duration,behavior_);
-		}
-	};
-	static piecewise_builder piecewise() { return piecewise_builder(); }
+	class piecewise_builder;
+	static piecewise_builder piecewise();
 };
+
+class motion::piecewise_builder {
+	struct segment {
+		double start_;
+		motion m_;
+	};
+	std::vector<segment> segments_;
+	double duration_{0.0};
+	time_behavior behavior_{TB_FREE};
+
+public:
+	piecewise_builder()=default;
+
+	piecewise_builder& with_duration(double d) noexcept {
+		duration_=d;
+		return *this;
+	}
+	piecewise_builder& with_time_behavior(time_behavior tb) noexcept {
+		behavior_=tb;
+		return *this;
+	}
+	piecewise_builder& add(const motion& m,double start_time) {
+		segments_.push_back(segment{start_time,m});
+		return *this;
+	}
+	motion build(bool require_sorted=true) const {
+		if (segments_.empty()) return motion();
+		auto segments=segments_;
+		if (require_sorted) {
+			for (std::size_t i=1;i<segments.size();i++) {
+				if (segments[i].start_<segments[i-1].start_) throw std::invalid_argument("segments must be sorted");
+			}
+		} else std::sort(segments.begin(),segments.end(),[](const segment& a,const segment& b){ return a.start_<b.start_; });
+		std::size_t ch=segments[0].m_.channels();
+		for (const auto& it:segments) {
+			if (it.m_.channels()!=ch) throw std::invalid_argument("channel mismatch");
+		}
+		double curr_duration=duration_;
+		if (!(curr_duration>0.0)) {
+			const auto& last=segments.back();
+			if (last.m_.duration()>0.0) curr_duration=last.start_+last.m_.duration();
+		}
+		return motion([segments](double t)->motion_state{
+			std::size_t index=0;
+			for (std::size_t i=1;i<segments.size();i++) {
+				if (segments[i].start_<=t) index=i;
+				else break;
+			}
+			const auto& it=segments[index];
+			return it.m_.eval(t-it.start_);
+		},ch,curr_duration,behavior_);
+	}
+};
+
+inline motion::piecewise_builder motion::piecewise() { 
+	return piecewise_builder(); 
+}
 
 }
 

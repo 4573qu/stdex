@@ -50,13 +50,12 @@ constexpr const char* TU_to_string(TIME_UNIT unit) {
 }
 
 class perf_timer {
-private:
 	std::chrono::time_point<std::chrono::high_resolution_clock> start_;
 	std::chrono::time_point<std::chrono::high_resolution_clock> end_;
 	bool running_=false;
 
 private:
-    template <TIME_UNIT _Unit>
+	template <TIME_UNIT _Unit>
 	static double get_duration(std::chrono::time_point<std::chrono::high_resolution_clock> start,std::chrono::time_point<std::chrono::high_resolution_clock> end) {
 		if constexpr (_Unit==TU_NANOSECONDS) {
 			return std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
