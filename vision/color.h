@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
-#include <cstdint>
+#include <cstddef>
 #include <cstdlib>
 #include <iomanip>
 #include <limits>

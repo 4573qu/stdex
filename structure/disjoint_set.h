@@ -1,5 +1,5 @@
-//Last Modified At 2025/11/06
-//@Version 1.0.0.0
+//Last Modified At 2026/01/27
+//@Version 1.1.0.0
 #ifndef _STDEX_STRUCTURE_DISJOINT_SET_H_
 #define _STDEX_STRUCTURE_DISJOINT_SET_H_ 1
 
@@ -19,9 +19,9 @@ class disjoint_set {
 public:
 	using value_type=_Tp;
 	struct node {
-		_Tp value_;
-		_Tp parent_;
-		unsigned int rank_;
+		_Tp value;
+		_Tp parent;
+		unsigned int rank;
 	};
     	
 private:
@@ -45,7 +45,7 @@ public:
 		if (this!=&other) {
 			delete[] nodes_;
 			nodes_=new node[other.capacity_];
-			for (std::size_t i=0;i<other.size_;i++) nodes_[i]={other.nodes_[i].value_,other.nodes_[i].parent_,other.nodes_[i].rank_};
+			for (std::size_t i=0;i<other.size_;i++) nodes_[i]={other.nodes_[i].value,other.nodes_[i].parent,other.nodes_[i].rank};
 		}
 	}
 	disjoint_set(disjoint_set&& rhs) {
@@ -60,10 +60,10 @@ public:
 		}
 	}
 	disjoint_set& operator =(const disjoint_set& other) {
-		if (this != &other) {
+		if (this!=&other) {
 			delete[] nodes_;
 			nodes_=new node[other.capacity_];
-			for (std::size_t i=0;i<other.size_;i++) nodes_[i]={other.nodes_[i].value_,other.nodes_[i].parent_,other.nodes_[i].rank_};
+			for (std::size_t i=0;i<other.size_;i++) nodes_[i]={other.nodes_[i].value,other.nodes_[i].parent,other.nodes_[i].rank};
 			capacity_=other.capacity_;
 			size_=other.size_;
 		}
@@ -87,8 +87,8 @@ public:
 		nodes_[size_++]={value,value,0};
 	}
 	_Tp find(const _Tp& element) {
-		if (nodes_[element].parent_==element) return element;
-		return nodes_[element].parent_=find(nodes_[element].parent_);
+		if (nodes_[element].parent==element) return element;
+		return nodes_[element].parent=find(nodes_[element].parent);
 	}
 	void clear() {
 		delete[] nodes_;
@@ -108,11 +108,11 @@ public:
 		_Tp root1=find(element1);
 		_Tp root2=find(element2);
 		if (root1==root2) return;
-		if (nodes_[root1].rank_<nodes_[root2].rank_) nodes_[root1].parent_=root2;
-		else if (nodes_[root1].rank_>nodes_[root2].rank_) nodes_[root2].parent_=root1;
+		if (nodes_[root1].rank<nodes_[root2].rank) nodes_[root1].parent=root2;
+		else if (nodes_[root1].rank>nodes_[root2].rank) nodes_[root2].parent=root1;
 		else {
-			nodes_[root2].parent_=root1;
-			nodes_[root1].rank_++;
+			nodes_[root2].parent=root1;
+			nodes_[root1].rank++;
 		}
 	}
 	std::vector<_Tp> get(const _Tp& element) {
@@ -126,7 +126,7 @@ public:
 	std::vector<_Tp> roots() {
 		std::vector<_Tp> result;
 			for (std::size_t i=0;i<size_;i++) {
-				if (nodes_[i].parent_==i) result.push_back(i);
+				if (nodes_[i].parent==i) result.push_back(i);
 		}
 		return result;
 	}
@@ -143,12 +143,12 @@ public:
 	}
 	bool contains(const _Tp& element) {
 		for (std::size_t i=0;i<size_;i++) {
-			if (nodes_[i].value_==element) return true;
+			if (nodes_[i].value==element) return true;
 		}
 		return false;
 	}
 	unsigned int depth(const _Tp& element) {
-		return nodes_[find(element)].rank_;
+		return nodes_[find(element)].rank;
 	}
 	bool is_same(const _Tp& element1,const _Tp& element2) {
 		return find(element1)==find(element2);

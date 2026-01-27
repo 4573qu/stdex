@@ -14,7 +14,7 @@
 #define _STDEX_CPP20_VERSION 202002L
 #endif
 
-#if __cplusplus >= _STDEX_CPP20_VERSION
+#if __cplusplus>=_STDEX_CPP20_VERSION
 #include <bits>
 #endif
 
