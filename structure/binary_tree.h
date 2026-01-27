@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/15
-//@Version 1.0.0.0
+//Last Modified At 2026/01/27
+//@Version 1.1.0.0
 #ifndef _STDEX_STRUCTURE_BINARY_TREE_H_
 #define _STDEX_STRUCTURE_BINARY_TREE_H_ 1
 
@@ -36,7 +36,7 @@ protected:
 		return typeid(*this)==typeid(std::remove_cv_t<binary_tree<_Tp,_Key,_Compare,_Allocator>>);
 		//return dynamic_cast<const binary_tree<_Tp,_Key,_Compare,_Allocator>*>(this) != nullptr && typeid(*this)==typeid(binary_tree<_Tp,_Key,_Compare,_Allocator>);
 		//return typeid(std::remove_cv_t<std::remove_reference_t<decltype(*this)>>)==typeid(binary_tree<_Tp,_Key,_Compare,_Allocator>);
-        //return std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*this)>>,binary_tree<_Tp,_Key,_Compare,_Allocator>>;
+		//return std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*this)>>,binary_tree<_Tp,_Key,_Compare,_Allocator>>;
 		//return std::is_same_v<std::decay_t<decltype(*this)>,binary_tree>;
 	}
 	struct binary_tree_node {
@@ -46,6 +46,7 @@ protected:
 		binary_tree_node* parent_=nullptr;
 		template <typename... _Args>
 		binary_tree_node(_Args&&... args) : data_(std::forward<_Args>(args)...) { }
+		virtual ~binary_tree_node()=default;
 		virtual const key_type& key() const noexcept { return data_.first; }
 		_Tp& value() noexcept { return data_.second; }
 		const _Tp& value() const noexcept { return data_.second; }
@@ -63,7 +64,14 @@ protected:
 			sync_node(this,result,parent);
 			return result;
 		}
+		virtual binary_tree_node* successor() noexcept {
+			return binary_tree::successor(this);
+		}
+		virtual binary_tree_node* predecessor() noexcept {
+			return binary_tree::predecessor(this);
+		}
 	};
+	friend struct binary_tree_node;
 	binary_tree_node* root_=nullptr;
 	allocator_type alloc_;
 	key_compare comp_;
@@ -75,14 +83,14 @@ protected:
 	binary_tree_node* create_node(_Args&&... args) {
 		return new binary_tree_node(std::forward<_Args>(args)...);
 	}
-	void destroy_node(binary_tree_node* node) noexcept {
+	virtual void destroy_node(binary_tree_node* node) noexcept {
 		if (node) delete node;
 	}
-	binary_tree_node* copy_tree(binary_tree_node* node,binary_tree_node* parent=nullptr) {
+	virtual binary_tree_node* copy_tree(binary_tree_node* node,binary_tree_node* parent=nullptr) {
 		if (!node) return nullptr;
 		return node->clone(parent);
 	}
-	void destroy_tree(binary_tree_node* node) noexcept {
+	virtual void destroy_tree(binary_tree_node* node) noexcept {
 		if (node) {
 			destroy_tree(node->left_);
 			destroy_tree(node->right_);
@@ -213,7 +221,7 @@ public:
 		reference operator *() const { return current_->data_; }
 		pointer operator ->() const { return &current_->data_; }
 		iterator& operator ++() {
-			current_=successor(current_);
+			current_=current_->successor();
 			return *this;
 		}
 		iterator operator ++(int) {
@@ -222,7 +230,7 @@ public:
 			return temp;
 		}
 		iterator& operator --() {
-			current_=predecessor(current_);
+			current_=current_->predecessor();
 			return *this;
 		}
 		iterator operator --(int) {
@@ -274,9 +282,9 @@ public:
 		return *this;
 	}
 
-	iterator begin() noexcept { return iterator(min_node(root_)); }
-	const_iterator begin() const noexcept { return const_iterator(min_node(root_)); }
-	const_iterator cbegin() const noexcept { return const_iterator(min_node(root_)); }
+	virtual iterator begin() noexcept { return iterator(min_node(root_)); }
+	virtual const_iterator begin() const noexcept { return const_iterator(min_node(root_)); }
+	virtual const_iterator cbegin() const noexcept { return const_iterator(min_node(root_)); }
 	
 	iterator end() noexcept { return iterator(nullptr); }
 	const_iterator end() const noexcept { return const_iterator(nullptr); }
@@ -340,14 +348,19 @@ public:
 		}
 		return {end(),false};
 	}
-	virtual size_type erase(const key_type& key) {
+	virtual iterator erase(const key_type& key) {
 		for (auto it=begin();it!=end();it++) {
-			if (!comp_(it->first, key) && !comp_(key, it->first)) {
-				erase_node(it.node());
-				return 1;
+			if (!comp_(it->first,key) && !comp_(key,it->first)) {
+				binary_tree_node* node=it.node();
+				binary_tree_node* next=successor(node);
+				erase_node(node);
+				return iterator(next);
 			}
 		}
-		return 0;
+		return end();
+	}
+	virtual size_type erase_old(const key_type& key) {
+		return erase(key)!=end()?1:0;
 	}
 	virtual size_type erase_left(binary_tree_node* node) {
 		if (!is_exact_binary_tree()) throw std::runtime_error("Invalid use of erase_left in non-binary_tree!");

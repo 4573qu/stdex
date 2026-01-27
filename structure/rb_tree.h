@@ -1,5 +1,5 @@
 //Last Modified At 2025/10/15
-//@Version 1.0.0.0
+//@Version 1.1.0.0
 #ifndef _STDEX_STRUCTURE_RB_TREE_H_
 #define _STDEX_STRUCTURE_RB_TREE_H_ 1
 
@@ -28,20 +28,45 @@ protected:
 	};
 	struct rb_node : public binary_tree_node {
 		rb_tree_node_color color_=RBTNC_RED;
+		rb_node* nil_=nullptr;
+		rb_tree* tree_=nullptr;
 		template <typename... _Args>
-		rb_node(_Args&&... args) : binary_tree_node(std::forward<_Args>(args)...) {}
+		rb_node(rb_node* nil,rb_tree* tree,_Args&&... args) : nil_(nil) , tree_(tree) , binary_tree_node(std::forward<_Args>(args)...) { }
+		virtual ~rb_node()=default;
 		bool is_red() const noexcept { return color_==RBTNC_RED; }
 		bool is_black() const noexcept { return color_==RBTNC_BLACK; }
 		void set_red() noexcept { color_=RBTNC_RED; }
 		void set_black() noexcept { color_=RBTNC_BLACK; }
-		binary_tree_node* clone(binary_tree_node* parent=nullptr) {
-			rb_node* result=new rb_node;
-			sync_node(this,result,parent);
-			result.color_=color_;
+		virtual binary_tree_node* clone(binary_tree_node* parent=nullptr) override {
+			rb_node* result=new rb_node(nil_,tree_);
+			binary_tree_node::sync_node(this,result,parent);
+			result->color_=color_;
 			return result;
 		}
+		virtual binary_tree_node* successor() noexcept override {
+			binary_tree_node* node=this;
+			if (!this || this==nil_) return nullptr;
+			if (node->right_ && node->right_!=nil_) return tree_->rb_min_node(static_cast<rb_node*>(node->right_));
+			binary_tree_node* parent=node->parent_;
+			while (parent && parent!=nil_ && node==parent->right_) {
+				node=parent;
+				parent=parent->parent_;
+			}
+			return parent;
+		}
+		virtual binary_tree_node* predecessor() noexcept override {
+			binary_tree_node* node=this;
+			if (!this || this==nil_) return nullptr;
+			if (node->left_ && node->left_!=nil_) return tree_->rb_max_node(static_cast<rb_node*>(node->left_));
+			binary_tree_node* parent=node->parent_;
+			while (parent && parent!=nil_ && node==parent->left_) {
+				node=parent;
+				parent=parent->parent_;
+			}
+			return parent;
+		}
 	};
-
+	friend struct rb_node;
 	rb_node* nil_=nullptr;
 
 public:
@@ -99,6 +124,10 @@ public:
 		}
 		return *this;
 	}
+	
+	virtual iterator begin() noexcept override { return iterator(rb_min_node(static_cast<rb_node*>(root_))); }
+	virtual const_iterator begin() const noexcept override { return const_iterator(rb_min_node(static_cast<const rb_node*>(root_))); }
+	virtual const_iterator cbegin() const noexcept override { return const_iterator(rb_min_node(static_cast<const rb_node*>(root_))); }
 
 	std::pair<iterator,bool> insert(const value_type& value) override {
 		rb_node* new_node=static_cast<rb_node*>(create_node(value));
@@ -124,12 +153,23 @@ public:
 		insert_fixup(new_node);
 		return {iterator(new_node),true};
 	}
-	size_type erase(const key_type& key) override {
+	virtual iterator erase(const key_type& key) override {
 		rb_node* node=static_cast<rb_node*>(this->find_impl(key));
-		if (node==nil_) return 0;
+		if (node==nil_) return this->end();
+		rb_node* next=nil_;
+		if (node->right_!=nil_) next=static_cast<rb_node*>(this->min_node(node->right_));
+		else {
+		 	rb_node* current=node;
+			rb_node* parent=static_cast<rb_node*>(node->parent_);
+			while (parent!=nil_ && current==parent->right_) {
+				current=parent;
+				parent=static_cast<rb_node*>(parent->parent_);
+			}
+			next=parent;
+		}
 		rb_node* y=node;
 		rb_node* x=nil_;
-		color y_original_color=y->color_;
+		rb_tree_node_color y_original_color=y->color_;
 		if (node->left_==nil_) {
 			x=static_cast<rb_node*>(node->right_);
 			transplant(node,x);
@@ -137,7 +177,7 @@ public:
 			x=static_cast<rb_node*>(node->left_);
 			transplant(node,x);
 		} else {
-			y=static_cast<rb_node*>(this->min_node(node->right_));
+			y=static_cast<rb_node*>(this->rb_min_node(static_cast<rb_node*>(node->right_)));
 			y_original_color=y->color_;
 			x=static_cast<rb_node*>(y->right_);
 			if (y->parent_==node) x->parent_=y;
@@ -154,7 +194,11 @@ public:
 		destroy_node(node);
 		size_--;
 		if (y_original_color==RBTNC_BLACK) delete_fixup(x);
-		return 1;
+		if (next==nil_) return this->end();
+		return iterator(next);
+	}
+	virtual size_type erase_old(const key_type& key) override {
+		return erase(key)!=this->end()?1:0;
 	}
 	virtual void clear() noexcept override {
 		clear_subtree(static_cast<rb_node*>(root_));
@@ -163,17 +207,43 @@ public:
 	}
 
 protected:
-	void init_nil() {
+	virtual void init_nil() {
 		nil_=static_cast<rb_node*>(create_node(value_type()));
 		nil_->set_black();
 		root_=nil_;
 	}
-	binary_tree_node* create_node(const value_type& value) override {
-		return new rb_node(value);
+	virtual binary_tree_node* create_node(const value_type& value) override {
+		return new rb_node(nil_,this,value);
 	}
 	template <typename... _Args>
 	binary_tree_node* create_node(_Args&&... args) {
-		return new rb_node(std::forward<_Args>(args)...);
+		return new rb_node(nil_,this,std::forward<_Args>(args)...);
+	}
+	virtual void destroy_node(binary_tree_node* node) noexcept override {
+		if (node && node!=nil_) delete node;
+	}
+	virtual binary_tree_node* copy_tree(binary_tree_node* node,binary_tree_node* parent=nullptr) override {
+		if (!node || node==nil_) return nullptr;
+		return node->clone(parent);
+	}
+	virtual void destroy_tree(binary_tree_node* node) noexcept override {
+		if (node && node!=nil_) {
+			destroy_tree(node->left_);
+			destroy_tree(node->right_);
+			destroy_node(node);
+		}
+	}
+	rb_node* rb_min_node(rb_node* node) noexcept {
+		while (node && node->left_ && node->left_!=nil_) node=static_cast<rb_node*>(node->left_);
+		return node;
+	}
+	rb_node* rb_min_node(const rb_node* node) const noexcept {
+		while (node && node->left_ && node->left_!=nil_) node=static_cast<const rb_node*>(node->left_);
+		return const_cast<rb_node*>(node);
+	}
+	rb_node* rb_max_node(rb_node* node) noexcept {
+		while (node && node->right_ && node->right_!=nil_) node=static_cast<rb_node*>(node->right_);
+		return node;
 	}
 	void clear_subtree(rb_node* node) noexcept {
 		if (node!=nil_) {
@@ -182,7 +252,7 @@ protected:
 			destroy_node(node);
 		}
 	}
-	void left_rotate(rb_node* x) {
+	virtual void left_rotate(rb_node* x) {
 		rb_node* y=static_cast<rb_node*>(x->right_);
 		x->right_=y->left_;
 		if (y->left_!=nil_) y->left_->parent_=x;
@@ -193,7 +263,7 @@ protected:
 		y->left_=x;
 		x->parent_=y;
 	}
-	void right_rotate(rb_node* y) {
+	virtual void right_rotate(rb_node* y) {
 		rb_node* x=static_cast<rb_node*>(y->left_);
 		y->left_=x->right_;
 		if (x->right_!=nil_) x->right_->parent_=y;
@@ -205,7 +275,7 @@ protected:
 		y->parent_=x;
 	}
 
-	void insert_fixup(rb_node* z) {
+	virtual void insert_fixup(rb_node* z) {
 		while (static_cast<rb_node*>(z->parent_)->is_red()) {
 			if (z->parent_==z->parent_->parent_->left_) {
 				rb_node* y=static_cast<rb_node*>(z->parent_->parent_->right_);
@@ -243,7 +313,7 @@ protected:
 		}
 		static_cast<rb_node*>(root_)->set_black();
 	}
-	void delete_fixup(rb_node* x) {
+	virtual void delete_fixup(rb_node* x) {
 		while (x!=root_ && x->is_black()) {
 			if (x==x->parent_->left_) {
 				rb_node* w=static_cast<rb_node*>(x->parent_->right_);
@@ -297,7 +367,7 @@ protected:
 		}
 		x->set_black();
 	}
-	void transplant(binary_tree_node* u,binary_tree_node* v) override {
+	virtual void transplant(binary_tree_node* u,binary_tree_node* v) override {
 		if (u->parent_==nil_) root_=v;
 		else if (u==u->parent_->left_) u->parent_->left_=v;
 		else u->parent_->right_=v;

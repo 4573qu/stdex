@@ -1,9 +1,9 @@
-//Last Modified At 2025/10/15
-//@Version 1.0.0.0
+//Last Modified At 2026/01/27
+//@Version 1.1.0.0
 #ifndef _STDEX_STRUCTURE_AVL_TREE_H_
 #define _STDEX_STRUCTURE_AVL_TREE_H_ 1
 
-#include "bst_tree.h"//At Least 1.0
+#include "bst_tree.h"//At Least 1.1
 
 namespace stdex {
 
@@ -26,6 +26,7 @@ protected:
 		int height_=1;
 		template <typename... _Args>
 		avl_node(_Args&&... args) : binary_tree_node(std::forward<_Args>(args)...) { }
+		virtual ~avl_node()=default;
 		int balance_factor() const noexcept {
 			int left_height=this->left_?static_cast<avl_node*>(this->left_)->height_:0;
 			int right_height=this->right_?static_cast<avl_node*>(this->right_)->height_:0;
@@ -70,7 +71,7 @@ public:
 		base_type::operator =(std::move(other));
 		return *this;
 	}
-	std::pair<iterator,bool> insert(const value_type& value) override {
+	virtual std::pair<iterator,bool> insert(const value_type& value) override {
 		auto result=base_type::insert_impl(value);
 		if (result.second) {
 			avl_node* node=static_cast<avl_node*>(result.first.node());
@@ -78,13 +79,14 @@ public:
 		}
 		return result;
 	}
-	size_type erase(const key_type& key) override {
+	virtual iterator erase(const key_type& key) override {
 		binary_tree_node* node=this->find_impl(key);
-		if (!node) return 0;
+		if (!node) return this->end();
+		binary_tree_node* next=this->successor(node);
 		avl_node* start_balance=static_cast<avl_node*>(node->parent_);
 		base_type::erase_node(node);
 		if (start_balance) balance(static_cast<avl_node*>(start_balance));
-		return 1;
+		return iterator(next);
 	}
 
 protected:
@@ -153,7 +155,7 @@ protected:
 			node=static_cast<avl_node*>(node->parent_);
 		}
 	}
-	void transplant(binary_tree_node* u,binary_tree_node* v) override {
+	virtual void transplant(binary_tree_node* u,binary_tree_node* v) override {
 		base_type::transplant(u,v);
 		if (v) balance(static_cast<avl_node*>(v));
 	}
