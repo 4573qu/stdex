@@ -1,9 +1,9 @@
-//Last Modified At 2025/10/15
-//@Version 1.0.0.0
+//Last Modified At 2026/01/27
+//@Version 1.1.0.0
 #ifndef _STDEX_STRUCTURE_BST_TREE_H_
 #define _STDEX_STRUCTURE_BST_TREE_H_ 1
 
-#include "binary_tree.h"//At Least 1.0
+#include "binary_tree.h"//At Least 1.1
 
 namespace stdex {
 
@@ -50,7 +50,14 @@ public:
 	virtual std::pair<iterator,bool> insert(const value_type& value) override {
 		return insert_impl(value);
 	}
-	virtual size_type erase(const key_type& key) override {
+	virtual iterator erase(const key_type& key) override {
+		binary_tree_node* node=find_impl(key);
+		if (!node) return this->end();
+		binary_tree_node* next=this->successor(node);
+		erase_node(node);
+		return iterator(next);
+	}
+	virtual size_type erase_old(const key_type& key) override {
 		return erase_impl(key);
 	}
 	virtual iterator find(const key_type& key) override {
