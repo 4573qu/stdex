@@ -1,11 +1,11 @@
-//Last Modified At 2025/10/15
-//@Version 1.0.0.0
+//Last Modified At 2026/01/27
+//@Version 1.1.0.0
 #ifndef _STDEX_STRUCTURE_INTERVAL_TREE_H_
 #define _STDEX_STRUCTURE_INTERVAL_TREE_H_ 1
 
 #include <utility>
 
-#include "avl_tree.h"//At Least 1.0
+#include "avl_tree.h"//At Least 1.1
 
 namespace stdex {
 
@@ -30,12 +30,13 @@ protected:
 		interval_node(_Args&&... args) : base_type::avl_node(std::forward<_Args>(args)...) {
 			max_end_=this->data_.first.second;
 		}
+		virtual ~interval_node()=default;
 		const _Key& low() const noexcept { return this->data_.first.first; }
 		const _Key& high() const noexcept { return this->data_.first.second; }
 		const key_type& key() const noexcept override { return base_type::avl_node::data_.first; }
 		_Tp& value() noexcept { return this->data_.second; }
 		const _Tp& value() const noexcept { return this->data_.second; }
-		virtual binary_tree_node* clone(binary_tree_node* parent=nullptr) override {
+		binary_tree_node* clone(binary_tree_node* parent=nullptr) override {
 			interval_node* result=new interval_node;
 			binary_tree_node::sync_node(this,result,nullptr);
 			result->base_type::avl_node::height_=base_type::avl_node::height_;
@@ -99,7 +100,7 @@ public:
 		return result.first->second;
 	}
 
-	virtual std::pair<typename base_type::iterator,bool> insert(const value_type& value) override {
+	std::pair<typename base_type::iterator,bool> insert(const value_type& value) override {
 		auto result=base_type::insert(value);
 		if (result.second) update_max_end(static_cast<interval_node*>(result.first.node()));
 		return result;
@@ -119,6 +120,17 @@ public:
 	}
 	bool has_contained(const key_base_type& low,const key_base_type& high) const {
 		return !find_contained(low,high).empty();
+	}
+
+	iterator erase(const key_type& key) override {
+		auto it=this->find(key);
+		if (it==this->end()) return this->end();
+		interval_node* node=static_cast<interval_node*>(it.node());
+		interval_node* parent=nullptr;
+		if (node) parent=static_cast<interval_node*>(node->parent_);
+		iterator result=base_type::erase(key);
+		if(parent) update_max_end(parent);
+		return result;
 	}
 
 protected:

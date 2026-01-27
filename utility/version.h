@@ -1,5 +1,5 @@
-//Last Modified At 2025/11/26
-//@Version 1.0.0.0
+//Last Modified At 2026/01/28
+//@Version 1.1.0.0
 #ifndef _STDEX_UTILITY_VERSION_H_
 #define _STDEX_UTILITY_VERSION_H_ 1
 
@@ -14,17 +14,17 @@ namespace stdex {
 namespace utility {
 
 struct version {
-	uint32_t major_;
-	uint32_t minor_;
-	uint32_t patch_;
-	uint32_t build_;
+	uint32_t major;
+	uint32_t minor;
+	uint32_t patch;
+	uint32_t build;
 	std::string to_string() {
 		char result[40];
-		snprintf(result,sizeof(result),"%d.%02d.%03d.%03d",major_,minor_,patch_,build_);
+		snprintf(result,sizeof(result),"%d.%02d.%03d.%03d",major,minor,patch,build);
 		return std::string(result);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true) {
-		if (initialize) major_=minor_=patch_=build_=0;
+		if (initialize) major=minor=patch=build=0;
 		std::vector<std::string> parts;
 		std::size_t start=0;
 		std::size_t end=s.find('.');
@@ -59,30 +59,30 @@ struct version {
 			return static_cast<uint32_t>(val);
 		};
 		bool success=true;
-		major_=safe_convert(parts[0],success);
+		major=safe_convert(parts[0],success);
 		length++;
-		minor_=safe_convert(parts[1],success);
+		minor=safe_convert(parts[1],success);
 		length++;
-		patch_=safe_convert(parts[2],success);
+		patch=safe_convert(parts[2],success);
 		length++;
-		build_=safe_convert(parts[3],success);
+		build=safe_convert(parts[3],success);
 		if (!success) return 0;
 		return length;
 	}
 	bool operator ==(const version& other) const {
-		if (major_!=other.major_) return false;
-		if (minor_!=other.minor_) return false;
-		if (patch_!=other.patch_) return false;
-		return build_==other.build_;
+		if (major!=other.major) return false;
+		if (minor!=other.minor) return false;
+		if (patch!=other.patch) return false;
+		return build==other.build;
 	}
 	bool operator !=(const version& other) const {
 		return !(*this==other);
 	}
 	bool operator <(const version& other) const {
-		if (major_!=other.major_) return major_<other.major_;
-		if (minor_!=other.minor_) return minor_<other.minor_;
-		if (patch_!=other.patch_) return patch_<other.patch_;
-		return build_<other.build_;
+		if (major!=other.major) return major<other.major;
+		if (minor!=other.minor) return minor<other.minor;
+		if (patch!=other.patch) return patch<other.patch;
+		return build<other.build;
 	}
 	bool operator >(const version& other) const {
 		return (other<*this);
