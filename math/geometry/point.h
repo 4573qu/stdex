@@ -3,7 +3,7 @@
 #ifndef _STDEX_MATH_GEOMETRY_POINT_H_
 #define _STDEX_MATH_GEOMETRY_POINT_H_ 1
 
-#include <cstdint>
+#include <cstddef>
 #include <type_traits>
 #include <utility>
 
