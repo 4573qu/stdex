@@ -14,6 +14,7 @@
 #endif
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
@@ -118,7 +119,7 @@ public:
     }
 
 public:
-	size_t stack_length_=50;
+	std::size_t stack_length_=50;
 
 private:
 	exception_handler()=default;

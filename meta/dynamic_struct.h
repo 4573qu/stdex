@@ -4,6 +4,7 @@
 #define _STD4573_META_DYNAMIC_STRUCT_H_ 1
 
 #include <any>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
