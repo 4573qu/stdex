@@ -1,29 +1,39 @@
 //Last Modified At 2026/01/28
-//@Version 1.1.0.0
+//@Version 1.2.0.0
 #ifndef _STDEX_UTILITY_VERSION_H_
 #define _STDEX_UTILITY_VERSION_H_ 1
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
+#include <cmath>
 #include <cstddef>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace stdex {
 
 namespace utility {
 
+template <typename _Tp=uint32_t>
 struct version {
-	uint32_t major;
-	uint32_t minor;
-	uint32_t patch;
-	uint32_t build;
+	static_assert(std::is_unsigned_v<_Tp>,"_Tp must be an unsigned type.");
+
+	_Tp major;
+	_Tp minor;
+	_Tp patch;
+	_Tp build;
+	version()=default;
+	version(_Tp major, uint32_t minor, uint32_t patch, uint32_t build) : major(major) , minor(minor) , patch(patch) , build(build) { }
 	std::string to_string() {
-		char result[40];
+		constexpr double log10_2=0.30102999566398119521373889472449;
+		constexpr int digits=static_cast<int>(sizeof(_Tp)*CHAR_BIT*log10_2)+2;
+		char result[digits*4];
 		snprintf(result,sizeof(result),"%d.%02d.%03d.%03d",major,minor,patch,build);
 		return std::string(result);
 	}
-	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true) {
+	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true) const {
 		if (initialize) major=minor=patch=build=0;
 		std::vector<std::string> parts;
 		std::size_t start=0;
@@ -46,7 +56,7 @@ struct version {
 			})) return 0;
 		}
 		std::size_t length=0;
-		auto safe_convert=[&length](const std::string& s,bool& success)->uint32_t {
+		auto safe_convert=[&length](const std::string& s,bool& success)->uint32_t{
 			if (s.empty()) return 0;
 			char* end;
 			errno=0;
