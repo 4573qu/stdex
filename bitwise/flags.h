@@ -37,6 +37,7 @@ namespace bitwise {
 template <typename _Tp>
 class flags {
 	static_assert(std::is_enum_v<_Tp>,"_Tp must be an enum type.");
+
 protected:
 	std::underlying_type_t<_Tp> value_{0};
 	

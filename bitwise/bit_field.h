@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/14
-//@Version 1.0.0.1
+//Last Modified At 2026/01/28
+//@Version 1.0.1.0
 #ifndef _STDEX_BITWISE_BIT_FIELD_H_
 #define _STDEX_BITWISE_BIT_FIELD_H_ 1
 
@@ -16,7 +16,7 @@ class bit_field {
 	static_assert(std::is_unsigned_v<_Tp>,"_Tp must be an unsigned type.");
 	static_assert(_Offset>=0,"_Offset must be non-negative.");
 	static_assert(_Count>0,"_Count must be positive.");
-	static_assert(_Offset+_Count<=sizeof(_Tp)*8,"Bit_field out of range.");
+	static_assert(_Offset+_Count<=sizeof(_Tp)*CHAR_BIT,"Bit_field out of range.");
 	_Tp& storage_;
 	static constexpr _Tp mask_=(_Tp(1)<<_Count)-1;
 
