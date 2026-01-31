@@ -14,6 +14,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -48,7 +49,7 @@ class model {
 public:
 	explicit model(std::size_t n_vars=0) : n_vars_(n_vars) { }
 
-	std::size_t& n_vars() {
+	const std::size_t& n_vars() const {
 		return n_vars_;
 	}
 	void set_objective(scalar_func func) {
@@ -227,7 +228,7 @@ struct constraint_handler_options {
 		CHO_HK_PENALTY,
 		CHO_HK_AUGMENTED_LAGRANGIAN,
 	} handler=CHO_HK_PENALTY;
-	union {
+	struct options {
 		penalty_options penalty;
 		augmented_lagrangian_options augmented_lagrangian;
 	} option;
@@ -505,14 +506,13 @@ public:
 	}
 };
 
-// ---------------- cma_es (diagonal covariance for compactness) ----------------
 struct cma_es_options {
 	int max_iter=300;
 	int lambda=0;     // 0 => auto
 	int mu=0;         // 0 => lambda/2
 	double sigma0=0.3;
 	bool verbose=false;
-	unsigned seed=random_device{}();
+	unsigned seed=std::random_device{}();
 };
 
 class cma_es final : public algorithm {
@@ -568,10 +568,10 @@ public:
 				double fx=func(x);
 				pop.push_back({std::move(x),std::move(z),fx});
 			}
-			std::nth_element(pop.begin(),pop.begin()+mu,pop.end(),[](const indiv& lhs,const indiv& lhs){
+			std::nth_element(pop.begin(),pop.begin()+mu,pop.end(),[](const indiv& lhs,const indiv& rhs){
 				return lhs.f<rhs.f;
 			});
-			std::sort(pop.begin(),pop.begin()+mu,[](const indiv& lhs,const indiv& lhs){
+			std::sort(pop.begin(),pop.begin()+mu,[](const indiv& lhs,const indiv& rhs){
 				return lhs.f<rhs.f;
 			});
 			if (pop[0].f<best_f) {
@@ -637,13 +637,13 @@ private:
 	solve_result solve_penalty(const model& m,std::vector<double> x0) const {
 		solve_result result;
 		std::vector<double> x=std::move(x0);
-		for (double mu:handler_.penalty.mu_schedule) {
+		for (double mu:handler_.option.penalty.mu_schedule) {
 			auto func=[&](const std::vector<double>& xx){
-				return penalized_objective(m,xx,handler_.penalty,mu,nullptr);
+				return penalized_objective(m,xx,handler_.option.penalty,mu,nullptr);
 			};
 			result=algorithm_->minimize(m,func,x);
 			result.x=clamp_to_bounds(std::move(result.x),m);
-			result.objective=penalized_objective(m,result.x,handler_.penalty,mu,&last.diagnostics);
+			result.objective=penalized_objective(m,result.x,handler_.option.penalty,mu,&result.diagnostics);
 			result.raw_objective=m.objective()(result.x);
 			x=result.x;
 		}
@@ -654,8 +654,8 @@ private:
 		std::vector<double> x=std::move(x0);
 		const auto& cs=m.constraints();
 		std::vector<double> lambda(cs.size(),0.0);
-		double mu=handler_.augmented_lagrangian.mu0;
-		for (int outer=0;outer<handler_.augmented_lagrangian.outer_iters;outer++) {
+		double mu=handler_.option.augmented_lagrangian.mu0;
+		for (int outer=0;outer<handler_.option.augmented_lagrangian.outer_iters;outer++) {
 			auto func=[&](const std::vector<double>& xx){
 				return augmented_lagrangian_objective(m,xx,lambda,mu,nullptr);
 			};
@@ -666,37 +666,43 @@ private:
 				double v=c.func(result.x);
 				if (c.kind==CK_EQUAL) {
 					double diff=v - c.rhs;
-					lambda[i]=std::clamp(lambda[i]+mu*diff,-handler_.augmented_lagrangian.lambda_clip,handler_.augmented_lagrangian.lambda_clip);
+					lambda[i]=std::clamp(lambda[i]+mu*diff,-handler_.option.augmented_lagrangian.lambda_clip,handler_.option.augmented_lagrangian.lambda_clip);
 				} else {
 					double r=constraint_residual_signed(c,v); // want r<=0
 					lambda[i]=std::max<double>(0.0,lambda[i]+mu*r);
-					lambda[i]=std::min(lambda[i],handler_.augmented_lagrangian.lambda_clip);
+					lambda[i]=std::min(lambda[i],handler_.option.augmented_lagrangian.lambda_clip);
 				}
 			}
 			result.objective=augmented_lagrangian_objective(m,result.x,lambda,mu,&result.diagnostics);
 			result.raw_objective=m.objective()(result.x);
-			if (handler_.augmented_lagrangian.verbose) {
+			if (handler_.option.augmented_lagrangian.verbose) {
 				double vmax=0.0;
 				for (const auto& it:cs) vmax=std::max(vmax,constraint_violation(it,it.func(result.x)));
 				std::cerr<<"[al] outer="<<outer<<" mu="<<mu<<" raw="<<result.raw_objective<<" max_viol="<<vmax<<std::endl;
 			}
 			x=result.x;
-			mu*=handler_.augmented_lagrangian.mu_growth;
+			mu*=handler_.option.augmented_lagrangian.mu_growth;
 		}
 	return result;
 	}
 
 public:
 	solver() : algorithm_(std::make_shared<nelder_mead>()) { }
-	solver(algorithm& algorithm) : algorithm_(std::make_shared<algorithm>(algorithm)) { }
-
-	void set_algorithm(algorithm& algorithm,_Args&&... args) {
-		algorithm_=std::make_shared<algorithm>(algorithm);
+	template <typename _Algorithm>
+	explicit solver(const _Algorithm& algorithm) {
+		set_algorithm(algorithm);
 	}
-	void set_algorithm(std::shared_ptr<algorithm> algorithm) {
+
+	template <typename _Algorithm>
+	void set_algorithm(const _Algorithm& algorithm) {
+		static_assert(std::is_base_of_v<nlp::algorithm,_Algorithm>,"_Algorithm must be derived from algorithm.");
+		
+		algorithm_=std::make_shared<_Algorithm>(algorithm);
+	}
+	/*void set_algorithm(std::shared_ptr<algorithm> algorithm) {
 		if (!algorithm) throw std::invalid_argument("Invalid null algorithm");
 		algorithm_=std::move(algorithm);
-	}
+	}*/
    	constraint_handler_options& constraint_handler() {
 		return handler_;
 	}
@@ -704,7 +710,7 @@ public:
 		if (!m.has_objective()) throw std::invalid_argument("Model objective not set");
 		if (x0.size()!=m.n_vars()) throw std::invalid_argument("x0 size mismatch");
 		x0=clamp_to_bounds(std::move(x0),m);
-		if (handler_.handler==CHO_HK_PENALTY) return solve_penalty(m,std::move(x0));	
+		if (handler_.handler==constraint_handler_options::CHO_HK_PENALTY) return solve_penalty(m,std::move(x0));	
 		return solve_augmented_lagrangian(m,std::move(x0));
 	}
 };
@@ -714,6 +720,7 @@ enum goal_priority {
 	GP_MEDIUM=2,
 	GP_HIGH=3,
 	GP_CRITICAL=4,
+	GP_COMPULSORY=5,
 };
 
 enum goal_kind {
@@ -753,12 +760,13 @@ struct goal_contribution {
 };
 
 struct compile_options {
-	std::function<double(priority)> priority_to_weight=[](priority p){
+	std::function<double(goal_priority)> priority_to_weight=[](goal_priority p){
 		switch (p) {
 			case GP_LOW: return 1.0;
 			case GP_MEDIUM: return 10.0;
 			case GP_HIGH: return 100.0;
 			case GP_CRITICAL: return 1000.0;
+			case GP_COMPULSORY: return 1000000.0;
 		}
 		return 10.0;
 	};
@@ -782,19 +790,19 @@ private:
 	double scale_for(const compile_options& option,const goal_specification& g,const std::string& metric_name) const {
 		if (g.scale>0.0) return std::max(option.scale_eps,g.scale);
 		auto it=option.metric_scale.find(metric_name);
-		if (it!=opt.metric_scale.end()) return std::max(option.scale_eps,it->second);
+		if (it!=option.metric_scale.end()) return std::max(option.scale_eps,it->second);
 		return 1.0;
 	}
     
 public:
 	explicit goal_model(std::size_t n_vars) : n_vars_(n_vars) { }
 
-	std::size_t& n_vars() {
+	const std::size_t& n_vars() const {
 		return n_vars_;
 	}
 	void add_metric(std::string name,scalar_func func) {
 		if (metrics_.count(name)) throw std::invalid_argument("Metric name exists");
-		metrics_[name]=metric{std::move(name),std::move(func)};
+		metrics_[name]=metric{name,std::move(func)};
 	}
 	void add_goal(goal_specification g) {
 		if (!metrics_.count(g.metric_name)) throw std::runtime_error("Unknown metric name");
@@ -842,7 +850,7 @@ public:
 		g.preference_weight=weight;
 		add_goal(std::move(g));
 	}
-	void prefer_maximize(std::string metric_name,goal_priority priority,real weight=1.0) {
+	void prefer_maximize(std::string metric_name,goal_priority priority,double weight=1.0) {
 		goal_specification g;
 		g.metric_name=std::move(metric_name);
 		g.kind=GK_MAXIMIZE;
@@ -865,12 +873,12 @@ public:
 			};
 			double p_val=0.0;
 			switch (it.kind) {
-				case GK_EQUAL: p_val=pen(std::max<double>(0.0,std::abs(v-it.target)-it.tolerance));break;
-				case GK_RANGE: p_val=pen(std::max<double>(0.0,it.low-v))+pen(std::max<double>(0.0,v-it.high));break;
-				case GK_UPPER: p_val=pen(std::max<double>(0.0,v-it.high));break;
-				case GK_LOWER: p_val=pen(std::max<double>(0.0,it.low-v));break;
-				case GK_MINIMIZE: double en=v/s;p_val=w*it.preference_weight*(option.squared_penalty?square(en):std::abs(en));break;
-				case GK_MAXIMIZE: double en=(-v)/s;p_val=w*it.preference_weight*(option.squared_penalty?square(en):std::abs(en));break;
+				case GK_EQUAL: { p_val=pen(std::max<double>(0.0,std::abs(v-it.target)-it.tolerance));break; }
+				case GK_RANGE: { p_val=pen(std::max<double>(0.0,it.low-v))+pen(std::max<double>(0.0,v-it.high));break; }
+				case GK_UPPER: { p_val=pen(std::max<double>(0.0,v-it.high));break; }
+				case GK_LOWER: { p_val=pen(std::max<double>(0.0,it.low-v));break; }
+				case GK_MINIMIZE: { double en=v/s;p_val=w*it.preference_weight*(option.squared_penalty?square(en):std::abs(en));break; }
+				case GK_MAXIMIZE: { double en=(-v)/s;p_val=w*it.preference_weight*(option.squared_penalty?square(en):std::abs(en));break; }
 			}
 			result.push_back(goal_contribution{it.metric_name,it.kind,it.priority,v,p_val});
 		}
@@ -913,12 +921,12 @@ public:
 					return w*p;
 				};
 				switch (it.kind) {
-					case GK_EQUAL: L+=pen(std::max<double>(0.0,std::abs(v-it.target)-it.tolerance));break;
-					case GK_RANGE: L+=pen(std::max<double>(0.0,it.low-v))+pen(std::max<double>(0.0,v-it.high));break;
-					case GK_UPPER: L+=pen(std::max<double>(0.0,v-it.high));break;
-					case GK_LOWER: L+=pen(std::max<double>(0.0,it.low-v));break;
-					case GK_MINIMIZE: L+=w*it.preference_weight*(option.squared_penalty?square((v/s)):std::abs(v/s));break;
-					case GK_MAXIMIZE: L+=w*it.preference_weight*(option.squared_penalty?square((-v/s)):std::abs(-v/s));break;
+					case GK_EQUAL: { L+=pen(std::max<double>(0.0,std::abs(v-it.target)-it.tolerance));break; }
+					case GK_RANGE: { L+=pen(std::max<double>(0.0,it.low-v))+pen(std::max<double>(0.0,v-it.high));break; }
+					case GK_UPPER: { L+=pen(std::max<double>(0.0,v-it.high));break; }
+					case GK_LOWER: { L+=pen(std::max<double>(0.0,it.low-v));break; }
+					case GK_MINIMIZE: { L+=w*it.preference_weight*(option.squared_penalty?square((v/s)):std::abs(v/s));break; }
+					case GK_MAXIMIZE: { L+=w*it.preference_weight*(option.squared_penalty?square((-v/s)):std::abs(-v/s));break; }
 				}
 			}
 			return L;
@@ -926,15 +934,15 @@ public:
 		// hard goals -> constraints
 		for (const auto& it: goals_) {
 			if (static_cast<int>(it.priority)<static_cast<int>(option.hard_min_priority)) continue;
-			const auto& func=metrics_.at(g.metric_name).func;
-			std::string name=g.metric_name;
+			const auto& func=metrics_.at(it.metric_name).func;
+			std::string name=it.metric_name;
 			switch (it.kind) {
-				case GK_EQUAL: m.add_equal(func,it.target,it.tolerance,name+":equal");break;
-				case GK_RANGE: m.add_greater_equal(func,it.low,name+":range_low");m.add_less_equal(func,it.high,name+":range_high");break;
-				case GK_UPPER: m.add_less_equal(func,it.high,name+":upper");break;// fn(x) <= hi
-				case GK_LOWER: m.add_greater_equal(func,it.low,name+":lower");break;// fn(x) >= lo
+				case GK_EQUAL: { m.add_equal(func,it.target,it.tolerance,name+":equal");break; }
+				case GK_RANGE: { m.add_greater_equal(func,it.low,name+":range_low");m.add_less_equal(func,it.high,name+":range_high");break; }
+				case GK_UPPER: { m.add_less_equal(func,it.high,name+":upper");break; }// fn(x) <= hi
+				case GK_LOWER: { m.add_greater_equal(func,it.low,name+":lower");break; }// fn(x) >= lo
 				case GK_MINIMIZE:
-				case GK_MAXIMIZE: break;// preferences are not constraints; ignore as hard constraint
+				case GK_MAXIMIZE: { break; }// preferences are not constraints; ignore as hard constraint
 			}
 		}
 		return m;
@@ -952,7 +960,8 @@ public:
 			model m=(sub.*compiler)(option,var_low,var_high);
 			return solver.solve(m,std::move(start));
 		};
-		solve_result result=solve_at_or_above(GP_CRITICAL,x0);
+		solve_result result=solve_at_or_above(GP_COMPULSORY,x0);
+		result=solve_at_or_above(GP_CRITICAL,result.x);
 		result=solve_at_or_above(GP_HIGH,result.x);
 		result=solve_at_or_above(GP_MEDIUM,result.x);
 		result=solve_at_or_above(GP_LOW,result.x);
