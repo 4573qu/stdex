@@ -45,7 +45,7 @@ stdex::math::matrix<_Tp>::matrix(const stdex::math::matrix<_Tp>& other) : x_dime
 }
 
 template <typename _Tp>
-stdex::math::matrix<_Tp>::matrix(stdex::math::matrix<_Tp>&& other) noexcept : x_dimension_(other.x_dimension_) , y_dimension_(other.y_dimension_), m_(other.m_) {
+stdex::math::matrix<_Tp>::matrix(stdex::math::matrix<_Tp>&& other) noexcept : x_dimension_(other.x_dimension_) , y_dimension_(other.y_dimension_) , m_(other.m_) {
 	other.m_=nullptr;
 	other.x_dimension_=0;
 	other.y_dimension_=0;
