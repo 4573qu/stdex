@@ -52,3 +52,15 @@ You can check branch:dev to see which may be added to branch:main next.
 The integrity and security of any files not in branch:main are not guaranteed.
 
 The branch:dev can only show that which is in the preparation list and which is not.
+
+
+
+### Third-party
+
+- break_eternity.js (MIT), maintained by Patashu.
+
+  Used as the basis for [decimal.h](math/decimal.h) (only).
+
+  License: [break_eternity.js MIT License](third_party_licenses/break_eternity.js_MIT.txt)
+
+  Upstream: [github repository](https://github.com/Patashu/break_eternity.js)
