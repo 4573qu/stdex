@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/24
-//@Version 2.0.2.6
+//Last Modified At 2026/02/13
+//@Version 2.0.3.0
 #ifndef _STDEX_BITWISE_FLAGS_H_
 #define _STDEX_BITWISE_FLAGS_H_ 1
 
@@ -64,7 +64,7 @@ public:
 		});
 		return *this;
 	}
-	_STDEX_CONSTEXPR flags& operator <<(flags<_Tp> value) noexcept {
+	_STDEX_CONSTEXPR flags operator <<(flags<_Tp> value) const noexcept {
 		auto result=*this;
 		value.for_each([&](_Tp e){
 			result<<=(e);
@@ -231,7 +231,7 @@ private:
 			}
 			if (dependencies_.count(value)) {
 				dependencies_[value].for_each([this](_Tp e){
-					this->operator<<=(e);
+					this->operator <<=(e);
 				});
 				if (check_dependencies(value)) {
 					exclusive_flags<_Tp,_DefaultExclusionPolicy>::operator <<=(value);
@@ -361,7 +361,7 @@ public:
 	void clear_forbidden(_Tp element) {
 		forbiddens_.erase(element);
 	}
-	_STDEX_CONSTEXPR advanced_flags& operator<<=(_Tp e) override {
+	_STDEX_CONSTEXPR advanced_flags& operator <<=(_Tp e) override {
 		bool check=true;
 		if (check && !check_dependencies(e)) check=handle_dependency_failure(e);
 		flags<_Tp> result;
