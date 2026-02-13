@@ -11,7 +11,7 @@
 	- Most of comments were removed while the remainder were retained.
 	- The section concerning game application was commented out.
 */
-//Last Modified At 2026/02/02
+//Last Modified At 2026/02/13
 //@Version 1.0.0.0
 #ifndef _STDEX_MATH_decimal_H_
 #define _STDEX_MATH_decimal_H_ 1
@@ -690,7 +690,7 @@ public:
 		if (layer_>=2 || other.layer_>=2) return max_abs(other);
 		const decimal* a=this;
 		const decimal* b=&other;
-		if (!cmp_abs(*b)>0) {//! a>b?
+		if (cmp_abs(*b)<=0) {//! a>b?
 			a=&other;
 			b=this;
 		}
