@@ -1,5 +1,5 @@
-//Last Modified At 2026/01/27
-//@Version 1.1.0.0
+//Last Modified At 2026/03/09
+//@Version 1.1.0.1
 #ifndef _STDEX_STRUCTURE_DISJOINT_SET_H_
 #define _STDEX_STRUCTURE_DISJOINT_SET_H_ 1
 
@@ -209,10 +209,14 @@ public:
 			return *this;
 		}
 		iterator operator +(std::ptrdiff_t n) const noexcept {
-			return iterator(*this)+=n;
+			iterator temp(*this);
+			temp+=n;
+			return temp;
 		}
 		iterator operator -(std::ptrdiff_t n) const noexcept {
-			return iterator(*this)-=n;
+			iterator temp(*this);
+			temp-=n;
+			return temp;
 		}
 		difference_type operator -(const iterator& other) const noexcept {
 			return ptr_-other.ptr_;
