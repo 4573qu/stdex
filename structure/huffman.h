@@ -1,5 +1,5 @@
-//Last Modified At 2025/11/06
-//@Version 1.1.0.0
+//Last Modified At 2025/11/21
+//@Version 2.0.0.0
 #ifndef _STDEX_STRUCTURE_HUFFMAN_H_
 #define _STDEX_STRUCTURE_HUFFMAN_H_ 1
 
@@ -23,33 +23,44 @@ namespace stdex {
 
 namespace structure {
 
-template <typename _Tp,typename _Freq=std::size_t,typename _Compare=std::greater<_Freq>>
+template <typename _Tp,typename _Freq=std::size_t,std::size_t _K=2,typename _Compare=std::greater<_Freq>>
 class huffman {
+	static_assert(_K>=2,"K cannot be negative than 2.");
+
+	static const char keycodes_[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+
 public:
 	struct node {
 		_Tp symbol_{};
 		_Freq frequency_;
-		std::shared_ptr<node> left_;
-		std::shared_ptr<node> right_;
+		std::vector<std::shared_ptr<node>> kids_;
 		node()=default;
 		node(const _Tp& symbol,_Freq freq) : symbol_(symbol) , frequency_(freq) { }
-		node(std::shared_ptr<node> left,std::shared_ptr<node> right) : symbol_{} , frequency_(left->frequency_+right->frequency_) , left_(std::move(left)) , right_(std::move(right)) { }
-		bool is_leaf() const noexcept { return !left_ && !right_; }
+		node(std::vector<std::shared_ptr<node>> kids) : symbol_{} {
+			if (kids.size()!=_K) throw std::invalid_argument("K and the size of kids mismatch");
+			frequency_=0;
+			for (std::size_t i=0;i<kids.size();i++) {
+				frequency_+=kids[i]->frequency_;
+				kids_.push_back(kids[i]);
+			}
+		}
+		bool is_leaf() const noexcept { return kids_.empty(); }
 	};
 
 private:
-	template <typename _Str>
-	void build_codes(std::shared_ptr<node> root,const _Str& prefix,std::unordered_map<_Tp,_Str>& table) {
+	template <typename _Str,std::size_t _N>
+	void build_codes(std::shared_ptr<node> root,const _Str& prefix,std::unordered_map<_Tp,_Str>& table,const char (&codes)[_N]=keycodes_) {
 		if (!root) return;
 		if (root->is_leaf()) {
-			table[root->symbol_]=prefix.empty()?_Str("0"):prefix;
+			table[root->symbol_]=prefix.empty()?_Str(codes[0]):prefix;
 			return;
 		}
-		_Str left_string=prefix,right_string=prefix;
-		left_string.push_back('0');
-		right_string.push_back('1');
-		build_codes(root->left_,left_string,table);
-		build_codes(root->right_,right_string,table);
+		if (_N<_K) throw std::invalid_argument("Invalid codes: length less than K.");
+		for (std::size_t i=0;i<root->kids_.size();i++) {
+			_Str curr_string=prefix;
+			curr_string.push_back(codes[i]);
+			build_codes(root->kids_[i],curr_string,table,codes);
+		}
 	}
 
 	void serialize_node(const std::shared_ptr<node>& root,std::ostream& out) {
@@ -59,11 +70,7 @@ private:
 			out.write(reinterpret_cast<const char*>(&root->symbol_),sizeof(_Tp));
 		} else {
 			out.put('I');
-			//out.put('(');
-			serialize_node(root->left_,out);
-			//out.put(',');
-			serialize_node(root->right_,out);
-			//out.put(')');
+			for (std::size_t i=0;i<root->kids_.size();i++) serialize_node(root->kids_[i],out);
 		}
 	}
 
@@ -74,13 +81,16 @@ private:
 		typename _Str::value_type tag=static_cast<typename _Str::value_type>(c);
 		if (_Str(tag)==_Str('L')) {
 			_Tp sym{};
-			in.read(reinterpret_cast<typename _Str::value_type*>(&sym),sizeof(sym));
+			in.read(reinterpret_cast<char*>(&sym),sizeof(sym));
 			if (!in) throw std::runtime_error("Truncated symbol data");
 			return std::make_shared<node>(sym,0);
 		} else if (_Str(tag)==_Str('I')) {
-			auto left=deserialize_node<_Str>(in);
-			auto right=deserialize_node<_Str>(in);
-			return std::make_shared<node>(left,right);
+			std::vector<std::shared_ptr<node>> kids;
+			for (std::size_t i=0;i<_K;i++) {
+				auto curr=deserialize_node<_Str>(in);
+				kids.push_back(std::move(curr));
+			}
+			return std::make_shared<node>(kids);
 		} else throw std::runtime_error("Invalid tree tag");
 	}
 	
@@ -91,8 +101,7 @@ private:
 			func(root->symbol_,root->frequency_,index);
 			return;
 		}
-		for_each<_Func>(root->left_,func,index+1);
-		for_each<_Func>(root->right_,func,index+1);
+		for (std::size_t i=0;i<root->kids_.size();i++) for_each<_Func>(root->kids_[i],func,index+1);
 	}
 
 public:
@@ -100,23 +109,31 @@ public:
 
 	void build(const std::vector<_Freq>& frequencies,const std::vector<_Tp>& symbols) {
 		if (frequencies.size()!=symbols.size()) throw std::invalid_argument("Frequency size and symbol size mismatch");
-		std::priority_queue<std::shared_ptr<node>,std::vector<std::shared_ptr<node>>,_Compare> pq;
+		struct comp {
+			bool operator ()(const std::shared_ptr<node>& lhs,const std::shared_ptr<node>& rhs) const {
+				_Compare compare;
+				return compare(rhs->frequency_,lhs->frequency_);
+			}
+		};
+		std::priority_queue<std::shared_ptr<node>,std::vector<std::shared_ptr<node>>,comp> pq;
 		for (std::size_t i=0;i<frequencies.size();i++){
 			if (frequencies[i]>0) pq.push(std::make_shared<node>(symbols[i],frequencies[i]));
 		}
 		if (pq.empty()) throw std::runtime_error("Empty frequency table");
-		while (pq.size()>1) {
-			auto left=pq.top();
-			pq.pop();
-			auto right=pq.top();
-			pq.pop();
-			pq.push(std::make_shared<node>(left,right));
+		while (pq.size()>_K-1) {
+			std::vector<std::shared_ptr<node>> kids;
+			for (std::size_t i=0;i<_K;i++) {
+				auto curr=pq.top();
+				pq.pop();
+				kids.push_back(curr);
+			}
+			pq.push(std::make_shared<node>(kids));
 		}
 		root_=pq.top();
 	}
 	
 	/*[[discarded]]
-	static std::vector<std::size_t> get_package_length(const std::vector<_Freq>& frequencies,int max_depth) {
+	static std::vector<std::size_t> get_package_merge_length(const std::vector<_Freq>& frequencies,int max_depth) {
 		/*struct package {
 			_Freq freq_;
 			int count_;
@@ -138,6 +155,7 @@ public:
 		However, I give up with PackageMerge for the reason that it is too hard to learn about
 	}*/
 
+	/*[[discarded]]
 	//when the tree is so much complicated,it may have some bug while generating length
 	//for example:generate code-length table in DEFLATE btype=2 while building an exe.
 	static std::vector<std::size_t> get_shortest_length(const std::vector<_Freq>& frequencies,int max_depth) {
@@ -205,6 +223,7 @@ public:
 		emptys[max_depth]=std::pow(2,max_depth)-n;
 		return solve(max_depth,emptys,frequencies);
 	}
+	*/
 	
 	static std::vector<std::size_t> get_fastest_length(const std::vector<_Freq>& frequencies,int max_depth) {
 		const int n=static_cast<int>(frequencies.size());
@@ -227,7 +246,7 @@ public:
 		lengths.reserve(n);
 		for (std::size_t d=1;d<=depth;d++) {
 			for (std::size_t i=0;i<counts[d];i++) lengths.push_back(d);
-        }
+		}
 		if (lengths.size()>n) lengths.resize(n);
 		return lengths;
 	}
@@ -243,17 +262,24 @@ public:
 		if (max_depth<=0) throw std::invalid_argument("Invalid max_depth");
 		auto length=get_fastest_length(frequencies,max_depth);
 		//std::reverse(length.begin(),length.end());
-		std::sort(length.begin(),length.end());
+		build_huffman_with_lengths(frequencies,symbols,length);
+	}
+
+	void build_huffman_with_lengths(const std::vector<_Freq>& frequencies,const std::vector<_Tp>& symbols,std::vector<std::size_t> lengths) {
+		if (frequencies.size()!=symbols.size()) throw std::invalid_argument("Frequency size and symbol size mismatch");
+		if (frequencies.size()!=lengths.size()) throw std::invalid_argument("Frequency size and length size mismatch");
+		std::sort(lengths.begin(),lengths.end());
 		std::vector<std::shared_ptr<node>> nodes;
 		for (int i=0;i<n;i++) nodes.push_back(std::make_shared<node>(symbols[i],frequencies[i]));
 		std::stable_sort(nodes.begin(),nodes.end(),[](const std::shared_ptr<node>& lhs,const std::shared_ptr<node>& rhs){
-			return lhs->frequency_<rhs->frequency_;
+			_Compare compare;
+			return compare(rhs->frequency_,lhs->frequency_);
 		});
 		root_=std::make_shared<node>();
 		std::function<void(std::shared_ptr<node>&,int,int&)> write_kid=[&](std::shared_ptr<node>& curr,int depth,int& index)->void{
 			bool right=false;
 			while (index<n) {
-				if (length[index]==depth+1) {
+				if (lengths[index]==depth+1) {
 					if (!right) {
 						curr->left_=nodes[index];
 						curr->frequency_+=nodes[index]->frequency_;
@@ -284,9 +310,9 @@ public:
 		write_kid(root_,0,index);
 	}
 
-	template <typename _Str>
-	void build_codes(const _Str& prefix,std::unordered_map<_Tp,_Str>& table) {
-		build_codes<_Str>(root_,prefix,table);
+	template <typename _Str,std::size_t _N>
+	void build_codes(const _Str& prefix,std::unordered_map<_Tp,_Str>& table,const char (&codes)[_N]=keycodes_) {
+		build_codes<_Str,_N>(root_,prefix,table,codes);
 	}
 
 	std::vector<std::size_t> get_depths() {
@@ -296,36 +322,68 @@ public:
 		return result;
 	}
 
-	void get_depths(std::vector<std::size_t>& depths,std::shared_ptr<node> node,std::size_t depth) {
+	void get_depths(std::vector<std::size_t>& depths,std::shared_ptr<node>& node,std::size_t depth) {
 		if (node->is_leaf()) depths.push_back(depth);
 		else {
-			get_depths(depths,node->left_,depth+1);
-			get_depths(depths,node->right_,depth+1);
+			for (std::size_t i=0;i<node->kids_.size();i++) get_depths(depths,node->kids_[i],depth+1);
 		}
 	}
 
-	template <typename _Str>
-	_Str encode(const std::vector<_Tp>& symbols,const std::unordered_map<_Tp,_Str>& codebook) {
+	template <typename _Str,std::size_t _N>
+	_Str encode(const std::vector<_Tp>& symbols,_Str prefix="",const char (&codes)[_N]=keycodes_) {
+		std::unordered_map<_Tp,_Str> table;
+		build_codes<_Str,_N>(prefix,table,codes);
 		_Str bits;
 		for (const auto& it:symbols) {
-			auto jt=codebook.find(it);
-			if (jt==codebook.end()) throw std::runtime_error("Symbol not in Huffman codebook");
+			auto jt=table.find(it);
+			if (jt==table.end()) throw std::runtime_error("Symbol not in Huffman codebook");
 			bits.insert(bits.end(),jt->second.begin(),jt->second.end());
 		}
 		return bits;
 	}
 
-	template <typename _Str>
-	std::vector<_Tp> decode(const _Str& bit_string) {
+	template <typename _Str,std::size_t _N>
+	std::vector<_Tp> decode(const _Str& bit_string,_Str prefix="",const char (&codes)[_N]=keycodes_) {
+		if (!root_) throw std::runtime_error("Huffman tree is empty");
 		std::vector<_Tp> result;
 		auto curr_node=root_;
-		for (auto& it:bit_string) {
-			curr_node=(it=='1')?curr_node->right_:curr_node->left_;
-			if (curr_node->is_leaf()) {
+		bool read_done=true;
+		for (std::size_t i=0;i<bit_string.size()) {	
+			if (bit_string.size()-i<prefix.size()) throw std::invalid_argument("Invalid code at "+std::to_string(i)+":string too short");
+			for (std::size_t j=0;j<prefix.size();j++) {
+				if (bit_string[i+j]!=prefix[j]) throw std::invalid_argument("Invalid code at "+std::to_string(i+j)+":prefix mismatch");
+			}
+			i+=prefix.size();
+			read_done=false;
+			if (prefix=="" && curr_node->is_leaf()) {
+				auto lhs=typename _Str::value_type(codes[0]);
+				auto rhs=typename _Str::value_type(bit_string[i]);
+				if (lhs!=rhs) throw std::invalid_argument("Invalid code at "+std::to_string(i)+":symbol mismatch");
 				result.push_back(curr_node->symbol_);
-				curr_node=root_;
+				read_done=true;
+				i++;
+				continue;
+			}
+			while (i<bit_string.size()) {
+				if (curr_node->is_leaf()) {
+					result.push_back(curr_node->symbol_);
+					read_done=true;
+					curr_node=root_;
+					break;
+				}
+				int index=-1;
+				for (std::size_t j=0;j<_N;j++) {
+					auto lhs=typename _Str::value_type(codes[j]);
+					auto rhs=typename _Str::value_type(bit_string[i]);
+					if (lhs==rhs) index=j;
+				}
+				if (index=-1) throw std::invalid_argument("Invalid code at "+std::to_string(i)+":symbol mismatch");
+				if (index>=curr_node->kids_.size()) throw std::invalid_argument("Invalid code at "+std::to_string(i)+":invalid tree");
+				curr_node=curr_node->kids_[index];
+				i++;
 			}
 		}
+		if (curr_node!=root_ || !read_done) throw std::runtime_error("Incomplete code sequence at end of input");
 		return result;
 	}
 
@@ -351,18 +409,18 @@ public:
 	std::vector<uint8_t> serialize_tree_binary() {
 		std::basic_ostringstream<typename _Str::value_type> oss(std::ios::binary);
 		serialize_node(root_,oss);
-		const std::string data=oss.str();
+		const _Str data=oss.str();
 		return { data.begin(),data.end() };
 	}
 	template <typename _Str=std::string>
 	void deserialize_tree(const _Str& buf) {
-		std::basic_istringstream<typename _Str::value_type> iss(_Str);
-		root_=deserialize_tree<_Str>(iss);
+		std::basic_istringstream<typename _Str::value_type> iss(buf);
+		root_=deserialize_node<_Str>(iss);
 	}
 	template <typename _Str=std::string>
 	void deserialize_tree_binary(const std::vector<uint8_t>& buf) {
 		std::basic_istringstream<typename _Str::value_type> iss(_Str(buf.begin(),buf.end()),std::ios::binary);
-		root_=deserialize_tree<_Str>(iss);
+		root_=deserialize_bode<_Str>(iss);
 	}
 	
 	template <typename _Func>

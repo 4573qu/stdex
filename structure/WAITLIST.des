@@ -1,7 +1,6 @@
 lack structures:
 bloom_filter
 skip_list
-lru_cache
 circular_array<-ring_buffer?
 binary_heap<-heap?
 rb_tree->segment_tree
@@ -26,7 +25,6 @@ versioned_map(from ds-persistent*)
 
 bloom_filter
 skip_list
-lru_cache
 circular_array<-ring_buffer?
 binary_heap<-heap?
 rb_tree->segment_tree
@@ -45,3 +43,9 @@ double_ended_heap
 
 lock_free_queue
 concurrent_hash_map
+
+k_ary huffman with k-ary packagemerge(larmore-hirschberg)
+
+跳表
+trie->基数树
+Boost.Intrusive
