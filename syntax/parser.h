@@ -327,7 +327,7 @@ protected:
 		for (auto& it:nptr_set) {
 			if (!ptr_set.count(it.first)) ptr_set[it.first].clear();
 		}
-		auto first_sets=inverse_topology_closure<_Tp>(ptr_set,[&](_Tp node) -> std::unordered_set<_Tp>&{
+		auto first_sets=inverse_topology_closure<_Tp>(ptr_set,[&](_Tp node)->std::unordered_set<_Tp>&{
 			return nptr_set[node];
 		});
 		for (auto& it:first_sets) first_set_[it.first]=it.second;
