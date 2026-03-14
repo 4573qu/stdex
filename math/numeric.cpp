@@ -1,6 +1,6 @@
-//Last Modified At 2025/10/23
+//Last Modified At 2026/01/31
 //@Version 1.0.0.4
-//@H_Version 1.0.0.2
+//@H_Version 1.0.0.3
 #include "numeric.h"
 
 #include <algorithm>
@@ -23,7 +23,7 @@ stdex::math::bigint stdex::math::bigint::multiply(const bigint& lhs,const bigint
 	if (n<=32) return lhs*rhs;
 	size_t k=(n+1)/2;
 	stdex::math::bigint lhs_low,lhs_high,rhs_low,rhs_high;
-	void (*process)(const stdex::math::bigint&,stdex::math::bigint&,stdex::math::bigint&,size_t)=[](const stdex::math::bigint& origin,stdex::math::bigint& low,stdex::math::bigint& high,size_t k) -> void {
+	void (*process)(const stdex::math::bigint&,stdex::math::bigint&,stdex::math::bigint&,size_t)=[](const stdex::math::bigint& origin,stdex::math::bigint& low,stdex::math::bigint& high,size_t k)->void{
 		low.digits_.assign(origin.digits_.begin(),origin.digits_.begin()+std::min(k,origin.digits_.size()));
 		if (origin.digits_.size()>k) high.digits_.assign(origin.digits_.begin()+k,origin.digits_.end());
 	};
@@ -402,6 +402,23 @@ stdex::math::bigint::operator double() const {
 		multiplier*=base_;
 	}
 	return negative_?-result:result;
+}
+
+stdex::math::bigint stdex::math::pow(const stdex::math::bigint& base,const stdex::math::bigint& exponent) {
+	if (exponent.zero()) return stdex::math::bigint(1);
+	if (base.zero()) return stdex::math::bigint(0);
+	stdex::math::bigint result(1);
+	stdex::math::bigint base_copy=base;
+	stdex::math::bigint exp=exponent;
+	bool negative_exp=exp.negative_;
+	if (negative_exp) exp=-exp;
+	while (!exp.zero()) {
+		if (exp.digits_[0]%2==1) result*=base_copy;
+		base_copy*=base_copy;
+		exp=exp/stdex::math::bigint(2);
+	}
+	if (negative_exp) return stdex::math::bigint(1)/result;
+	return result;
 }
 
 void stdex::math::rational::reduce() {

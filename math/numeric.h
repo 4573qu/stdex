@@ -1,10 +1,12 @@
-//Last Modified At 2025/07/20
-//@Version 1.0.0.2
+//Last Modified At 2026/01/31
+//@Version 1.0.0.3
 #ifndef _STDEX_MATH_NUMERIC_H_
 #define _STDEX_MATH_NUMERIC_H_ 1
 
+#include <algorithm>//p_adic stdminmax
 #include <cstddef>
 #include <iostream>
+#include <sstream>//p_adic ostringstream
 #include <type_traits>
 #include <vector>
 
@@ -77,6 +79,11 @@ public:
 
 std::istream& operator >>(std::istream&,bigint&);
 std::ostream& operator <<(std::ostream&,const bigint&);
+
+bigint pow(const bigint& base,const bigint& exponent);
+//bigint pow(const bigint& base,double exponent);
+//bigint pow(double base,const bigint& exponent);
+//bigint should improve or recode?
 
 class rational {
 	bigint numerator_;
@@ -530,7 +537,7 @@ constexpr auto operator +(const quaternion<_Tp>& lhs,const _Up& rhs) noexcept {
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator +(const _Tp& lhs,const quaternion<_Up>& rhs) noexcept {
-	return qauternion<_Up>(lhs)+=rhs;
+	return quaternion<_Up>(lhs)+=rhs;
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator +(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
@@ -538,7 +545,7 @@ constexpr auto operator +(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) no
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator +(const complex<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
-	return qauternion<_Up>(lhs)+=rhs;
+	return quaternion<_Up>(lhs)+=rhs;
 }
 
 template <typename _Tp>
@@ -556,7 +563,7 @@ constexpr auto operator -(const quaternion<_Tp>& lhs,const _Up& rhs) noexcept {
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator -(const _Tp& lhs,const quaternion<_Up>& rhs) noexcept {
-	return qauternion<_Up>(lhs)-=rhs;
+	return quaternion<_Up>(lhs)-=rhs;
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator -(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
@@ -564,7 +571,7 @@ constexpr auto operator -(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) no
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator -(const complex<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
-	return qauternion<_Up>(lhs)-=rhs;
+	return quaternion<_Up>(lhs)-=rhs;
 }
 
 template <typename _Tp>
@@ -582,7 +589,7 @@ constexpr auto operator *(const quaternion<_Tp>& lhs,const _Up& rhs) noexcept {
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator *(const _Tp& lhs,const quaternion<_Up>& rhs) noexcept {
-	return qauternion<_Up>(lhs)*=rhs;
+	return quaternion<_Up>(lhs)*=rhs;
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator *(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
@@ -590,7 +597,7 @@ constexpr auto operator *(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) no
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator *(const complex<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
-	return qauternion<_Up>(lhs)*=rhs;
+	return quaternion<_Up>(lhs)*=rhs;
 }
 
 template <typename _Tp>
@@ -608,7 +615,7 @@ constexpr auto operator /(const quaternion<_Tp>& lhs,const _Up& rhs) noexcept {
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator /(const _Tp& lhs,const quaternion<_Up>& rhs) noexcept {
-	return qauternion<_Up>(lhs)/=rhs;
+	return quaternion<_Up>(lhs)/=rhs;
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator /(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) noexcept {
@@ -616,7 +623,7 @@ constexpr auto operator /(const quaternion<_Tp>& lhs,const complex<_Up>& rhs) no
 }
 template <typename _Tp,typename _Up,typename=typename is_complex_arithmetic<_Up>::type>
 constexpr auto operator /(const complex<_Tp>& lhs,const quaternion<_Up>& rhs) noexcept {
-	return qauternion<_Up>(lhs)/=rhs;
+	return quaternion<_Up>(lhs)/=rhs;
 }
 
 template <typename _Tp>
@@ -712,7 +719,7 @@ class p_adic {
 		if (r1!=1) {
 			throw std::domain_error("Inverse does not exist");
 		}
-		return t1<0;t1+p:t1;
+		return t1<0?t1+p:t1;
 	}
 	void validate_base() const {
 		if (base_<2 || !is_prime(base_)) {
@@ -733,7 +740,7 @@ class p_adic {
 		if (digits_.size()>precision_) {
 			digits_.resize(precision_);
 		}
-        zero_=digits_.empty()||std::all_of(digits_.begin(),digits_.end(),[](long d) { return !d; });
+        //zero_=digits_.empty()||std::all_of(digits_.begin(),digits_.end(),[](long d) { return !d; });
 		if (zero_) {
 			negative_=false;
 			valuation_=0;
@@ -757,7 +764,7 @@ class p_adic {
 		}
 		std::reverse(digits_.begin(),digits_.end());
 	}
-	void assign(const std::string& s) {
+	void assign(const std::string& str) {
 		digits_.clear();
 		valuation_=0;
 		negative_=false;
@@ -1212,7 +1219,7 @@ public:
 				throw std::domain_error("Square root of negative not available for this base");
 			}
 			p_adic negative_one(base_,-1,precision_);
-			p_adic i=tonelli_shanks(negative_one);
+			p_adic i;//tonelli_shanks(negative_one);
 			p_adic abs_value=-*this;
 			return i*abs_value.sqrt();
 		}

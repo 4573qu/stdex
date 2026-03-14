@@ -1,2 +1,7 @@
 matrix->Add Different Type Operation (=/==/!=/+/+=/-/-=/...)
 matrix->value() may be changed matrix itself? Please Recheck
+
+lerp functions(check stdex::vision::color)
+
+//something in decimal.h->general functions
+//such as gamma()
