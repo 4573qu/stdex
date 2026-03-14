@@ -16,6 +16,8 @@ See the [LICENSE](LICENSE) file for details.
 
 - [type/notation.h](type/notation.h) is inspired by implementations from the [nlohmann/json](https://github.com/nlohmann/json) library (MIT License).
 
+- [math/decimal.h](math/decimal.h) is inspired by implementations from the [Patashu/break_eternity.js](https://github.com/Patashu/break_eternity.js) library (MIT License).
+
 ### General Headers(Currently Unavailable)
 
 For single-file development (non-project mode), use:  
@@ -27,6 +29,9 @@ For project reference development mode, use:
 ---
 
 ### Directory Overview
+
+- **algorithm**: Algorithm functions
+
 - **bitwise**: Bitwise operations
 - **container**: Containers like enhanced any or function
 - **crypto**: Encodings and encryptions
@@ -39,7 +44,7 @@ For project reference development mode, use:
 - **profiling**: Profiling tools
 - **structure**: Common data structures
 - **syntax**: Lexical & syntax operations 
-- **type**: Data type operations*(Currently supports ini)*
+- **type**: Data type operations *(Currently supports ini)*
 - **utility**: Quick tools like syntactic sugar
 - **vision**: Vision-related operations *(Currently unavailable)*  
 
