@@ -1,5 +1,5 @@
-//Last Modified At 2026/03/09
-//@Version 1.0.0.0
+//Last Modified At 2026/03/16
+//@Version 1.1.0.0
 #ifndef _STDEX_STRUCTURE_SLOT_MAP_H_
 #define _STDEX_STRUCTURE_SLOT_MAP_H_ 1
 
@@ -342,7 +342,37 @@ public:
 	}
 	id_type id_of(pointer item) const {
 		const size_type index=index_of_ptr(item);
-		if (index==static_cast<size_type>(-1)) throw std::invalid_argument("Invalid pointer");//return static_cast<id_type>(0);
+#ifndef _STDEX_IGNORE_STRUCTURE_SLOT_MAP_ID_WARNINGS
+		if (index==static_cast<size_type>(-1)) return static_cast<id_type>(0);
+#else
+		if (index==static_cast<size_type>(-1)) throw std::invalid_argument("Invalid pointer");
+#endif
+		const slot_type& slot=block_[index];
+		return slot.id;
+	}
+#ifndef _STDEX_IGNORE_STRUCTURE_SLOT_MAP_ID_REF_WARNINGS
+	[[deprecated("Dangerous: modifying slot_map id by reference may break container invariants")]]
+#endif
+	id_type& id_ref_of(pointer item) {
+		const size_type index=index_of_ptr(item);
+#ifndef _STDEX_IGNORE_STRUCTURE_SLOT_MAP_ID_WARNINGS
+		if (index==static_cast<size_type>(-1)) return static_cast<id_type>(0);
+#else
+		if (index==static_cast<size_type>(-1)) throw std::invalid_argument("Invalid pointer");
+#endif
+		slot_type& slot=block_[index];
+		return slot.id;
+	}
+#ifndef _STDEX_IGNORE_STRUCTURE_SLOT_MAP_ID_REF_WARNINGS
+	[[deprecated("Dangerous: modifying slot_map id by reference may break container invariants")]]
+#endif
+	const id_type& id_ref_of(const_pointer item) const {
+		const size_type index=index_of_ptr(item);
+#ifndef _STDEX_IGNORE_STRUCTURE_SLOT_MAP_ID_WARNINGS
+		if (index==static_cast<size_type>(-1)) return static_cast<id_type>(0);
+#else
+		if (index==static_cast<size_type>(-1)) throw std::invalid_argument("Invalid pointer");
+#endif
 		const slot_type& slot=block_[index];
 		return slot.id;
 	}
