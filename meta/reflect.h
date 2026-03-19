@@ -1683,4 +1683,38 @@ public: \
 	} \
 };
 
+#define _STDEX_META_ENUM_DECLARE_ONE_EX(name) name,
+#define _STDEX_META_ENUM_DECLARE_ONE_V_EX(name,value) name = value,
+#define _STDEX_META_ENUM_REFLECT_ONE_EX(name) stdex::meta::reflect::make_enum_value<stdex_meta_self,stdex_meta_self::name>(#name),
+#define _STDEX_META_ENUM_REFLECT_ONE_V_EX(name,value) stdex::meta::reflect::make_enum_value<stdex_meta_self,stdex_meta_self::name>(#name),
+#define _STDEX_META_ENUM_EX(_type,base,items_macro) \
+enum _type : base { \
+	items_macro(_STDEX_META_ENUM_DECLARE_ONE_EX,_STDEX_META_ENUM_DECLARE_ONE_V_EX) \
+}; \
+template <> \
+struct stdex::meta::reflect::descriptor<_type> { \
+private: \
+	using stdex_meta_self=_type; \
+	static inline auto enum_desc_=std::make_tuple( \
+		items_macro(_STDEX_META_ENUM_REFLECT_ONE_EX,_STDEX_META_ENUM_REFLECT_ONE_V_EX) \
+		stdex::meta::reflect::make_enum_value<stdex_meta_self,static_cast<stdex_meta_self>(0)>("") \
+	); \
+	template <std::size_t... _Index> \
+	static std::array<stdex::meta::reflect::enum_value,sizeof...(_Index)> make_enum_values_(std::index_sequence<_Index...>) noexcept { \
+		return { std::get<_Index>(enum_desc_).make_runtime()... }; \
+	} \
+	static inline auto enum_values_=make_enum_values_( \
+		std::make_index_sequence<std::tuple_size<decltype(enum_desc_)>::value-1>{} \
+	); \
+	static inline auto attrs_desc_=std::make_tuple(); \
+	static inline auto attrs_=stdex::meta::reflect::make_runtime_attrs(attrs_desc_,std::make_index_sequence<0>{}); \
+public: \
+	static constexpr bool reflectable=true; \
+	static constexpr bool class_reflectable=false; \
+	static constexpr bool enum_reflectable=true; \
+	static stdex::meta::reflect::type get() noexcept { \
+		return stdex::meta::reflect::type{#_type,stdex::meta::reflect::TK_ENUM,{nullptr,0},{nullptr,0},{nullptr,0},{nullptr,0},{enum_values_.data(),enum_values_.size()},{attrs_.data(),attrs_.size()},sizeof(_type),alignof(_type),false,false,false,false,false,std::is_default_constructible<_type>::value,std::is_copy_constructible<_type>::value,std::is_move_constructible<_type>::value,std::is_copy_assignable<_type>::value,std::is_move_assignable<_type>::value}; \
+	} \
+};
+
 #endif
