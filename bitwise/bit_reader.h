@@ -1,5 +1,5 @@
-//Last Modified At 2025/11/05
-//@Version 1.1.0.0
+//Last Modified At 2026/03/14
+//@Version 1.2.0.0
 #ifndef _STDEX_BITWISE_BIT_READER_H_
 #define _STDEX_BITWISE_BIT_READER_H_ 1
 
@@ -24,6 +24,7 @@ public:
 	using iterator=bit_iterator<const uint8_t>;
 
 private:
+	std::vector<uint8_t> owned_;
 	const uint8_t* data_=nullptr;
 	std::size_t bit_size_=0;
 	std::size_t bit_pos_=0;
@@ -33,19 +34,21 @@ public:
 	bit_reader()=default;
 	bit_reader(const void* ptr,std::size_t byte_size,bit_order order=is_little_endian()?BO_LSBYTE:BO_MSBYTE) : data_(reinterpret_cast<const uint8_t*>(ptr)) , bit_size_(byte_size*CHAR_BIT) , order_(order) { }
 	explicit bit_reader(const std::vector<uint8_t>& buf,bit_order order=is_little_endian()?BO_LSBYTE:BO_MSBYTE) : data_(buf.data()) , bit_size_(buf.size()*CHAR_BIT) , order_(order) { }
+	explicit bit_reader(std::vector<uint8_t>&& buf,bit_order order=is_little_endian()?BO_LSBYTE:BO_MSBYTE) : owned_(std::move(buf)) , order_(order) {
+		data_=owned_.data();
+		bit_size_=owned_.size()*CHAR_BIT;
+	}
+	explicit bit_reader(const std::vector<uint8_t>& buf,bool copy=false) : bit_reader(buf,is_little_endian()?BO_LSBYTE:BO_MSBYTE,copy) { }
 	template <typename _It,typename=std::enable_if_t<!std::is_integral_v<_It>>>
-	bit_reader(_It first,_It last,bit_order order=is_little_endian()?BO_LSBYTE:BO_MSBYTE) : order_(order) {
-		std::vector<uint8_t> temp(first,last);
-		data_=temp.data();
-		bit_size_=temp.size()*CHAR_BIT;
+	bit_reader(_It first,_It last,bit_order order=is_little_endian()?BO_LSBYTE:BO_MSBYTE) : owned_(first,last) , order_(order) {
+		data_=owned_.data();
+		bit_size_=owned_.size()*CHAR_BIT;
 	}
 
 	[[nodiscard]]
 	bool eof() const noexcept { return bit_pos_>=bit_size_; }
-
 	[[nodiscard]]
 	std::size_t tell_bits() const noexcept { return bit_pos_; }
-
 	[[nodiscard]]
 	std::size_t size_bits() const noexcept { return bit_size_; }
 
@@ -56,6 +59,7 @@ public:
 
 	void byte_align() noexcept {
 		bit_pos_=(bit_pos_+CHAR_BIT-1u) & ~std::size_t(CHAR_BIT-1);
+		if (bit_pos_>bit_size_) bit_pos_=bit_size_;
 	}
 
 	template <typename _Tp>
@@ -108,7 +112,7 @@ public:
 		return val;
 	}
 
-	std::size_t& bit_pos() { return bit_pos_; }
+	std::size_t bit_pos() { return bit_pos_; }
 	bit_order& bit_order() noexcept { return order_; }
 };
 
