@@ -1,5 +1,5 @@
-//Last Modified At 2026/01/28
-//@Version 1.2.0.0
+//Last Modified At 2026/03/21
+//@Version 1.2.1.0
 #ifndef _STDEX_UTILITY_VERSION_H_
 #define _STDEX_UTILITY_VERSION_H_ 1
 
@@ -25,7 +25,7 @@ struct version {
 	_Tp patch;
 	_Tp build;
 	version()=default;
-	version(_Tp major, uint32_t minor, uint32_t patch, uint32_t build) : major(major) , minor(minor) , patch(patch) , build(build) { }
+	version(_Tp major,_Tp minor,_Tp patch,_Tp build) : major(major) , minor(minor) , patch(patch) , build(build) { }
 	std::string to_string() {
 		constexpr double log10_2=0.30102999566398119521373889472449;
 		constexpr int digits=static_cast<int>(sizeof(_Tp)*CHAR_BIT*log10_2)+2;
