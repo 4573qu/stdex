@@ -312,7 +312,7 @@ private:
 	static constexpr std::size_t length_field_size_=sigma_traits<word_type>::length_field_size_;
 
 	std::array<word_type,8> state_=traits_type::initial_state_;
-	std::array<std::uint8_t,block_size_> buffer_{};
+	std::array<std::uint8_t,block_size> buffer_{};
 	std::size_t buffer_size_=0;
 	std::uint64_t total_size_low_=0;
 	std::uint64_t total_size_high_=0;
@@ -407,7 +407,7 @@ public:
 	digest_type digest() const noexcept {
 		auto copy=*this;
 		copy.append_length_and_finalize_padding();
-		std::array<std::uint8_t,64> full{};
+		std::array<std::uint8_t,word_size_*CHAR_BIT> full{};
 		bitwise::bit_writer writer(bitwise::BO_MSBYTE);
 		for (std::size_t i=0;i<8;i++) writer.write_bits(sizeof(word_type)*CHAR_BIT,copy.state_[i]);
 		std::memcpy(full.data(),writer.buffer().data(),word_size_*8);
@@ -552,8 +552,8 @@ public:
 	static constexpr std::uint8_t domain=traits_type::domain_;
 
 private:
-	std::array<std::uint8_t,state_size_> state_{};
-	std::array<std::uint8_t,rate_> buffer_{};
+	std::array<std::uint8_t,state_size> state_{};
+	std::array<std::uint8_t,rate> buffer_{};
 	std::size_t buffer_size_=0;
 
 	static constexpr std::uint64_t round_constants_[24]={
@@ -669,10 +669,10 @@ private:
 	bool initialized_=false;
 
 	void initialize_key(const void* key,std::size_t key_length) noexcept {
-		std::array<std::uint8_t,block_size_> key_block{};
+		std::array<std::uint8_t,block_size> key_block{};
 		if (key_length>block_size_) {
 			const auto key_digest=hash_type::calculate(key,key_length);
-			for (std::size_t i=0;i<digest_size_;i++) key_block[i]=key_digest[i];
+			for (std::size_t i=0;i<digest_size;i++) key_block[i]=key_digest[i];
 		} else std::memcpy(key_block.data(),key,key_length);
 		std::array<std::uint8_t,block_size_> ipad{};
 		std::array<std::uint8_t,block_size_> opad{};
