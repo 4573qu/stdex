@@ -1,7 +1,7 @@
 //Last Modified At 2025/09/16
 //@Version 1.0.0.2
-#ifndef _STDEX_MATH_BASE_H_
-#define _STDEX_MATH_BASE_H_ 1
+#ifndef _STDEX_MATH_FOUNDATIONS_H_
+#define _STDEX_MATH_FOUNDATIONS_H_ 1
 #include <cmath>
 #include <string>
 

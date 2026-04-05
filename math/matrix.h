@@ -1,5 +1,5 @@
-//Last Modified At 2026/01/03
-//@Version 1.3.0.0
+//Last Modified At 2026/04/06
+//@Version 1.3.0.1
 #ifndef _STDEX_MATH_MATRIX_H_
 #define _STDEX_MATH_MATRIX_H_ 1
 #define matrix_array matrix<int>
@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <initializer_list>
 
-#include base.h"//At Least 1.0.0.2
+#include "foundations.h"//At Least 1.0.0.2
 
 namespace stdex {
 	
