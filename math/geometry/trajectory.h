@@ -6,7 +6,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "../base.h"
+#include "../foundations.h"
 #include "point.h"//At Least 1.0
 
 namespace stdex {

@@ -10,7 +10,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "base.h"//At Least 1.0.0.2
+#include "foundations.h"//At Least 1.0.0.2
 #include "polynomial.h"
 
 namespace stdex {

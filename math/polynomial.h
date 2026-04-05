@@ -6,7 +6,7 @@
 #include <map>
 #include <type_traits>
 
-#include "base.h"//At Least 1.0.0.2
+#include "foundations.h"//At Least 1.0.0.2
 #include "numeric.h"
 
 namespace stdex {

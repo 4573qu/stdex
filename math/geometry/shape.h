@@ -2,7 +2,8 @@
 //@Version 1.0.0.0
 #ifndef _STDEX_MATH_GEOMETRY_SHAPE_H_
 #define _STDEX_MATH_GEOMETRY_SHAPE_H_ 1
-#include "../base.h"//At Least 1.0.0.2
+
+#include "../foundations.h"//At Least 1.0.0.2
 
 namespace std {
 	
