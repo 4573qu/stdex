@@ -1,5 +1,5 @@
-//Last Modified At 2026/03/19
-//@Version 1.0.0.0
+//Last Modified At 2026/04/14
+//@Version 1.1.0.0
 #ifndef _STDEX_META_REFLECT_H_
 #define _STDEX_META_REFLECT_H_ 1
 
@@ -1555,36 +1555,36 @@ struct descriptor<std::span<_Tp,_Extent>> {
 
 }
 
-#define _STDEX_META_ATTR(name,value) stdex::meta::reflect::make_attribute(#name,value)
-#define _STDEX_META_ATTRS(...) stdex::meta::reflect::make_attributes(__VA_ARGS__)
-#define _STDEX_META_FIELD(name) stdex::meta::reflect::make_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name>(#name)
-#define _STDEX_META_FIELD_ATTR(name,attrs) stdex::meta::reflect::make_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name>(#name,attrs)
-#define _STDEX_META_FIELD_EX(name,access_v,const_v) stdex::meta::reflect::make_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v,const_v>(#name)
-#define _STDEX_META_FIELD_EX_ATTR(name,access_v,const_v,attrs) stdex::meta::reflect::make_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v,const_v>(#name,attrs)
-#define _STDEX_META_STATIC_FIELD(name) stdex::meta::reflect::make_static_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name>(#name)
-#define _STDEX_META_STATIC_FIELD_ATTR(name,attrs) stdex::meta::reflect::make_static_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name>(#name,attrs)
-#define _STDEX_META_STATIC_FIELD_EX(name,access_v,const_v) stdex::meta::reflect::make_static_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v,const_v>(#name)
-#define _STDEX_META_STATIC_FIELD_EX_ATTR(name,access_v,const_v,attrs) stdex::meta::reflect::make_static_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v,const_v>(#name,attrs)
-#define _STDEX_META_BASE(base_type,access_v,virtual_v) stdex::meta::reflect::make_base<stdex_meta_self,base_type,stdex::meta::reflect::access_kind::access_v,virtual_v>()
-#define _STDEX_META_METHOD(name) stdex::meta::reflect::make_method<&stdex_meta_self::name>(#name)
-#define _STDEX_META_METHOD_ATTR(name,attrs) stdex::meta::reflect::make_method<&stdex_meta_self::name>(#name,attrs)
-#define _STDEX_META_METHOD_EX(name,access_v) stdex::meta::reflect::make_method<&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v>(#name)
-#define _STDEX_META_METHOD_EX_ATTR(name,access_v,attrs) stdex::meta::reflect::make_method<&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v>(#name,attrs)
-#define _STDEX_META_STATIC_METHOD(func) stdex::meta::reflect::make_method<&func>(#func)
-#define _STDEX_META_STATIC_METHOD_ATTR(func,attrs) stdex::meta::reflect::make_method<&func>(#func,attrs)
-#define _STDEX_META_CTOR0() stdex::meta::reflect::make_constructor<stdex_meta_self,stdex::meta::reflect::AK_PUBLIC>()
+#define _STDEX_REFLECT_ATTR(name,value) stdex::meta::reflect::make_attribute(#name,value)
+#define _STDEX_REFLECT_ATTRS(...) stdex::meta::reflect::make_attributes(__VA_ARGS__)
+#define _STDEX_REFLECT_FIELD(name) stdex::meta::reflect::make_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name>(#name)
+#define _STDEX_REFLECT_FIELD_ATTR(name,attrs) stdex::meta::reflect::make_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name>(#name,attrs)
+#define _STDEX_REFLECT_FIELD_EX(name,access_v,const_v) stdex::meta::reflect::make_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v,const_v>(#name)
+#define _STDEX_REFLECT_FIELD_EX_ATTR(name,access_v,const_v,attrs) stdex::meta::reflect::make_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v,const_v>(#name,attrs)
+#define _STDEX_REFLECT_STATIC_FIELD(name) stdex::meta::reflect::make_static_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name>(#name)
+#define _STDEX_REFLECT_STATIC_FIELD_ATTR(name,attrs) stdex::meta::reflect::make_static_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name>(#name,attrs)
+#define _STDEX_REFLECT_STATIC_FIELD_EX(name,access_v,const_v) stdex::meta::reflect::make_static_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v,const_v>(#name)
+#define _STDEX_REFLECT_STATIC_FIELD_EX_ATTR(name,access_v,const_v,attrs) stdex::meta::reflect::make_static_field<stdex_meta_self,decltype(stdex_meta_self::name),&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v,const_v>(#name,attrs)
+#define _STDEX_REFLECT_BASE(base_type,access_v,virtual_v) stdex::meta::reflect::make_base<stdex_meta_self,base_type,stdex::meta::reflect::access_kind::access_v,virtual_v>()
+#define _STDEX_REFLECT_METHOD(name) stdex::meta::reflect::make_method<&stdex_meta_self::name>(#name)
+#define _STDEX_REFLECT_METHOD_ATTR(name,attrs) stdex::meta::reflect::make_method<&stdex_meta_self::name>(#name,attrs)
+#define _STDEX_REFLECT_METHOD_EX(name,access_v) stdex::meta::reflect::make_method<&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v>(#name)
+#define _STDEX_REFLECT_METHOD_EX_ATTR(name,access_v,attrs) stdex::meta::reflect::make_method<&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v>(#name,attrs)
+#define _STDEX_REFLECT_STATIC_METHOD(func) stdex::meta::reflect::make_method<&func>(#func)
+#define _STDEX_REFLECT_STATIC_METHOD_ATTR(func,attrs) stdex::meta::reflect::make_method<&func>(#func,attrs)
+#define _STDEX_REFLECT_CTOR0() stdex::meta::reflect::make_constructor<stdex_meta_self,stdex::meta::reflect::AK_PUBLIC>()
 #if __cplusplus>=_STDEX_CPP20_VERSION
-	#define _STDEX_META_CTOR(...) stdex::meta::reflect::make_constructor<stdex_meta_self,stdex::meta::reflect::AK_PUBLIC __VA_OPT__(,) __VA_ARGS__>()
+	#define _STDEX_REFLECT_CTOR(...) stdex::meta::reflect::make_constructor<stdex_meta_self,stdex::meta::reflect::AK_PUBLIC __VA_OPT__(,) __VA_ARGS__>()
 #else
-	#define _STDEX_META_CTOR(...) stdex::meta::reflect::make_constructor<stdex_meta_self,stdex::meta::reflect::AK_PUBLIC,__VA_ARGS__>()
+	#define _STDEX_REFLECT_CTOR(...) stdex::meta::reflect::make_constructor<stdex_meta_self,stdex::meta::reflect::AK_PUBLIC,__VA_ARGS__>()
 #endif
-#define _STDEX_META_CTOR_ATTR(attrs,...) stdex::meta::reflect::make_constructor<stdex_meta_self,stdex::meta::reflect::AK_PUBLIC,__VA_ARGS__>(attrs)
-#define _STDEX_META_FIELDS(...) std::make_tuple(__VA_ARGS__)
-#define _STDEX_META_METHODS(...) std::make_tuple(__VA_ARGS__)
-#define _STDEX_META_CTORS(...) std::make_tuple(__VA_ARGS__)
-#define _STDEX_META_BASES(...) std::make_tuple(__VA_ARGS__)
-#define _STDEX_META_ATTRIBUTES(...) std::make_tuple(__VA_ARGS__)
-#define _STDEX_REGISTER_CLASS_EX(_type,fields_pack,methods_pack,ctors_pack,bases_pack,attrs_pack) \
+#define _STDEX_REFLECT_CTOR_ATTR(attrs,...) stdex::meta::reflect::make_constructor<stdex_meta_self,stdex::meta::reflect::AK_PUBLIC,__VA_ARGS__>(attrs)
+#define _STDEX_REFLECT_FIELDS(...) std::make_tuple(__VA_ARGS__)
+#define _STDEX_REFLECT_METHODS(...) std::make_tuple(__VA_ARGS__)
+#define _STDEX_REFLECT_CTORS(...) std::make_tuple(__VA_ARGS__)
+#define _STDEX_REFLECT_BASES(...) std::make_tuple(__VA_ARGS__)
+#define _STDEX_REFLECT_ATTRIBUTES(...) std::make_tuple(__VA_ARGS__)
+#define _STDEX_REFLECT_REGISTER_CLASS_EX(_type,fields_pack,methods_pack,ctors_pack,bases_pack,attrs_pack) \
 template <> \
 struct stdex::meta::reflect::descriptor<_type> { \
 private: \
@@ -1608,14 +1608,14 @@ public: \
 	} \
 };
 
-#define _STDEX_META_ENUM_REGISTER_ONE(name) stdex::meta::reflect::make_enum_value<stdex_meta_self,stdex_meta_self::name>(#name),
-#define _STDEX_META_ENUM_REGISTER_ONE_ATTR(name,attrs) stdex::meta::reflect::make_enum_value<stdex_meta_self,stdex_meta_self::name>(#name,attrs),
-#define _STDEX_REGISTER_ENUM(_type,items_macro) \
+#define _STDEX_REFLECT_ENUM_REGISTER_ONE(name) stdex::meta::reflect::make_enum_value<stdex_meta_self,stdex_meta_self::name>(#name),
+#define _STDEX_REFLECT_ENUM_REGISTER_ONE_ATTR(name,attrs) stdex::meta::reflect::make_enum_value<stdex_meta_self,stdex_meta_self::name>(#name,attrs),
+#define _STDEX_REFLECT_REGISTER_ENUM(_type,items_macro) \
 template <> \
 struct stdex::meta::reflect::descriptor<_type> { \
 private: \
 	using stdex_meta_self=_type; \
-	static inline auto enum_desc_=std::make_tuple(items_macro(_STDEX_META_ENUM_REGISTER_ONE)stdex::meta::reflect::make_enum_value<stdex_meta_self,static_cast<stdex_meta_self>(0)>("")); \
+	static inline auto enum_desc_=std::make_tuple(items_macro(_STDEX_REFLECT_ENUM_REGISTER_ONE)stdex::meta::reflect::make_enum_value<stdex_meta_self,static_cast<stdex_meta_self>(0)>("")); \
 	template <std::size_t... _Index> \
 	static std::array<stdex::meta::reflect::enum_value,sizeof...(_Index)> make_enum_values_(std::index_sequence<_Index...>) noexcept { \
 		return std::array<stdex::meta::reflect::enum_value,sizeof...(_Index)>{std::get<_Index>(enum_desc_).make_runtime()...}; \
@@ -1632,12 +1632,12 @@ public: \
 	} \
 };
 
-#define _STDEX_REGISTER_ENUM_EX(_type,items_macro,attrs_pack) \
+#define _STDEX_REFLECT_REGISTER_ENUM_EX(_type,items_macro,attrs_pack) \
 template <> \
 struct stdex::meta::reflect::descriptor<_type> { \
 private: \
 	using stdex_meta_self=_type; \
-	static inline auto enum_desc_=std::make_tuple(items_macro(_STDEX_META_ENUM_REGISTER_ONE)stdex::meta::reflect::make_enum_value<stdex_meta_self,static_cast<stdex_meta_self>(0)>("")); \
+	static inline auto enum_desc_=std::make_tuple(items_macro(_STDEX_REFLECT_ENUM_REGISTER_ONE)stdex::meta::reflect::make_enum_value<stdex_meta_self,static_cast<stdex_meta_self>(0)>("")); \
 	template <std::size_t... _Index> \
 	static std::array<stdex::meta::reflect::enum_value,sizeof...(_Index)> make_enum_values_(std::index_sequence<_Index...>) noexcept { \
 		return std::array<stdex::meta::reflect::enum_value,sizeof...(_Index)>{std::get<_Index>(enum_desc_).make_runtime()...}; \
@@ -1654,17 +1654,17 @@ public: \
 	} \
 };
 
-#define _STDEX_META_ENUM_DECLARE_ONE(name,value) name=value,
-#define _STDEX_META_ENUM_REFLECT_ONE(name,value) stdex::meta::reflect::make_enum_value<stdex_meta_self,stdex_meta_self::name>(#name),
-#define _STDEX_META_ENUM(_type,base,items_macro) \
+#define _STDEX_REFLECT_ENUM_DECLARE_ONE(name,value) name=value,
+#define _STDEX_REFLECT_ENUM_REFLECT_ONE(name,value) stdex::meta::reflect::make_enum_value<stdex_meta_self,stdex_meta_self::name>(#name),
+#define _STDEX_REFLECT_ENUM(_type,base,items_macro) \
 enum _type : base { \
-	items_macro(_STDEX_META_ENUM_DECLARE_ONE) \
+	items_macro(_STDEX_REFLECT_ENUM_DECLARE_ONE) \
 }; \
 template <> \
 struct stdex::meta::reflect::descriptor<_type> { \
 private: \
 	using stdex_meta_self=_type; \
-	static inline auto enum_desc_=std::make_tuple(items_macro(_STDEX_META_ENUM_REFLECT_ONE)stdex::meta::reflect::make_enum_value<stdex_meta_self,static_cast<stdex_meta_self>(0)>("")); \
+	static inline auto enum_desc_=std::make_tuple(items_macro(_STDEX_REFLECT_ENUM_REFLECT_ONE)stdex::meta::reflect::make_enum_value<stdex_meta_self,static_cast<stdex_meta_self>(0)>("")); \
 	template <std::size_t... _Index> \
 	static std::array<stdex::meta::reflect::enum_value,sizeof...(_Index)> make_enum_values_(std::index_sequence<_Index...>) noexcept { \
 		return std::array<stdex::meta::reflect::enum_value,sizeof...(_Index)>{ \
@@ -1682,5 +1682,95 @@ public: \
 		return stdex::meta::reflect::type{#_type,stdex::meta::reflect::TK_ENUM,{nullptr,0},{nullptr,0},{nullptr,0},{nullptr,0},{enum_values_.data(),enum_values_.size()},{attrs_.data(),attrs_.size()},sizeof(_type),alignof(_type),false,false,false,false,false,std::is_default_constructible<_type>::value,std::is_copy_constructible<_type>::value,std::is_move_constructible<_type>::value,std::is_copy_assignable<_type>::value,std::is_move_assignable<_type>::value}; \
 	} \
 };
+
+#define _STDEX_REFLECT_ENUM_DECLARE_ONE_EX(name) name,
+#define _STDEX_REFLECT_ENUM_DECLARE_ONE_V_EX(name,value) name = value,
+#define _STDEX_REFLECT_ENUM_REFLECT_ONE_EX(name) stdex::meta::reflect::make_enum_value<stdex_meta_self,stdex_meta_self::name>(#name),
+#define _STDEX_REFLECT_ENUM_REFLECT_ONE_V_EX(name,value) stdex::meta::reflect::make_enum_value<stdex_meta_self,stdex_meta_self::name>(#name),
+#define _STDEX_REFLECT_ENUM_EX(_type,base,items_macro) \
+enum _type : base { \
+	items_macro(_STDEX_REFLECT_ENUM_DECLARE_ONE_EX,_STDEX_REFLECT_ENUM_DECLARE_ONE_V_EX) \
+}; \
+template <> \
+struct stdex::meta::reflect::descriptor<_type> { \
+private: \
+	using stdex_meta_self=_type; \
+	static inline auto enum_desc_=std::make_tuple( \
+		items_macro(_STDEX_REFLECT_ENUM_REFLECT_ONE_EX,_STDEX_REFLECT_ENUM_REFLECT_ONE_V_EX) \
+		stdex::meta::reflect::make_enum_value<stdex_meta_self,static_cast<stdex_meta_self>(0)>("") \
+	); \
+	template <std::size_t... _Index> \
+	static std::array<stdex::meta::reflect::enum_value,sizeof...(_Index)> make_enum_values_(std::index_sequence<_Index...>) noexcept { \
+		return { std::get<_Index>(enum_desc_).make_runtime()... }; \
+	} \
+	static inline auto enum_values_=make_enum_values_( \
+		std::make_index_sequence<std::tuple_size<decltype(enum_desc_)>::value-1>{} \
+	); \
+	static inline auto attrs_desc_=std::make_tuple(); \
+	static inline auto attrs_=stdex::meta::reflect::make_runtime_attrs(attrs_desc_,std::make_index_sequence<0>{}); \
+public: \
+	static constexpr bool reflectable=true; \
+	static constexpr bool class_reflectable=false; \
+	static constexpr bool enum_reflectable=true; \
+	static stdex::meta::reflect::type get() noexcept { \
+		return stdex::meta::reflect::type{#_type,stdex::meta::reflect::TK_ENUM,{nullptr,0},{nullptr,0},{nullptr,0},{nullptr,0},{enum_values_.data(),enum_values_.size()},{attrs_.data(),attrs_.size()},sizeof(_type),alignof(_type),false,false,false,false,false,std::is_default_constructible<_type>::value,std::is_copy_constructible<_type>::value,std::is_move_constructible<_type>::value,std::is_copy_assignable<_type>::value,std::is_move_assignable<_type>::value}; \
+	} \
+};
+
+#define _STDEX_REFLECT_ENUM_LIGHT_REFLECT_ONE(name,value) \
+	stdex::meta::reflect::enum_value{#name,static_cast<long long>(stdex_meta_self::name),nullptr,0},
+#define _STDEX_REFLECT_ENUM_LIGHT(_type,base,items_macro) \
+enum _type : base { \
+	items_macro(_STDEX_REFLECT_ENUM_DECLARE_ONE) \
+}; \
+template <> \
+struct stdex::meta::reflect::descriptor<_type>; \
+namespace stdex { namespace meta { namespace reflect { \
+template <> \
+struct descriptor<_type> { \
+private: \
+	using stdex_meta_self=_type; \
+	static inline constexpr enum_value enum_values_[]={ \
+		items_macro(_STDEX_REFLECT_ENUM_LIGHT_REFLECT_ONE) \
+	}; \
+	static inline constexpr std::size_t enum_count_=sizeof(enum_values_)/sizeof(enum_values_[0]); \
+public: \
+	static constexpr bool reflectable=true; \
+	static constexpr bool class_reflectable=false; \
+	static constexpr bool enum_reflectable=true; \
+	static stdex::meta::reflect::type get() noexcept { \
+		return stdex::meta::reflect::type{#_type,stdex::meta::reflect::TK_ENUM,{nullptr,0},{nullptr,0},{nullptr,0},{nullptr,0},{enum_values_,enum_count_},{nullptr,0},sizeof(_type),alignof(_type),false,false,false,false,false,std::is_default_constructible<_type>::value,std::is_copy_constructible<_type>::value,std::is_move_constructible<_type>::value,std::is_copy_assignable<_type>::value,std::is_move_assignable<_type>::value}; \
+	} \
+}; \
+}}}
+
+#define _STDEX_REFLECT_ENUM_EX_LIGHT_REFLECT_ONE_EX(name) \
+	stdex::meta::reflect::enum_value{#name,static_cast<long long>(stdex_meta_self::name),nullptr,0},
+#define _STDEX_REFLECT_ENUM_EX_LIGHT_REFLECT_ONE_V_EX(name,value) \
+	stdex::meta::reflect::enum_value{#name,static_cast<long long>(stdex_meta_self::name),nullptr,0},
+#define _STDEX_REFLECT_ENUM_EX_LIGHT(_type,base,items_macro) \
+enum _type : base { \
+	items_macro(_STDEX_REFLECT_ENUM_DECLARE_ONE_EX,_STDEX_REFLECT_ENUM_DECLARE_ONE_V_EX) \
+}; \
+template <> \
+struct stdex::meta::reflect::descriptor<_type>; \
+namespace stdex { namespace meta { namespace reflect { \
+template <> \
+struct descriptor<_type> { \
+private: \
+	using stdex_meta_self=_type; \
+	static inline constexpr enum_value enum_values_[]={ \
+		items_macro(_STDEX_REFLECT_ENUM_EX_LIGHT_REFLECT_ONE_EX,_STDEX_REFLECT_ENUM_EX_LIGHT_REFLECT_ONE_V_EX) \
+	}; \
+	static inline constexpr std::size_t enum_count_=sizeof(enum_values_)/sizeof(enum_values_[0]); \
+public: \
+	static constexpr bool reflectable=true; \
+	static constexpr bool class_reflectable=false; \
+	static constexpr bool enum_reflectable=true; \
+	static stdex::meta::reflect::type get() noexcept { \
+		return stdex::meta::reflect::type{#_type,stdex::meta::reflect::TK_ENUM,{nullptr,0},{nullptr,0},{nullptr,0},{nullptr,0},{enum_values_,enum_count_},{nullptr,0},sizeof(_type),alignof(_type),false,false,false,false,false,std::is_default_constructible<_type>::value,std::is_copy_constructible<_type>::value,std::is_move_constructible<_type>::value,std::is_copy_assignable<_type>::value,std::is_move_assignable<_type>::value}; \
+	} \
+}; \
+}}}
 
 #endif
