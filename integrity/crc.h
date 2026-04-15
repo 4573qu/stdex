@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/30
-//@Version 1.0.0.0
+//Last Modified At 2026/04/16
+//@Version 1.0.0.1
 #ifndef _STDEX_INTEGRITY_CRC_H_
 #define _STDEX_INTEGRITY_CRC_H_ 1
 
@@ -91,13 +91,13 @@ public:
 	}
 	static constexpr auto table_=generate_table();
 
-	crc() noexcept : value_(initial_value_) {}
+	crc() noexcept : value_(initial_value_) { }
 #if __cplusplus>=_STDEX_CPP20_VERSION
 	void update(std::span<const std::byte> data) noexcept {
 		for (auto it:data) {
 			const auto idx=[it]{
 				if constexpr (reflect_input_) {
-					return static_cast<uint8_t>(std::to_integer<uint8_t>(it))
+					return static_cast<uint8_t>(std::to_integer<uint8_t>(it));
 				} else {
 					return static_cast<uint8_t>(std::to_integer<uint8_t>(it))^(value_>>(_Bits-8));
 				}
