@@ -1,5 +1,5 @@
-//Last Modified At 2026/04/14
-//@Version 1.1.0.0
+//Last Modified At 2026/04/15
+//@Version 1.2.0.0
 #ifndef _STDEX_META_REFLECT_H_
 #define _STDEX_META_REFLECT_H_ 1
 
@@ -14,6 +14,17 @@
 #include <type_traits>
 #include <utility>
 
+#if __has_include("../macros/cpp_compiler.h")
+#include "../macros/cpp_compiler.h"//At Least 1.0
+#endif
+
+#ifndef _STDEX_MSVC_COMPILER
+#if defined(_MSC_VER)
+#define _STDEX_MSVC_COMPILER 1
+#else
+#define _STDEX_MSVC_COMPILER 0
+#endif
+#endif
 
 #if __has_include("../macros/cpp_version.h")
 #include "../macros/cpp_version.h"//At Least 1.0
@@ -44,6 +55,12 @@ enum type_kind {
 	TK_FUNDAMENTAL,
 	TK_CLASS,
 	TK_ENUM,
+};
+
+enum ref_qualifier_kind {
+	RQK_NONE,
+	RQK_LVALUE,
+	RQK_RVALUE,
 };
 
 template <typename _Tp>
@@ -308,6 +325,9 @@ struct method {
 	access_kind access_;
 	bool const_;
 	bool static_;
+	bool noexcept_;
+	bool volatile_;
+	ref_qualifier_kind ref_qualifier_;
 	const attribute* attributes_;
 	std::size_t attribute_count_;
 
@@ -318,8 +338,11 @@ struct method {
 	constexpr access_kind access() const noexcept { return access_; }
 	constexpr bool is_const() const noexcept { return const_; }
 	constexpr bool is_static() const noexcept { return static_; }
+	constexpr bool is_noexcept() const noexcept { return noexcept_; }
+	constexpr bool is_volatile() const noexcept { return volatile_; }
 	constexpr const attribute* attributes() const noexcept { return attributes_; }
 	constexpr std::size_t attribute_count() const noexcept { return attribute_count_; }
+	constexpr ref_qualifier_kind ref_qualifier() const noexcept { return ref_qualifier_; }
 
 	std::any invoke(void* obj,const std::any* args,std::size_t count) const {
 		if (static_) return invoke_static?invoke_static(args,count):std::any{};
@@ -679,6 +702,9 @@ struct function_traits<_Return(_Class::*)(_Args...)> {
 	using args_tuple=std::tuple<_Args...>;
 	static constexpr bool const_=false;
 	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_NONE;
 };
 
 template <typename _Class,typename _Return,typename... _Args>
@@ -688,6 +714,9 @@ struct function_traits<_Return(_Class::*)(_Args...) const> {
 	using args_tuple=std::tuple<_Args...>;
 	static constexpr bool const_=true;
 	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_NONE;
 };
 
 template <typename _Return,typename ..._Args>
@@ -697,6 +726,285 @@ struct function_traits<_Return(*)(_Args...)> {
 	using args_tuple=std::tuple<_Args...>;
 	static constexpr bool const_=false;
 	static constexpr bool static_=true;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_NONE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_NONE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) const noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=true;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_NONE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) volatile> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_NONE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) volatile noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_NONE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) const volatile> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=true;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_NONE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) const volatile noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=true;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_NONE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) &> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_LVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) & noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_LVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) const &> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=true;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_LVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) const & noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=true;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_LVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) volatile &> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_LVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) volatile & noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_LVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) const volatile &> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=true;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_LVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) const volatile & noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=true;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_LVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) &&> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_RVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) && noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_RVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) const &&> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=true;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_RVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) const && noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=true;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_RVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) volatile &&> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_RVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) volatile && noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_RVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) const volatile &&> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=true;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=false;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_RVALUE;
+};
+
+template <typename _Class,typename _Return,typename... _Args>
+struct function_traits<_Return(_Class::*)(_Args...) const volatile && noexcept> {
+	using class_type=_Class;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=true;
+	static constexpr bool static_=false;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=true;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_RVALUE;
+};
+
+template <typename _Return,typename ..._Args>
+struct function_traits<_Return(*)(_Args...) noexcept> {
+	using class_type=void;
+	using return_type=_Return;
+	using args_tuple=std::tuple<_Args...>;
+	static constexpr bool const_=false;
+	static constexpr bool static_=true;
+	static constexpr bool noexcept_=true;
+	static constexpr bool volatile_=false;
+	static constexpr ref_qualifier_kind ref_qualifier_=RQK_NONE;
 };
 
 template <typename _Tp,std::size_t _Index>
@@ -736,7 +1044,7 @@ struct member_method_descriptor<_Return(_Class::*)(_Args...),_Method,_Access,_At
 		throw std::runtime_error("method is not static");
 	}
 	method make_runtime() const noexcept {
-		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,false,attributes.data(),attributes.size()};
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,false,false,false,RQK_NONE,attributes.data(),attributes.size()};
 	}
 };
 
@@ -774,8 +1082,7 @@ struct const_method_descriptor<_Return(_Class::*)(_Args...) const,_Method,_Acces
 		throw std::runtime_error("method is not static");
 	}
 	method make_runtime() const noexcept {
-		return method{
-			name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,true,false,attributes.data(),attributes.size()};
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,true,false,attributes.data(),attributes.size()};
 	}
 };
 
@@ -815,10 +1122,691 @@ struct static_method_descriptor<_Return(*)(_Args...),_Method,_Access,_AttrCount>
 		return invoke_impl(args,std::index_sequence_for<_Args...>{});
 	}
 	method make_runtime() const noexcept {
-		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,true,attributes.data(),attributes.size()};
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,true,false,false,RQK_NONE,attributes.data(),attributes.size()};
 	}
 };
 
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) noexcept,access_kind _Access,std::size_t _AttrCount>
+struct member_method_descriptor<_Return(_Class::*)(_Args...) noexcept,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr member_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(_Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			(obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any((obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<_Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void*,const std::any*,std::size_t) {
+		throw std::runtime_error("method is non-const");
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,false,true,false,RQK_NONE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) volatile,access_kind _Access,std::size_t _AttrCount>
+struct member_method_descriptor<_Return(_Class::*)(_Args...) volatile,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr member_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(volatile _Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			(obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any((obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void*,const std::any*,std::size_t) {
+		throw std::runtime_error("method is non-const");
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,false,false,true,RQK_NONE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) volatile noexcept,access_kind _Access,std::size_t _AttrCount>
+struct member_method_descriptor<_Return(_Class::*)(_Args...) volatile noexcept,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr member_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(volatile _Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			(obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any((obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void*,const std::any*,std::size_t) {
+		throw std::runtime_error("method is non-const");
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,false,true,true,RQK_NONE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) &,access_kind _Access,std::size_t _AttrCount>
+struct member_method_descriptor<_Return(_Class::*)(_Args...) &,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr member_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(_Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			((*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any(((*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<_Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void*,const std::any*,std::size_t) {
+		throw std::runtime_error("method is non-const");
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,false,false,false,RQK_LVALUE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) & noexcept,access_kind _Access,std::size_t _AttrCount>
+struct member_method_descriptor<_Return(_Class::*)(_Args...) & noexcept,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr member_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(_Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			((*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any(((*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<_Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void*,const std::any*,std::size_t) {
+		throw std::runtime_error("method is non-const");
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,false,true,false,RQK_LVALUE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) &&,access_kind _Access,std::size_t _AttrCount>
+struct member_method_descriptor<_Return(_Class::*)(_Args...) &&,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr member_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(_Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			(std::move(*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any((std::move(*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<_Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void*,const std::any*,std::size_t) {
+		throw std::runtime_error("method requires rvalue object");
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,false,false,false,RQK_RVALUE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) && noexcept,access_kind _Access,std::size_t _AttrCount>
+struct member_method_descriptor<_Return(_Class::*)(_Args...) && noexcept,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr member_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(_Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			(std::move(*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any((std::move(*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<_Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void*,const std::any*,std::size_t) {
+		throw std::runtime_error("method requires rvalue object");
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,false,true,false,RQK_RVALUE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const noexcept,access_kind _Access,std::size_t _AttrCount>
+struct const_method_descriptor<_Return(_Class::*)(_Args...) const noexcept,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr const_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(const _Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			(obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any((obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,true,false,true,false,RQK_NONE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const volatile,access_kind _Access,std::size_t _AttrCount>
+struct const_method_descriptor<_Return(_Class::*)(_Args...) const volatile,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr const_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(const volatile _Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			(obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any((obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,true,false,false,true,RQK_NONE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const volatile noexcept,access_kind _Access,std::size_t _AttrCount>
+struct const_method_descriptor<_Return(_Class::*)(_Args...) const volatile noexcept,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr const_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(const volatile _Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			(obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any((obj->*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,true,false,true,true,RQK_NONE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const &,access_kind _Access,std::size_t _AttrCount>
+struct const_method_descriptor<_Return(_Class::*)(_Args...) const &,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr const_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(const _Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			((*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any(((*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,true,false,false,false,RQK_LVALUE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const & noexcept,access_kind _Access,std::size_t _AttrCount>
+struct const_method_descriptor<_Return(_Class::*)(_Args...) const & noexcept,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr const_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(const _Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			((*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any(((*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,true,false,true,false,RQK_LVALUE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const &&,access_kind _Access,std::size_t _AttrCount>
+struct const_method_descriptor<_Return(_Class::*)(_Args...) const &&,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr const_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(const _Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			(std::move(*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any((std::move(*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,true,false,false,false,RQK_RVALUE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const && noexcept,access_kind _Access,std::size_t _AttrCount>
+struct const_method_descriptor<_Return(_Class::*)(_Args...) const && noexcept,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr const_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(const _Class* obj,const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			(std::move(*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any((std::move(*obj).*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_static(const std::any*,std::size_t) {
+		throw std::runtime_error("method is not static");
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,true,false,true,false,RQK_RVALUE,attributes.data(),attributes.size()};
+	}
+};
+
+template <typename _Return,typename... _Args,_Return(*_Method)(_Args...) noexcept,access_kind _Access,std::size_t _AttrCount>
+struct static_method_descriptor<_Return(*)(_Args...) noexcept,_Method,_Access,_AttrCount> {
+	std::string_view name;
+	std::array<attribute,_AttrCount> attributes;
+
+	constexpr static_method_descriptor(std::string_view name,std::array<attribute,_AttrCount> attributes) noexcept : name(name) , attributes(attributes) { }
+
+	static type return_type_get() noexcept {
+		return descriptor<_Return>::get();
+	}
+	static inline std::array<type,sizeof...(_Args)> parameter_types={descriptor<_Args>::get()...};
+	template <std::size_t..._Index>
+	static std::any invoke_impl(const std::any* args,std::index_sequence<_Index...>) {
+		if constexpr (std::is_void<_Return>::value) {
+			(*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...);
+			return std::any{};
+		} else {
+			return std::any((*_Method)(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
+		}
+	}
+	static std::any invoke_mut(void*,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_const(const void*,const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(args,std::index_sequence_for<_Args...>{});
+	}
+	static std::any invoke_static(const std::any* args,std::size_t count) {
+		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		return invoke_impl(args,std::index_sequence_for<_Args...>{});
+	}
+	method make_runtime() const noexcept {
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,false,true,true,false,RQK_NONE,attributes.data(),attributes.size()};
+	}
+};
+
+#if _STDEX_MSVC_COMPILER
+template <typename _MethodType,auto _Method,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl;
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...),access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...),_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...),_Method,_Access,_AttrCount>;
+
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) const,_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const,_Method,_Access,_AttrCount>;
+
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Return,typename... _Args,_Return(*_Method)(_Args...),access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(*)(_Args...), _Method,_Access,_AttrCount> {
+	using wrapped_type=static_method_descriptor<_Return(*)(_Args...),_Method,_Access,_AttrCount>;
+
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) noexcept,_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) volatile,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) volatile,_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) volatile,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) volatile noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) volatile noexcept,_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) volatile noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) &,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) &,_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) &,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) & noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) & noexcept,_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) & noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) &&,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) &&,_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) &&,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) && noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) && noexcept,_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) && noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) const noexcept,_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const volatile,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) const volatile,_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const volatile,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const volatile noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) const volatile noexcept,_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const volatile noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const &,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) const &,_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const &,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const & noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) const & noexcept,_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const & noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const &&,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) const &&,_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const &&,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const && noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(_Class::*)(_Args...) const && noexcept,_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const && noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Return,typename... _Args,_Return(*_Method)(_Args...) noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor_impl<_Return(*)(_Args...) noexcept,_Method,_Access,_AttrCount> {
+	using wrapped_type=static_method_descriptor<_Return(*)(_Args...) noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <auto _Method,access_kind _Access=AK_PUBLIC,std::size_t _AttrCount=0>
+struct auto_method_descriptor : auto_method_descriptor_impl<decltype(_Method),_Method,_Access,_AttrCount> { };
+#else
 template <auto _Method,access_kind _Access=AK_PUBLIC,std::size_t _AttrCount=0>
 struct auto_method_descriptor;
 
@@ -849,8 +1837,134 @@ struct auto_method_descriptor<_Method,_Access,_AttrCount> {
 	}
 };
 
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) volatile,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) volatile,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) volatile noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) volatile noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) &,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) &,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) & noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) & noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) &&,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) &&,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) && noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=member_method_descriptor<_Return(_Class::*)(_Args...) && noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const volatile,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const volatile,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const volatile noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const volatile noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const &,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const &,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const & noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const & noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const &&,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const &&,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Class,typename _Return,typename... _Args,_Return(_Class::*_Method)(_Args...) const && noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=const_method_descriptor<_Return(_Class::*)(_Args...) const && noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+
+template <typename _Return,typename... _Args,_Return(*_Method)(_Args...) noexcept,access_kind _Access,std::size_t _AttrCount>
+struct auto_method_descriptor<_Method,_Access,_AttrCount> {
+	using wrapped_type=static_method_descriptor<_Return(*)(_Args...) noexcept,_Method,_Access,_AttrCount>;
+	static constexpr auto make(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+		return wrapped_type{name,attributes};
+	}
+};
+#endif
+
 template <auto _Method,access_kind _Access=AK_PUBLIC,std::size_t _AttrCount=0>
 constexpr auto make_method(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
+	return auto_method_descriptor<_Method,_Access,_AttrCount>::make(name,attributes);
+}
+
+template <typename _MethodType,_MethodType _Method,access_kind _Access=AK_PUBLIC,std::size_t _AttrCount=0>
+constexpr auto make_method_overload(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) noexcept {
 	return auto_method_descriptor<_Method,_Access,_AttrCount>::make(name,attributes);
 }
 
@@ -976,6 +2090,13 @@ inline constexpr const method* find_method(const type& t,std::string_view name,c
 inline constexpr const method* find_method(const type& t,std::string_view name,std::size_t parameter_count) noexcept {
 	for (const auto& v:t.methods()) {
 		if (v.name()==name && v.parameter_count()==parameter_count) return &v;
+	}
+	return nullptr;
+}
+
+inline constexpr const method* find_method(const type& t,std::string_view name,bool is_const,bool is_static) noexcept {
+	for (const auto& v:t.methods()) {
+		if (v.name()==name && v.is_const()==is_const && v.is_static()==is_static) return &v;
 	}
 	return nullptr;
 }
@@ -1570,6 +2691,10 @@ struct descriptor<std::span<_Tp,_Extent>> {
 #define _STDEX_REFLECT_METHOD_ATTR(name,attrs) stdex::meta::reflect::make_method<&stdex_meta_self::name>(#name,attrs)
 #define _STDEX_REFLECT_METHOD_EX(name,access_v) stdex::meta::reflect::make_method<&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v>(#name)
 #define _STDEX_REFLECT_METHOD_EX_ATTR(name,access_v,attrs) stdex::meta::reflect::make_method<&stdex_meta_self::name,stdex::meta::reflect::access_kind::access_v>(#name,attrs)
+#define _STDEX_REFLECT_METHOD_OVERLOAD(name,signature) stdex::meta::reflect::make_method_overload<signature,static_cast<signature>(&stdex_meta_self::name)>(#name)
+#define _STDEX_REFLECT_METHOD_OVERLOAD_ATTR(name,signature,attrs) stdex::meta::reflect::make_method_overload<signature,static_cast<signature>(&stdex_meta_self::name)>(#name,attrs)
+#define _STDEX_REFLECT_METHOD_OVERLOAD_EX(name,signature,access_v) stdex::meta::reflect::make_method_overload<signature,static_cast<signature>(&stdex_meta_self::name),stdex::meta::reflect::access_kind::access_v>(#name)
+#define _STDEX_REFLECT_METHOD_OVERLOAD_EX_ATTR(name,signature,access_v,attrs) stdex::meta::reflect::make_method_overload<signature,static_cast<signature>(&stdex_meta_self::name),stdex::meta::reflect::access_kind::access_v>(#name,attrs)
 #define _STDEX_REFLECT_STATIC_METHOD(func) stdex::meta::reflect::make_method<&func>(#func)
 #define _STDEX_REFLECT_STATIC_METHOD_ATTR(func,attrs) stdex::meta::reflect::make_method<&func>(#func,attrs)
 #define _STDEX_REFLECT_CTOR0() stdex::meta::reflect::make_constructor<stdex_meta_self,stdex::meta::reflect::AK_PUBLIC>()
