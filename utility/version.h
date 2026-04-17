@@ -1,5 +1,5 @@
-//Last Modified At 2026/03/21
-//@Version 1.2.1.0
+//Last Modified At 2026/04/16
+//@Version 1.2.2.0
 #ifndef _STDEX_UTILITY_VERSION_H_
 #define _STDEX_UTILITY_VERSION_H_ 1
 
@@ -26,14 +26,14 @@ struct version {
 	_Tp build;
 	version()=default;
 	version(_Tp major,_Tp minor,_Tp patch,_Tp build) : major(major) , minor(minor) , patch(patch) , build(build) { }
-	std::string to_string() {
+	std::string to_string() const {
 		constexpr double log10_2=0.30102999566398119521373889472449;
 		constexpr int digits=static_cast<int>(sizeof(_Tp)*CHAR_BIT*log10_2)+2;
 		char result[digits*4];
 		snprintf(result,sizeof(result),"%d.%02d.%03d.%03d",major,minor,patch,build);
 		return std::string(result);
 	}
-	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true) const {
+	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true) {
 		if (initialize) major=minor=patch=build=0;
 		std::vector<std::string> parts;
 		std::size_t start=0;
