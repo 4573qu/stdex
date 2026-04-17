@@ -1,5 +1,5 @@
-//Last Modified At 2026/01/18
-//@Version 1.1.0.0
+//Last Modified At 2026/04/17
+//@Version 1.2.0.0
 #ifndef _STDEX_VISION_COLOR_H_
 #define _STDEX_VISION_COLOR_H_ 1
 
@@ -133,7 +133,7 @@ struct rgba {
 	float a;
 	rgba() : r(0) , g(0) , b(0) , a(0) { }
 	rgba(int red,int green,int blue) : rgba(red,blue,green,0.0f) { }
-	rgba(int red,int green,int blue,float alpha) : {
+	rgba(int red,int green,int blue,float alpha) {
 		set_red(red);
 		set_green(green);
 		set_blue(blue);
@@ -333,7 +333,7 @@ struct cmyka {
 	void set_magenta(float magenta) { m=std::clamp(magenta,0.0f,100.0f); }
 	void set_m(float magenta) { set_magenta(magenta); }
 	void set_yellow(float yellow) { y=std::clamp(yellow,0.0f,100.0f); }
-	void set_y(float y) { set_yellow(yellow); }
+	void set_y(float y) { set_yellow(y); }
 	void set_key(float key) { k=std::clamp(key,0.0f,100.0f); }
 	void set_k(float key) { set_key(key); }
 	void set_cmyk(float cyan,float magenta,float yellow,float key) {
@@ -433,7 +433,7 @@ struct xyza {
 	float& tx() { return x; }
 	float& y() { return y; }
 	float& ty() { return y; }
-	float& luma() { return luma; }
+	float& luma() { return y; }
 	float& z() { return z; }
 	float& tz() { return z; }
 	float& alpha() { return a; }
@@ -465,7 +465,7 @@ struct xyza {
 	void set_alpha(float alpha) { a=std::clamp(alpha,0.0f,1.0f); }
 	void set_alpha(int alpha) {
 		float real_a=alpha/255.0f;
-		set_a(real_a);
+		set_alpha(real_a);
 	}
 	bool operator ==(const xyza& other) const {
 		return x==other.x && y==other.y && z==other.z && a==other.a;
@@ -512,7 +512,7 @@ struct laba {
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true);
 	void set_lightness(float lightness) { l=std::clamp(lightness,0.0f,100.0f); }
 	void set_l(float lightness) { set_lightness(lightness); }
-	void set_l_star(float l_star) { set_lightness(lightness); }
+	void set_l_star(float l_star) { set_lightness(l_star); }
 	void set_a(float a_star) { as=a_star; }
 	void set_green_red(float green_red) { set_a(green_red); }
 	void set_a_star(float a_star) { set_a(a_star); }
@@ -604,7 +604,7 @@ struct oklaba {
 		set_alpha(alpha);
 	}
 	float& lightness() { return lp; }
-	float& lightness_perceptual { return lp; }
+	float& lightness_perceptual() { return lp; }
 	float& a() { return arg; }
 	float& axis_red_green() { return arg; }
 	float& b() { return ayb; }
@@ -629,7 +629,7 @@ struct oklaba {
 	void set_b(float b) { ayb=b; }
 	void set_axis_yellow_blue(float b) { set_b(b); } 
 	void set_oklab(float lightness,float a,float b) {
-		set_lightness(l);
+		set_lightness(lightness);
 		set_a(a);
 		set_b(b);
 	}
@@ -829,7 +829,7 @@ inline hsla rgba_to_hsla(rgba color) {
 
 inline rgba hsla_to_rgba(hsla color) {
 	float h=color.hue()/360.0f;
-	float s=color.saturation/100.0f;
+	float s=color.saturation()/100.0f;
 	float l=color.lightness()/100.0f;
 	if (s<1e-5) {
 		int val=static_cast<int>(l*255.0f);
@@ -915,7 +915,7 @@ inline cmyka rgba_to_cmyka(rgba color) {
 		m=(1.0f-g-k)/(1.0f-k);
 		y=(1.0f-b-k)/(1.0f-k);
 	}
-	return cmyka(std::clamp(c*100.0f,0.0f,100.0f),std::clamp(m*100.0f,0.0f,100.0f),std::clamp(y*100.0f,0.0f,100.0f),std::clamp(k*100.0f,0.0f,100.0f),std::clamp(color.a_,0.0f,1.0f));
+	return cmyka(std::clamp(c*100.0f,0.0f,100.0f),std::clamp(m*100.0f,0.0f,100.0f),std::clamp(y*100.0f,0.0f,100.0f),std::clamp(k*100.0f,0.0f,100.0f),std::clamp(color.a,0.0f,1.0f));
 }
 inline rgba cmyka_to_rgba(cmyka color) {
 	float c=std::clamp(color.cyan(),0.0f,100.0f)/100.0f;
@@ -1061,7 +1061,7 @@ inline xyza rgba_to_xyza(rgba color,rgb_profile profile=rgb_profile()) {
 	float g=to_linear(profile.transfer,std::clamp(color.green()/255.0f,0.0f,1.0f));
 	float b=to_linear(profile.transfer,std::clamp(color.blue()/255.0f,0.0f,1.0f));
 	float m00,m01,m02,m10,m11,m12,m20,m21,m22;
-	rgb_to_xyz_matrix(p.space,m00,m01,m02,m10,m11,m12,m20,m21,m22);
+	rgb_to_xyz_matrix(profile.space,m00,m01,m02,m10,m11,m12,m20,m21,m22);
 	xyza result(m00*r+m01*g+m02*b,m10*r+m11*g+m12*b,m20*r+m21*g+m22*b,color.alpha());
 	return result;
 }
@@ -1101,7 +1101,7 @@ inline laba xyza_to_laba(xyza color,white_point wp=wp_d65()) {
 }
 
 inline xyza laba_to_xyza(laba color,white_point wp=wp_d65()) {
-	float fy=(color.l()+16.0f)/116.0f;
+	float fy=(color.lightness()+16.0f)/116.0f;
 	float fx=fy+color.a()/500.0f;
 	float fz=fy-color.b()/200.0f;
 	return xyza(wp.x*lab_f_inv(fx),wp.y*lab_f_inv(fy),wp.z*lab_f_inv(fz),color.alpha());
@@ -1418,7 +1418,7 @@ inline rgba blend_and_composite(rgba base,rgba blend,blend_mode mode) {
 }
 
 inline std::size_t hsla::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) h=s=l=a=0;
+	if (initialize) h=this->s=l=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'H','S')) {
 		rgba temp;
@@ -1452,7 +1452,7 @@ inline std::size_t hsla::from_string(const std::string& s,bool initialize,bool s
 }
 
 inline std::size_t hsva::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) h=s=v=a=0;
+	if (initialize) h=this->s=v=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'H','V')) {
 		rgba temp;
@@ -1522,7 +1522,7 @@ inline std::size_t cmyka::from_string(const std::string& s,bool initialize,bool 
 }
 
 inline std::size_t yuva::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) y=u=v=a=0;
+	if (initialize) y=u()=v()=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'Y','U')) {
 		rgba temp;
@@ -1558,7 +1558,7 @@ inline std::size_t yuva::from_string(const std::string& s,bool initialize,bool s
 }
 
 inline std::size_t xyza::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) x=y=z=a=0;
+	if (initialize) x()=y()=z()=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'X','Z')) {
 		rgba temp;
@@ -1592,7 +1592,7 @@ inline std::size_t xyza::from_string(const std::string& s,bool initialize,bool s
 }
 
 inline std::size_t laba::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) lp=arg=ayb=a=0;
+	if (initialize) l=as=bs=a()=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'L','B')) {
 		rgba temp;
@@ -1660,7 +1660,7 @@ inline std::size_t lcha::from_string(const std::string& s,bool initialize,bool s
 }
 
 inline std::size_t oklaba::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) lp=arg=ayb=a=0;
+	if (initialize) lp=arg=ayb=a()=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'O','B'))  {
 		rgba temp;
@@ -1765,7 +1765,7 @@ inline rgba with_alpha(rgba color,float a) {
 }
 
 inline rgba invert_rgb(rgba color) {
-	return rgba(255-clamp_u8(c.red()),255-clamp_u8(color.green()),255-clamp_u8(color.blue()),color.alpha());
+	return rgba(255-clamp_u8(color.red()),255-clamp_u8(color.green()),255-clamp_u8(color.blue()),color.alpha());
 }
 
 inline rgba adjust_brightness(rgba color,float amount) {
