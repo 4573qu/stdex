@@ -46,13 +46,13 @@ private:
 	}
 	void process_byte(uint8_t byte) noexcept {
 		const auto idx=[byte,this]{
-			if constexpr (reflect_input_) {
+			if constexpr (reflect_input) {
 				return static_cast<uint8_t>(byte);
 			} else {
 				return static_cast<uint8_t>(byte)^(value_>>(_Bits-8));
 			}
 		}();
-		if constexpr (reflect_input_) {
+		if constexpr (reflect_input) {
 			uint8_t idx=static_cast<uint8_t>(value_^byte);
 			value_=(value_>>8)^table_[idx];
 		} else {
@@ -62,26 +62,26 @@ private:
 	}
 
 public:
-	static constexpr std::size_t bits_=_Bits;
-	static constexpr value_type polynomial_=_Polynomial;
-	static constexpr value_type initial_value_=_InitialValue;
-	static constexpr value_type final_xor_value_=_FinalXorValue;
-	static constexpr bool reflect_input_=_ReflectInput;
-	static constexpr bool reflect_output_=_ReflectOutput;
+	static constexpr std::size_t bits=_Bits;
+	static constexpr value_type polynomial=_Polynomial;
+	static constexpr value_type initial_value=_InitialValue;
+	static constexpr value_type final_xor_value=_FinalXorValue;
+	static constexpr bool reflect_input=_ReflectInput;
+	static constexpr bool reflect_output=_ReflectOutput;
 
 	static constexpr auto generate_table() noexcept {
 		std::array<value_type,256> table{};
 		for (int i=0;i<256;i++) {
 			value_type crc=static_cast<value_type>(i);
-			if constexpr (reflect_input_) {
+			if constexpr (reflect_input) {
 				for (int j=0;j<8;j++) {
-					if (crc&1) crc=(crc>>1)^polynomial_;
+					if (crc&1) crc=(crc>>1)^polynomial;
 					else crc>>=1;
 				}
 			} else {
 				crc<<=(_Bits-8);
 				for (int j=0;j<8;j++) {
-					if (crc&(static_cast<value_type>(1)<<(_Bits-1))) crc=(crc<<1)^polynomial_;
+					if (crc&(static_cast<value_type>(1)<<(_Bits-1))) crc=(crc<<1)^polynomial;
 					else crc<<=1;
 				}
 			}
@@ -91,21 +91,21 @@ public:
 	}
 	static constexpr auto table_=generate_table();
 
-	crc() noexcept : value_(initial_value_) { }
+	crc() noexcept : value_(initial_value) { }
 #if __cplusplus>=_STDEX_CPP20_VERSION
 	void update(std::span<const std::byte> data) noexcept {
 		for (auto it:data) {
 			const auto idx=[it]{
-				if constexpr (reflect_input_) {
+				if constexpr (reflect_input) {
 					return static_cast<uint8_t>(std::to_integer<uint8_t>(it));
 				} else {
 					return static_cast<uint8_t>(std::to_integer<uint8_t>(it))^(value_>>(_Bits-8));
 				}
 			}();
-			if constexpr (reflect_input_) {
-				value_=(value_>>8)^table[idx];
+			if constexpr (reflect_input) {
+				value_=(value_>>8)^table_[idx];
 			} else {
-				value_=(value_<<8)^table[idx];
+				value_=(value_<<8)^table_[idx];
 			}
 		}
 	}
@@ -130,10 +130,10 @@ public:
 	[[nodiscard]]
 	value_type checksum() const noexcept {
 		auto result=value_;
-		if constexpr (reflect_input_!=reflect_output_) {
+		if constexpr (reflect_input!=reflect_output) {
 			result=reflect(result);
 		}
-		return result^final_xor_value_;
+		return result^final_xor_value;
 	}
 #if __cplusplus>=_STDEX_CPP20_VERSION
 	static value_type calculate(std::span<const std::byte> data) noexcept {
@@ -152,7 +152,7 @@ public:
 		return calculate(std::data(container),std::size(container));
 	}
 	void reset() noexcept {
-		value_=initial_value_;
+		value_=initial_value;
 	}
 };
 
