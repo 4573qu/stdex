@@ -1,4 +1,4 @@
-//Last Modified At 2025/11/26
+//Last Modified At 2026/04/21
 //@Version 1.0.0.0
 #ifndef _STDEX_WINDOWS_PLATFORM
 #if defined(_WIN32)
