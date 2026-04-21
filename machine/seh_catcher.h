@@ -1,4 +1,4 @@
-//Last Modified At 2026/04/21
+//Last Modified At 2026/04/22
 //@Version 2.0.0.0
 #ifndef _STDEX_MACHINE_SEHCATCHER_H_
 #define _STDEX_MACHINE_SEHCATCHER_H_ 1
@@ -82,6 +82,7 @@
 		#include <dbghelp.h>
 	}
 	#pragma comment(lib,"dbghelp.lib")
+	#include <TlHelp32.h>
 #elif _STDEX_APPLE_PLATFORM
 	#include <TargetConditionals.h>
 	#include <execinfo.h>
@@ -136,8 +137,8 @@ struct module_info {
 	std::string version;
 	std::string to_string() const {
 		std::ostringstream oss;
-		oss<<"  "<<name<<" @ 0x"<<std::hex<<std::uppercase<<std::setfill('0')<<std::setw(sizeof(uintptr_t)*2)<<base_address<<" size=0x"<<std::hex<<std::uppercase<<std::setfill('0')<<size_;
-		if (!version_.empty()) oss<<" ver="<<version_;
+		oss<<"  "<<name<<" @ 0x"<<std::hex<<std::uppercase<<std::setfill('0')<<std::setw(sizeof(uintptr_t)*2)<<base_address<<" size=0x"<<std::hex<<std::uppercase<<std::setfill('0')<<size;
+		if (!version.empty()) oss<<" ver="<<version;
 		return oss.str();
 	}
 };
@@ -152,10 +153,10 @@ struct stack_frame {
 	std::string to_string() const {
 		std::ostringstream oss;
 		oss<<"  [0x"<<std::hex<<std::uppercase<<std::setfill('0')<<std::setw(sizeof(void*)*2)<<reinterpret_cast<uintptr_t>(address)<<"]";
-		if (!module_.empty()) oss<<" "<<module;
-		if (!symbol_.empty()) oss<<"!"<<symbol;
-		if (offset_) oss<<"+0x"<<std::hex<<offset;
-		if (!source_file_.empty()) oss<<" ("<<source_file_<<":"<<std::dec<<source_line_<<")";
+		if (!module.empty()) oss<<" "<<module;
+		if (!symbol.empty()) oss<<"!"<<symbol;
+		if (offset) oss<<"+0x"<<std::hex<<offset;
+		if (!source_file.empty()) oss<<" ("<<source_file<<":"<<std::dec<<source_line<<")";
 		return oss.str();
 	}
 };
@@ -163,7 +164,7 @@ struct stack_frame {
 struct exception_infos {
 	uintptr_t code;
 	void* fault_address;
-	std::vector<std::pair<std::string,uintptr_t>> registers_;
+	std::vector<std::pair<std::string,uintptr_t>> registers;
 	std::string system_info;
 	std::string error_message;
 	std::string error_detail;
@@ -186,8 +187,8 @@ struct exception_infos {
 		oss<<"System Info:"<<system_info<<"\n";
 		oss<<"PID:"<<std::dec<<process_id<<"\n";
 		oss<<"TID:"<<std::dec<<thread_id<<"\n";
-		oss<<"Error ["<<std::hex<<std::uppercase<<code_<<"]:"<<error_message<<"\n";
-		if (!error_detail_.empty()) oss<<"Detail:"<<error_detail<<"\n";
+		oss<<"Error ["<<std::hex<<std::uppercase<<code<<"]:"<<error_message<<"\n";
+		if (!error_detail.empty()) oss<<"Detail:"<<error_detail<<"\n";
 		oss<<"Fault Address:"<<std::hex<<std::uppercase<<"0x"<<std::setfill('0')<<std::setw(sizeof(void*)*2)<<reinterpret_cast<uintptr_t>(fault_address)<<"\n";
 		if (!registers.empty()) {
 			oss<<"Registers:\n";
@@ -199,13 +200,11 @@ struct exception_infos {
 			}
 			if (col%3!=0) oss<<"\n";
 		}
-		if (!stack_trace_.empty()) {
+		if (!stack_trace.empty()) {
 			oss<<"Stack Trace ("<<std::dec<<stack_trace.size()<<" frames):\n";
-			for (std::size_t i=0;i<stack_trace.size();i++) {
-				oss<<"  #"<<std::dec<<std::setw(3)<<std::setfill('0')<<i<<" "<<stack_trace_[i].to_string().substr(2)<<"\n";
-			}
+			for (std::size_t i=0;i<stack_trace.size();i++) oss<<"  #"<<std::dec<<std::setw(3)<<std::setfill('0')<<i<<" "<<stack_trace[i].to_string().substr(2)<<"\n";
 		}
-		if (!modules_.empty()) {
+		if (!modules.empty()) {
 			oss<<"Loaded Modules ("<<std::dec<<modules.size()<<"):\n";
 			for (const auto& m:modules) oss<<m.to_string()<<"\n";
 		}
@@ -251,7 +250,7 @@ private:
 	}
 	bool default_handler(exception_infos& info,bool* windows_recovery=nullptr) {
 		bool should_recover=false;
-		info.timestamp_  =make_timestamp();
+		info.timestamp=make_timestamp();
 		#if _STDEX_WINDOWS_PLATFORM
 			info.process_id=static_cast<uint32_t>(GetCurrentProcessId());
 			info.thread_id=static_cast<uint32_t>(GetCurrentThreadId());
@@ -269,7 +268,7 @@ private:
 		}
 		if (features_.contains(SF_LOGGING)) {
 			std::ofstream log(log_path_,std::ios::app);
-			if (log) log<<"Crash at "<<info.timestamp_<<"\n"<<info.to_string()<<"\n"<<"========================================\n";
+			if (log) log<<"Crash at "<<info.timestamp<<"\n"<<info.to_string()<<"\n"<<"========================================\n";
 		}
 		if (features_.contains(SF_DUMP)) write_dump(info);
 		if (features_.contains(SF_CLEANUP)) {
@@ -294,7 +293,7 @@ private:
 	}
 
 	void collect_stack_trace(exception_infos& info) {
-		info.stack_trace_.clear();
+		info.stack_trace.clear();
 		#if _STDEX_WINDOWS_PLATFORM
 			collect_stack_trace_windows(info);
 		#elif _STDEX_APPLE_PLATFORM || _STDEX_LINUX_PLATFORM
@@ -323,7 +322,7 @@ private:
 			mod.SizeOfStruct=sizeof(IMAGEHLP_MODULE64);
 			for (USHORT i=0;i<frames;i++) {
 				stack_frame sf={};
-				sf.address_=raw[i];
+				sf.address=raw[i];
 				const DWORD64 addr=reinterpret_cast<DWORD64>(raw[i]);
 				DWORD64 sym_disp=0;
 				if (features_.contains(SF_SYMBOLS)) {
@@ -403,7 +402,7 @@ private:
 	#endif
 
 	void collect_modules(exception_infos& info) {
-		info.modules_.clear();
+		info.modules.clear();
 		#if _STDEX_WINDOWS_PLATFORM
 			collect_modules_windows(info);
 		#elif _STDEX_APPLE_PLATFORM
@@ -546,7 +545,6 @@ private:
 
 	#if _STDEX_WINDOWS_PLATFORM
 		LPTOP_LEVEL_EXCEPTION_FILTER prev_filter_=nullptr;
-		static EXCEPTION_POINTERS* current_exception_;
 
 		static LONG WINAPI seh_filter(EXCEPTION_POINTERS* exptrs) {
 			auto& self=instance();
@@ -611,9 +609,9 @@ private:
 			#else
 				info.system_info="Windows (unknown arch)";
 			#endif
-			switch (info.code_) {
+			switch (info.code) {
 				case EXCEPTION_ACCESS_VIOLATION: {
-					info.error_message_="Access Violation";
+					info.error_message="Access Violation";
 					if (exptrs->ExceptionRecord->NumberParameters>=2) {
 						std::ostringstream det;
 						det<<(exptrs->ExceptionRecord->ExceptionInformation[0]?"Write":"Read")<<" at 0x"<<std::hex<<std::uppercase<<std::setfill('0')<<std::setw(sizeof(ULONG_PTR)*2)<<exptrs->ExceptionRecord->ExceptionInformation[1];
@@ -703,7 +701,7 @@ private:
 				}
 				default: {
 					std::ostringstream oss;
-					oss<<"Unknown Exception (0x"<<std::hex<<std::uppercase<<info.code_<<")";
+					oss<<"Unknown Exception (0x"<<std::hex<<std::uppercase<<info.code<<")";
 					info.error_message=oss.str();
 					break;
 				}
@@ -1047,7 +1045,7 @@ private:
 public:
 	std::size_t stack_length=64;
 
-	void configure(stdex::bitwise::flags<SEH_FEATURE> features,const std::string& log_path="crash.log",const std::string& dump_path="crash.dmp") {
+	void configure(stdex::bitwise::flags<seh_feature> features,const std::string& log_path="crash.log",const std::string& dump_path="crash.dmp") {
 		features_=features;
 		log_path_=log_path;
 		dump_path_=dump_path;
