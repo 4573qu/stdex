@@ -54,3 +54,15 @@
 #define _STDEX_IOS_PLATFORM 0
 #endif
 #endif
+#ifndef _STDEX_MACOS_PLATFORM
+#if _STDEX_APPLE_PLATFORM
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
+#define _STDEX_MACOS_PLATFORM 1
+#else
+#define _STDEX_MACOS_PLATFORM 0
+#endif
+#else
+#define _STDEX_MACOS_PLATFORM 0
+#endif
+#endif
