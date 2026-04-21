@@ -1,4 +1,4 @@
-//Last Modified At 2025/10/31
+//Last Modified At 2026/04/15
 //@Version 1.0.0.0
 #ifndef _STDEX_GNU_COMPILER
 #if defined(__GNUC__)
@@ -12,6 +12,13 @@
 #define _STDEX_CLANG_COMPILER 1
 #else
 #define _STDEX_CLANG_COMPILER 0
+#endif
+#endif
+#ifndef _STDEX_MSVC_COMPILER
+#if defined(_MSC_VER)
+#define _STDEX_MSVC_COMPILER 1
+#else
+#define _STDEX_MSVC_COMPILER 0
 #endif
 #endif
 
