@@ -27,7 +27,7 @@
 #endif
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
-#include <span>
+	#include <span>
 #endif
 
 namespace stdex {

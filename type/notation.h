@@ -2259,7 +2259,7 @@ private:
 	}
 	virtual void patch_inplace(const notation& notation_patch) {
 		notation& result=*this;
-		enum  patch_operations {
+		enum patch_operations {
 			PO_ADD,
 			PO_REMOVE,
 			PO_REPLACE,
