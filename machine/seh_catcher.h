@@ -545,7 +545,6 @@ private:
 
 	#if _STDEX_WINDOWS_PLATFORM
 		LPTOP_LEVEL_EXCEPTION_FILTER prev_filter_=nullptr;
-		static EXCEPTION_POINTERS* current_exception_;
 
 		static LONG WINAPI seh_filter(EXCEPTION_POINTERS* exptrs) {
 			auto& self=instance();
