@@ -1,5 +1,5 @@
-//Last Modified At 2026/04/22
-//@Version 2.0.0.0
+//Last Modified At 2026/04/25
+//@Version 2.0.0.1
 #ifndef _STDEX_MACHINE_SEHCATCHER_H_
 #define _STDEX_MACHINE_SEHCATCHER_H_ 1
 
@@ -77,39 +77,43 @@
 #endif
 
 #if _STDEX_WINDOWS_PLATFORM
-	#include <windows.h>
 	extern "C" {
 		#include <dbghelp.h>
 	}
-	#pragma comment(lib,"dbghelp.lib")
 	#include <TlHelp32.h>
+	#include <windows.h>
+	#pragma comment(lib,"dbghelp.lib")
+	#pragma comment(lib,"version.lib")
 #elif _STDEX_APPLE_PLATFORM
 	#include <TargetConditionals.h>
+	#include <dlfcn.h>
 	#include <execinfo.h>
-	#include <signal.h>
-	#include <ucontext.h>
-	#include <unistd.h>
-	#include <sys/utsname.h>
 	#include <mach/mach.h>
 	#include <mach-o/dyld.h>
+	#include <signal.h>
+	#include <sys/utsname.h>
+	#include <ucontext.h>
+	#include <unistd.h>
 #elif _STDEX_ANDROID_PLATFORM
 	#include <android/log.h>
+	#include <dlfcn.h>
 	#include <execinfo.h>
 	#include <signal.h>
+	#include <sys/resource.h>
+	#include <sys/utsname.h>
 	#include <ucontext.h>
 	#include <unistd.h>
-	#include <sys/utsname.h>
 	#include <unwind.h>
-	#include <dlfcn.h>
 #elif _STDEX_LINUX_PLATFORM
+	#include <dlfcn.h>
 	#include <execinfo.h>
 	#include <fcntl.h>
+	#include <link.h>
 	#include <signal.h>
+	#include <sys/resource.h>
+	#include <sys/utsname.h>
 	#include <ucontext.h>
 	#include <unistd.h>
-	#include <sys/utsname.h>
-	#include <link.h>
-	#include <dlfcn.h>
 #endif
 
 namespace stdex {
@@ -177,7 +181,7 @@ struct exception_infos {
 
 	exception_infos() : code(0) , fault_address(nullptr) , process_id(0) , thread_id(0) , is_supported_platform(false){ }
 
-	std::string to_string() const {
+	std::string to_string(bool show_modules=true,bool show_stack=true,bool show_registers=true) const {
 		std::ostringstream oss;
 		if (!is_supported_platform) {
 			oss<<"[seh_catcher] Unsupported platform - no exception information available.\n";
@@ -190,21 +194,21 @@ struct exception_infos {
 		oss<<"Error ["<<std::hex<<std::uppercase<<code<<"]:"<<error_message<<"\n";
 		if (!error_detail.empty()) oss<<"Detail:"<<error_detail<<"\n";
 		oss<<"Fault Address:"<<std::hex<<std::uppercase<<"0x"<<std::setfill('0')<<std::setw(sizeof(void*)*2)<<reinterpret_cast<uintptr_t>(fault_address)<<"\n";
-		if (!registers.empty()) {
+		if (show_registers && !registers.empty()) {
 			oss<<"Registers:\n";
 			std::size_t col=0;
 			for (const auto& [name,value]:registers) {
-				oss<<"  "<<std::left<<std::setw(8)<<name<<":0x"<<std::hex<<std::uppercase<<std::setfill('0')<<std::setw(sizeof(uintptr_t)*2)<<value;
+				oss<<"  "<<std::left<<std::setfill(' ')<<std::setw(8)<<name<<": 0x"<<std::right<<std::setfill('0')<<std::hex<<std::uppercase<<std::setw(sizeof(uintptr_t)*2)<<value<<std::setfill(' ')<<std::dec<<std::right;
 				if (++col%3==0) oss<<"\n";
 				else oss<<"  ";
 			}
 			if (col%3!=0) oss<<"\n";
 		}
-		if (!stack_trace.empty()) {
+		if (show_stack && !stack_trace.empty()) {
 			oss<<"Stack Trace ("<<std::dec<<stack_trace.size()<<" frames):\n";
 			for (std::size_t i=0;i<stack_trace.size();i++) oss<<"  #"<<std::dec<<std::setw(3)<<std::setfill('0')<<i<<" "<<stack_trace[i].to_string().substr(2)<<"\n";
 		}
-		if (!modules.empty()) {
+		if (show_modules && !modules.empty()) {
 			oss<<"Loaded Modules ("<<std::dec<<modules.size()<<"):\n";
 			for (const auto& m:modules) oss<<m.to_string()<<"\n";
 		}
@@ -250,16 +254,18 @@ private:
 	}
 	bool default_handler(exception_infos& info,bool* windows_recovery=nullptr) {
 		bool should_recover=false;
-		info.timestamp=make_timestamp();
-		#if _STDEX_WINDOWS_PLATFORM
-			info.process_id=static_cast<uint32_t>(GetCurrentProcessId());
-			info.thread_id=static_cast<uint32_t>(GetCurrentThreadId());
-		#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
-			info.process_id=static_cast<uint32_t>(getpid());
-			info.thread_id=static_cast<uint32_t>(gettid());
-		#endif
-		if (features_.contains(SF_TRACE)) collect_stack_trace(info);
-		if (features_.contains(SF_MODULES)) collect_modules(info);
+		if (info.timestamp.empty()) info.timestamp=make_timestamp();
+		if (info.process_id==0) {
+			#if _STDEX_WINDOWS_PLATFORM
+				info.process_id=static_cast<uint32_t>(GetCurrentProcessId());
+				info.thread_id=static_cast<uint32_t>(GetCurrentThreadId());
+			#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
+				info.process_id=static_cast<uint32_t>(getpid());
+				info.thread_id=static_cast<uint32_t>(gettid());
+			#endif
+		}
+		if (info.stack_trace.empty() && features_.contains(SF_TRACE)) collect_stack_trace(info);
+		if (info.modules.empty() && features_.contains(SF_MODULES)) collect_modules(info);
 		if (features_.contains(SF_OUTPUT)) {
 			std::cerr<<"[seh_catcher] Crash detected:\n"<<info.to_string()<<"\n";
 			#if _STDEX_ANDROID_PLATFORM
@@ -455,7 +461,7 @@ private:
 				module_info mi={};
 				const char* name=_dyld_get_image_name(i);
 				mi.name=name?name:"";
-				mi.base_address=static_cast<uintptr_t>(_dyld_get_image_vmaddr_slide(i));
+				mi.base_address=static_cast<uintptr_t>(_dyld_get_image_slide(i));
 				info.modules.push_back(std::move(mi));
 			}
 		}
@@ -550,12 +556,11 @@ private:
 			auto& self=instance();
 			current_exception_=exptrs;
 			exception_infos ex_info=collect_windows_info(exptrs);
-			if (self.features_.contains(SF_TRACE)) {
-				auto saved=self.features_;
-				self.features_=stdex::bitwise::flags<seh_feature>(SF_TRACE);
-				self.collect_stack_trace(ex_info);
-				self.features_=saved;
-			}
+			ex_info.timestamp=make_timestamp();
+			ex_info.process_id=static_cast<uint32_t>(GetCurrentProcessId());
+			ex_info.thread_id=static_cast<uint32_t>(GetCurrentThreadId());
+			if (self.features_.contains(SF_TRACE)) self.collect_stack_trace(ex_info);
+			if (self.features_.contains(SF_MODULES)) self.collect_modules(ex_info);
 			bool should_default=true;
 			bool windows_recovery=false;
 			if (self.user_handler_) should_default=self.user_handler_(ex_info);
@@ -717,6 +722,11 @@ private:
 			auto& self=instance();
 			current_ucontext_=ucontext;
 			exception_infos ex_info=collect_posix_info(sig,si,ucontext);
+			ex_info.timestamp=make_timestamp();
+			ex_info.process_id=static_cast<uint32_t>(getpid());
+			ex_info.thread_id=static_cast<uint32_t>(gettid());
+			if (self.features_.contains(SF_TRACE)) self.collect_stack_trace(ex_info);
+			if (self.features_.contains(SF_MODULES)) self.collect_modules(ex_info)
 			bool should_default=true;
 			if (self.user_handler_) should_default=self.user_handler_(ex_info);
 			if (should_default) self.default_handler(ex_info);
