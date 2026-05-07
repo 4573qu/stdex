@@ -1,4 +1,6 @@
 lack structures:
+filter_map
+
 bloom_filter
 skip_list
 circular_array<-ring_buffer?

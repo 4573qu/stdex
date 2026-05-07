@@ -1,5 +1,5 @@
-//Last Modified At 2026/01/27
-//@Version 1.0.0.0
+//Last Modified At 2026/05/08
+//@Version 1.0.0.1
 #ifndef _STDEX_STRUCTURE_OS_TREE_H_
 #define _STDEX_STRUCTURE_OS_TREE_H_ 1
 
@@ -26,7 +26,7 @@ protected:
 	struct os_node : public base_type::rb_node {
 		std::size_t size_=1;
 		template <typename... _Args>
-		os_node(os_node* nil,os_tree* tree,_Args &&...args) : base_type::rb_node(nil,tree,std::forward<_Args>(args)...) { }
+		os_node(os_node* nil,os_tree* tree,_Args&&... args) : base_type::rb_node(nil,tree,std::forward<_Args>(args)...) { }
 		virtual ~os_node()=default;
 		binary_tree_node *clone(binary_tree_node *parent=nullptr) override {
 			os_node *result=new os_node(static_cast<os_node*>(this->nil_),static_cast<os_tree*>(this->tree_));
