@@ -155,7 +155,7 @@ template <typename _Tp>
 struct is_builtin_type : std::integral_constant<bool,std::is_same<_Tp,bool>::value || std::is_same<_Tp,int8_t>::value || std::is_same<_Tp,uint8_t>::value || std::is_same<_Tp,int16_t>::value || std::is_same<_Tp,uint16_t>::value || std::is_same<_Tp,int32_t>::value || std::is_same<_Tp,uint32_t>::value || std::is_same<_Tp,int64_t>::value || std::is_same<_Tp,uint64_t>::value || std::is_same<_Tp,float>::value || std::is_same<_Tp,double>::value || std::is_same<_Tp,long>::value || std::is_same<_Tp,unsigned long>::value || std::is_same<_Tp,long double>::value || std::is_same<_Tp,wchar_t>::value || std::is_same<_Tp,std::string>::value || std::is_same<_Tp,std::string_view>::value || std::is_same<_Tp,std::vector<uint8_t>>::value || std::is_same<_Tp,flat_buffer>::value> {};
 
 template<typename _Tp>
-constexpr bool is_builtin_fb_type_v=is_builtin_fb_type<_Tp>::value;
+constexpr bool is_builtin_type_v=is_builtin_type<_Tp>::value;
 
 class flat_buffer {
 public:
@@ -181,7 +181,7 @@ private:
 
 	template <typename _Uint>
 	void write_le(_Uint val) {
-		static_assert(std::is_integral<_Uint>::value& & std::is_unsigned<_Uint>::value,"write_le requires unsigned integral.");
+		static_assert(std::is_integral<_Uint>::value && std::is_unsigned<_Uint>::value,"write_le requires unsigned integral.");
 		_Uint le=to_little_endian(val);
 		const uint8_t *p=reinterpret_cast<const uint8_t*>(&le);
 		data_.insert(data_.end(),p,p+sizeof(_Uint));
@@ -189,7 +189,7 @@ private:
 
 	template <typename _Uint>
 	void write_le_at(size_type offset,_Uint val) {
-		static_assert(std::is_integral<_Uint>::value& & std::is_unsigned<_Uint>::value,"write_le_at requires unsigned integral.");
+		static_assert(std::is_integral<_Uint>::value && std::is_unsigned<_Uint>::value,"write_le_at requires unsigned integral.");
 		if (offset+sizeof(_Uint)>data_.size()) throw std::out_of_range("write_le_at out of range");//"flat_buffer::write_le_at: write exceeds buffer size");
 		_Uint le=to_little_endian(val);
 		std::memcpy(data_.data()+offset,&le,sizeof(_Uint));
@@ -197,14 +197,14 @@ private:
 
 	template <typename _Uint>
 	_Uint read_le(size_type offset) const {
-		static_assert(std::is_integral<_Uint>::value& & std::is_unsigned<_Uint>::value,"read_le requires unsigned integral");
+		static_assert(std::is_integral<_Uint>::value && std::is_unsigned<_Uint>::value,"read_le requires unsigned integral");
 		if (offset+sizeof(_Uint)>data_.size()) throw std::out_of_range("read_le out of range");//"flat_buffer::read_le: read exceeds buffer size at offset "+std::to_string(offset));
 		_Uint le=0;
 		std::memcpy(&le,data_.data()+offset,sizeof(_Uint));
 		return from_little_endian(le);
 	}
 
-	void write_portable_raw(type_tag tag,const void *val_ptr,uint8_t byte_size) {
+	void write_portable_raw(flat_buffer_type_tag tag,const void *val_ptr,uint8_t byte_size) {
 		data_.push_back(static_cast<uint8_t>(tag));
 		data_.push_back(byte_size);
 		data_.push_back(is_little_endian_host()?0x00u:0x01u);
@@ -217,7 +217,7 @@ private:
 		uint8_t tag_byte=data_[offset];
 		uint8_t byte_size=data_[offset+1];
 		uint8_t endian_flag=data_[offset+2];
-		if (static_cast<type_tag>(tag_byte)!=expected_tag) throw std::invalid_argument("read_portable_raw type_tag mismatch");//"flat_buffer::read_portable_raw: type tag mismatch"_;
+		if (static_cast<flat_buffer_type_tag>(tag_byte)!=expected_tag) throw std::invalid_argument("read_portable_raw type_tag mismatch");//"flat_buffer::read_portable_raw: type tag mismatch"_;
 		if (offset+3+byte_size>data_.size()) throw std::out_of_range("read_portable_raw data truncated");//"flat_buffer::read_portable_raw: data truncated at offset "+std::to_string(offset));
 		size_type copy_size=std::min(static_cast<size_type>(byte_size),out_buf_capacity);
 		std::memset(out_buf,0,out_buf_capacity);
@@ -234,16 +234,16 @@ public:
 		data_.reserve(initial_capacity);
 	}
 	flat_buffer(const uint8_t *src,size_type len) {
-		if (src& & len>0) data_.assign(src,src+len);
+		if (src && len>0) data_.assign(src,src+len);
 	}
 	flat_buffer(const void *src,size_type len) {
-		if (src& & len>0) {
+		if (src && len>0) {
 			const uint8_t *p=reinterpret_cast<const uint8_t*>(src);
 			data_.assign(p,p+len);
 		}
 	}
 	explicit flat_buffer(const std::vector<uint8_t>& vec) : data_(vec) { }
-	explicit flat_buffer(std::vector<uint8_t>& &vec) noexcept : data_(std::move(vec)) { }
+	explicit flat_buffer(std::vector<uint8_t>&& vec) noexcept : data_(std::move(vec)) { }
 	flat_buffer(std::initializer_list<uint8_t> init_list) : data_(init_list) { }
 	~flat_buffer()=default;
 
@@ -252,7 +252,7 @@ public:
 
 	flat_buffer& operator =(const flat_buffer&)=default;
 	flat_buffer& operator =(flat_buffer&&) noexcept=default;
-	flat_buffer& operator =(std::vector<uint8_t>& &vec) noexcept {
+	flat_buffer& operator =(std::vector<uint8_t>&& vec) noexcept {
 		data_=std::move(vec);
 		return *this;
 	}
@@ -424,11 +424,11 @@ public:
 	}
 
 	flat_buffer& append(const uint8_t *src,size_type len) {
-		if (src& & len>0) data_.insert(data_.end(),src,src+len);
+		if (src && len>0) data_.insert(data_.end(),src,src+len);
 		return *this;
 	}
 	flat_buffer& append(const void *src,size_type len) {
-		if (src& & len>0) {
+		if (src && len>0) {
 			const uint8_t *p=reinterpret_cast<const uint8_t*>(src);
 			data_.insert(data_.end(),p,p+len);
 		}
@@ -582,7 +582,7 @@ public:
 	}
 
 	flat_buffer& write_raw(const void *src,size_type len) {
-		if (src& & len>0) {
+		if (src && len>0) {
 			const uint8_t *p=reinterpret_cast<const uint8_t*>(src);
 			data_.insert(data_.end(),p,p+len);
 		}
@@ -1108,26 +1108,26 @@ public:
 	}
 
 	template <typename _UnaryOp>
-	flat_buffer& transform_bytes(_UnaryOp& &op) {
+	flat_buffer& transform_bytes(_UnaryOp&& op) {
 		std::transform(data_.begin(),data_.end(),data_.begin(),std::forward<_UnaryOp>(op));
 		return *this;
 	}
 
 	template <typename _Pred>
 	[[nodiscard]]
-	flat_buffer filter_bytes(_Pred& &pred) const {
+	flat_buffer filter_bytes(_Pred&& pred) const {
 		flat_buffer result;
 		std::copy_if(data_.begin(),data_.end(),std::back_inserter(result.data_),std::forward<_Pred>(pred));
 		return result;
 	}
 
 	template <typename _UnaryFunc>
-	void for_each(_UnaryFunc& &func) const {
+	void for_each(_UnaryFunc&& func) const {
 		std::for_each(data_.begin(),data_.end(),std::forward<_UnaryFunc>(func));
 	}
 
 	template <typename _UnaryFunc>
-	void for_each(_UnaryFunc& &func) {
+	void for_each(_UnaryFunc&& func) {
 		std::for_each(data_.begin(),data_.end(),std::forward<_UnaryFunc>(func));
 	}
 
@@ -1138,8 +1138,8 @@ public:
 		const char *hex_chars=uppercase?upper_chars:lower_chars;
 		std::string result;
 		result.reserve(data_.size()*(2+separator.size()));
-		for (size_type i=0; i<data_.size();i++) {
-			if (i>0& & !separator.empty()) result+=std::string(separator);
+		for (size_type i=0;i<data_.size();i++) {
+			if (i>0 && !separator.empty()) result+=std::string(separator);
 			result+=hex_chars[(data_[i]>>4)&0x0Fu];
 			result+=hex_chars[data_[i]&0x0Fu];
 		}
@@ -1149,16 +1149,16 @@ public:
 	static flat_buffer from_hex(std::string_view hex) {
 		flat_buffer result;
 		auto hex_char_to_nibble=[](char c)->uint8_t {
-			if (c>='0'& & c<='9') return static_cast<uint8_t>(c-'0');
-			if (c>='a'& & c<='f') return static_cast<uint8_t>(c-'a'+10);
-			if (c>='A'& & c<='F') return static_cast<uint8_t>(c-'A'+10);
+			if (c>='0' && c<='9') return static_cast<uint8_t>(c-'0');
+			if (c>='a' && c<='f') return static_cast<uint8_t>(c-'a'+10);
+			if (c>='A' && c<='F') return static_cast<uint8_t>(c-'A'+10);
 			throw std::invalid_argument("invalid hex character");
 			return 0u;
 		};
 		std::string clean;
 		clean.reserve(hex.size());
 		for (char c:hex) {
-			if ((c>='0'& & c<='9') || (c>='a'& & c<='f') || (c>='A'& & c<='F')) clean+=c;
+			if ((c>='0' && c<='9') || (c>='a' && c<='f') || (c>='A' && c<='F')) clean+=c;
 		}
 		if (clean.size()%2!=0) throw std::invalid_argument("odd hex string length");
 		result.data_.reserve(clean.size()/2);
@@ -1504,7 +1504,7 @@ struct flat_buffer_serializer<std::float128_t> {
 		// 复用 portable_raw 协议思路：直接写16字节 + 字节序标记
 		// 此处借道 write_raw + 手动构造头部，因为 write_portable_raw 是 private
 		// 通过 flat_buffer_serializer<uint8_t> 逐字节写头
-		flat_buffer_serializer<uint8_t>::serialize(buf,static_cast<uint8_t>(type_tag::long_double));
+		flat_buffer_serializer<uint8_t>::serialize(buf,static_cast<uint8_t>(FBTT_LONG_DOUBLE));
 		flat_buffer_serializer<uint8_t>::serialize(buf,static_cast<uint8_t>(sizeof(std::float128_t)));
 		flat_buffer_serializer<uint8_t>::serialize(buf,is_little_endian_host()?0x00u:0x01u);
 		buf.write_raw(&val,sizeof(std::float128_t));
