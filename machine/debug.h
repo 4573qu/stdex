@@ -145,7 +145,7 @@ struct log_record {
 	std::string function;
 	std::string timestamp;
 
-	const char* to_string(debug_level lv) {
+	static const char* to_string(debug_level lv) {
 		switch (lv) {
 			case DL_VERBOSE: return "VERBOSE";
 			case DL_INFO: return "INFO";
@@ -777,7 +777,7 @@ inline void trace_memory(debug_config& cfg) {
 	char header[128];
 	std::snprintf(header,sizeof(header),"[trace_memory] Live allocations (total %zu bytes):\n",cfg.mem_tracker->total_bytes.load(std::memory_order_relaxed));
 	log_string(cfg,header);
-	for (memory_trace* n=cfg.mem_tracker->head;;n=n->next) log_string(cfg,n->to_string());
+	for (memory_trace* n=cfg.mem_tracker->head;n;n=n->next) log_string(cfg,n->to_string());
 }
 
 inline void trace_memory() {
@@ -800,7 +800,7 @@ inline void trace_memory() {
 #define _STDEX_MACHINE_DEBUG_BREAK() do { } while (false)
 #endif
 
-#if defined(_DEBUG) || defined(_STDEX_MACHINE_DEBUG_DEBUGON)
+#if defined(_DEBUG) || defined(_STDEX_MACHINE_DEBUG_PERMANENT)
 #define _STDEX_MACHINE_DEBUG_ASSERT(cfg,cond,...) \
 	do { \
 		if (!bool(cond)) { \
