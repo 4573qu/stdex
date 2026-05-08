@@ -1,4 +1,4 @@
-//Last Modified At 2026/05/08
+//Last Modified At 2026/05/09
 //@Version 1.0.0.0
 #ifndef _STDEX_STRUCTURE_FLAT_BUFFER_H_
 #define _STDEX_STRUCTURE_FLAT_BUFFER_H_ 1
@@ -45,9 +45,11 @@ namespace stdex {
 
 namespace structure {
 
+namespace flat_buffer {
+
 class flat_buffer;
 
-template<typename _Tp,typename _Enable=void>
+template <typename _Tp,typename _Enable=void>
 struct flat_buffer_serializer {};
 
 enum flat_buffer_type_tag {
@@ -65,7 +67,7 @@ _Tp bswap(_Tp val) noexcept {
 	static_assert(std::is_integral_v<_Tp>,"bswap requires integral type.");
 	//static_assert(!std::is_same_v<_Tp,bool>,"bswap does not support bool.");
 	using unsigned_type=std::make_unsigned_t<_Tp>;
-	return static_cast<_Tp>(bitwise::endianness::reverse_bytes(static_cast<unsigned_type>(val)));
+	return static_cast<_Tp>(bitwise::reverse_bytes(static_cast<unsigned_type>(val)));
 }
 
 template <>
@@ -83,28 +85,26 @@ _Tp to_little_endian(_Tp val) noexcept {
 	static_assert(std::is_integral_v<_Tp>,"to_little_endian requires integral type.");
 	//static_assert(!std::is_same_v<_Tp,bool>,"to_little_endian does not support bool.");
 	using unsigned_type=std::make_unsigned_t<_Tp>;
-	return static_cast<_Tp>(bitwise::endianness::to_little_endian(static_cast<unsigned_type>(val)));
+	return static_cast<_Tp>(bitwise::to_little_endian(static_cast<unsigned_type>(val)));
 }
 
 template <typename _Tp>
 _Tp from_little_endian(_Tp val) noexcept {
 	static_assert(std::is_integral_v<_Tp>,"from_little_endian requires integral type.");
 	//static_assert(!std::is_same_v<_Tp,bool>,"from_little_endian does not support bool");
-	if constexpr (bitwise::endianness::is_little_endian()) {
+	if constexpr (bitwise::is_little_endian()) {
 		return val;
 	} else {
 		return bswap(val);
 	}
 }
 
-inline void normalize_endian(uint8_t *buf,std::size_t size,bool src_is_little) noexcept {
-	bool host_is_little=bitwise::endianness::is_little_endian();
+inline void normalize_endian(uint8_t* buf,std::size_t size,bool src_is_little) noexcept {
+	bool host_is_little=bitwise::is_little_endian();
 	if (src_is_little!=host_is_little) std::reverse(buf,buf+size);
 }
 
 }
-
-namespace flat_buffer {
 
 template <typename _Tp,typename=void>
 struct is_serializer_valid : std::false_type {};
@@ -183,7 +183,7 @@ private:
 	void write_le(_Uint val) {
 		static_assert(std::is_integral<_Uint>::value && std::is_unsigned<_Uint>::value,"write_le requires unsigned integral.");
 		_Uint le=to_little_endian(val);
-		const uint8_t *p=reinterpret_cast<const uint8_t*>(&le);
+		const uint8_t* p=reinterpret_cast<const uint8_t*>(&le);
 		data_.insert(data_.end(),p,p+sizeof(_Uint));
 	}
 
@@ -204,15 +204,15 @@ private:
 		return from_little_endian(le);
 	}
 
-	void write_portable_raw(flat_buffer_type_tag tag,const void *val_ptr,uint8_t byte_size) {
+	void write_portable_raw(flat_buffer_type_tag tag,const void* val_ptr,uint8_t byte_size) {
 		data_.push_back(static_cast<uint8_t>(tag));
 		data_.push_back(byte_size);
-		data_.push_back(is_little_endian_host()?0x00u:0x01u);
-		const uint8_t *p=reinterpret_cast<const uint8_t*>(val_ptr);
+		data_.push_back(bitwise::is_little_endian()?0x00u:0x01u);
+		const uint8_t* p=reinterpret_cast<const uint8_t*>(val_ptr);
 		data_.insert(data_.end(),p,p+byte_size);
 	}
 
-	size_type read_portable_raw(size_type offset,flat_buffer_type_tag expected_tag,uint8_t *out_buf,size_type out_buf_capacity,uint8_t& out_byte_size) const {
+	size_type read_portable_raw(size_type offset,flat_buffer_type_tag expected_tag,uint8_t* out_buf,size_type out_buf_capacity,uint8_t& out_byte_size) const {
 		if (offset+3>data_.size()) throw std::out_of_range("read_portable_raw header truncated");//"flat_buffer::read_portable_raw: header truncated at offset "+std::to_string(offset));
 		uint8_t tag_byte=data_[offset];
 		uint8_t byte_size=data_[offset+1];
@@ -233,12 +233,12 @@ public:
 	explicit flat_buffer(size_type initial_capacity) {
 		data_.reserve(initial_capacity);
 	}
-	flat_buffer(const uint8_t *src,size_type len) {
+	flat_buffer(const uint8_t* src,size_type len) {
 		if (src && len>0) data_.assign(src,src+len);
 	}
-	flat_buffer(const void *src,size_type len) {
+	flat_buffer(const void* src,size_type len) {
 		if (src && len>0) {
-			const uint8_t *p=reinterpret_cast<const uint8_t*>(src);
+			const uint8_t* p=reinterpret_cast<const uint8_t*>(src);
 			data_.assign(p,p+len);
 		}
 	}
@@ -423,13 +423,13 @@ public:
 		return data_.erase(first,last);
 	}
 
-	flat_buffer& append(const uint8_t *src,size_type len) {
+	flat_buffer& append(const uint8_t* src,size_type len) {
 		if (src && len>0) data_.insert(data_.end(),src,src+len);
 		return *this;
 	}
-	flat_buffer& append(const void *src,size_type len) {
+	flat_buffer& append(const void* src,size_type len) {
 		if (src && len>0) {
-			const uint8_t *p=reinterpret_cast<const uint8_t*>(src);
+			const uint8_t* p=reinterpret_cast<const uint8_t*>(src);
 			data_.insert(data_.end(),p,p+len);
 		}
 		return *this;
@@ -581,9 +581,9 @@ public:
 		return *this;
 	}
 
-	flat_buffer& write_raw(const void *src,size_type len) {
+	flat_buffer& write_raw(const void* src,size_type len) {
 		if (src && len>0) {
-			const uint8_t *p=reinterpret_cast<const uint8_t*>(src);
+			const uint8_t* p=reinterpret_cast<const uint8_t*>(src);
 			data_.insert(data_.end(),p,p+len);
 		}
 		return *this;
@@ -819,14 +819,14 @@ public:
 
 	template <typename _Tp>
 	[[nodiscard]]
-	const _Tp *get_ptr(size_type offset) const noexcept {
+	const _Tp* get_ptr(size_type offset) const noexcept {
 		static_assert(std::is_arithmetic<_Tp>::value,"get_ptr only supports arithmetic types.");
 		if (offset+sizeof(_Tp)>data_.size()) return nullptr;
 		return reinterpret_cast<const _Tp*>(data_.data()+offset);
 	}
 	template <typename _Tp>
 	[[nodiscard]]
-	_Tp *get_ptr(size_type offset) noexcept {
+	_Tp* get_ptr(size_type offset) noexcept {
 		static_assert(std::is_arithmetic<_Tp>::value,"get_ptr only supports arithmetic types.");
 		if (offset+sizeof(_Tp)>data_.size()) return nullptr;
 		return reinterpret_cast<_Tp*>(data_.data()+offset);
@@ -875,13 +875,13 @@ public:
 		return std::find(data_.begin(),data_.end(),byte);
 	}
 	[[nodiscard]]
-	iterator find(const uint8_t *pattern,size_type pattern_len) noexcept {
+	iterator find(const uint8_t* pattern,size_type pattern_len) noexcept {
 		if (pattern_len==0) return data_.begin();
 		if (pattern_len>data_.size()) return data_.end();
 		return std::search(data_.begin(),data_.end(),pattern,pattern+pattern_len);
 	}
 	[[nodiscard]]
-	const_iterator find(const uint8_t *pattern,size_type pattern_len) const noexcept {
+	const_iterator find(const uint8_t* pattern,size_type pattern_len) const noexcept {
 		if (pattern_len==0) return data_.begin();
 		if (pattern_len>data_.size()) return data_.end();
 		return std::search(data_.begin(),data_.end(),pattern,pattern+pattern_len);
@@ -930,7 +930,7 @@ public:
 		return npos;
 	}
 	[[nodiscard]]
-	size_type find_offset(const uint8_t *pattern,size_type pattern_len,size_type start=0) const noexcept {
+	size_type find_offset(const uint8_t* pattern,size_type pattern_len,size_type start=0) const noexcept {
 		if (pattern_len==0) return start;
 		if (start>=data_.size()) return npos;
 		auto it=std::search(data_.begin()+start,data_.end(),pattern,pattern+pattern_len);
@@ -955,7 +955,7 @@ public:
 		return npos;
 	}
 	[[nodiscard]]
-	size_type rfind_offset(const uint8_t *pattern,size_type pattern_len,size_type start=npos) const noexcept {
+	size_type rfind_offset(const uint8_t* pattern,size_type pattern_len,size_type start=npos) const noexcept {
 		if (pattern_len==0) return start==npos?data_.size():std::min(start,data_.size());
 		if (pattern_len>data_.size()) return npos;
 		size_type max_start=data_.size()-pattern_len;
@@ -979,7 +979,7 @@ public:
 		return find_offset(byte)!=npos;
 	}
 	[[nodiscard]]
-	bool contains(const uint8_t *pattern,size_type pattern_len) const noexcept {
+	bool contains(const uint8_t* pattern,size_type pattern_len) const noexcept {
 		return find_offset(pattern,pattern_len)!=npos;
 	}
 	[[nodiscard]]
@@ -1135,7 +1135,7 @@ public:
 	std::string to_hex(bool uppercase=false,std::string_view separator="") const {
 		static const char lower_chars[]="0123456789abcdef";
 		static const char upper_chars[]="0123456789ABCDEF";
-		const char *hex_chars=uppercase?upper_chars:lower_chars;
+		const char* hex_chars=uppercase?upper_chars:lower_chars;
 		std::string result;
 		result.reserve(data_.size()*(2+separator.size()));
 		for (size_type i=0;i<data_.size();i++) {
