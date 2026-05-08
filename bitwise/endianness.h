@@ -15,7 +15,7 @@
 #endif
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
-#include <bits>
+#include <bit>
 #endif
 
 namespace stdex {
