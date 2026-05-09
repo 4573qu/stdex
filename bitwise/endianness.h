@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/24
-//@Version 1.0.0.1
+//Last Modified At 2026/05/08
+//@Version 1.1.0.0
 #ifndef _STDEX_BITWISE_ENDIANNESS_H_
 #define _STDEX_BITWISE_ENDIANNESS_H_ 1
 
@@ -15,7 +15,7 @@
 #endif
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
-#include <bits>
+#include <bit>
 #endif
 
 namespace stdex {
@@ -28,11 +28,11 @@ namespace endianness {
 }
 
 constexpr bool is_little_endian() noexcept {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__
 	return true;
-#elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#elif defined(__BYTE_ORDER__) && __BYTE_ORDER__==__ORDER_BIG_ENDIAN__
 	return false;
-#elif __cplusplus >= _STDEX_CPP20_VERSION
+#elif __cplusplus>=_STDEX_CPP20_VERSION
 	return std::endian::native==std::endian::little;
 #else
 	return endianness::first_byte==0x17;
@@ -40,11 +40,11 @@ constexpr bool is_little_endian() noexcept {
 }
 
 constexpr bool is_big_endian() noexcept {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__==__ORDER_BIG_ENDIAN__
 	return true;
-#elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#elif defined(__BYTE_ORDER__) && __BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__
 	return false;
-#elif __cplusplus >= _STDEX_CPP20_VERSION
+#elif __cplusplus>=_STDEX_CPP20_VERSION
 	return std::endian::native==std::endian::big;
 #else
 	return endianness::first_byte==0x57;
