@@ -25,6 +25,7 @@
 #include "../bitwise/bits.h"
 #include "../crypto/lz77.h"
 #include "../integrity/adler.h"
+#include "../integrity/crc.h"
 #include "../structure/huffman.h"
 
 #if __has_include("../macros/cpp_version.h")
@@ -64,6 +65,18 @@ enum deflate_level {
 	DL_NORMAL=6,
 	DL_BEST=9,
 };
+
+struct gzip_info {
+	std::string filename;
+	std::string comment;
+	uint32_t mtime=0;
+	uint8_t os=0xFF;
+	bool is_text=false;
+	bool has_crc16=false;
+};
+
+class deflate_compressor;
+class deflate_decompressor;
 
 class deflate {
 
@@ -410,12 +423,12 @@ class deflate {
 		if (btype==0) {
 			br.byte_align();
 			std::size_t byte_pos=base_offset+(br.bit_pos()/8);
-			if (byte_pos+4>raw_size) throw std::runtime_error("stored block overflow");
+			if (byte_pos+4>raw_size) throw std::out_of_range("stored block overflow");
 			uint16_t len=static_cast<uint16_t>(raw_buf[byte_pos])|static_cast<uint16_t>(raw_buf[byte_pos+1]<<8);
 			uint16_t nlen=static_cast<uint16_t>(raw_buf[byte_pos+2])|static_cast<uint16_t>(raw_buf[byte_pos+3]<<8);
 			if (static_cast<uint16_t>(len^0xFFFF)!=nlen) throw std::runtime_error("stored block nlen mismatch");
 			byte_pos+=4;
-			if (byte_pos+len>raw_size) throw std::runtime_error("stored block data overflow");
+			if (byte_pos+len>raw_size) throw std::out_of_range("stored block data overflow");
 			out.insert(out.end(),raw_buf+byte_pos,raw_buf+byte_pos+len);
 			br.bit_pos()=(byte_pos+len-base_offset)*8;
 			return last;
@@ -474,11 +487,80 @@ class deflate {
 			if (dsym>29) throw std::runtime_error("bad distance symbol");
 			int mdist=dist_codes_[dsym].first;
 			if (dist_codes_[dsym].second) mdist+=br.read_bits<uint32_t>(dist_codes_[dsym].second);
-			if (static_cast<std::size_t>(mdist)>out.size()) throw std::runtime_error("distance too far back");
+			if (static_cast<std::size_t>(mdist)>out.size()) throw std::out_of_range("distance too far back");
 			std::size_t start=out.size()-mdist;
 			for (int i=0;i<mlen;i++) out.push_back(out[start+(i%mdist)]);
 		}
 		return last;
+	}
+
+	static void write_gzip_header(bitwise::bit_writer& bw,const gzip_info& info,deflate_level level) {
+		bw.write_u8(0x1F);
+		bw.write_u8(0x8B);
+		bw.write_u8(0x08); // CM=8 deflate
+		uint8_t flg=0;
+		if (info.is_text) flg|=0x01;
+		if (info.has_crc16) flg|=0x02;
+		if (!info.filename.empty()) flg|=0x08;
+		if (!info.comment.empty()) flg|=0x10;
+		bw.write_u8(flg);
+		// MTIME little-endian
+		bw.write_u8(static_cast<uint8_t>(info.mtime&0xFF));
+		bw.write_u8(static_cast<uint8_t>((info.mtime>>8)&0xFF));
+		bw.write_u8(static_cast<uint8_t>((info.mtime>>16)&0xFF));
+		bw.write_u8(static_cast<uint8_t>((info.mtime>>24)&0xFF));
+		uint8_t xfl=0;
+		if (level==DL_BEST) xfl=0x02;
+		else if (level==DL_FASTEST) xfl=0x04;
+		bw.write_u8(xfl);
+		bw.write_u8(info.os);
+		if (!info.filename.empty()) {
+			for (char c:info.filename) bw.write_u8(static_cast<uint8_t>(c));
+			bw.write_u8(0);
+		}
+		if (!info.comment.empty()) {
+			for (char c:info.comment) bw.write_u8(static_cast<uint8_t>(c));
+			bw.write_u8(0);
+		}
+	}
+
+	static std::size_t read_gzip_header(const uint8_t* data,std::size_t size,gzip_info& info) {
+		if (size<10) throw std::runtime_error("gzip stream too short");
+		if (data[0]!=0x1F || data[1]!=0x8B) throw std::invalid_argument("not a gzip stream");
+		if (data[2]!=8) throw std::invalid_argument("unsupported gzip CM");
+		uint8_t flg=data[3];
+		info.mtime=static_cast<uint32_t>(data[4])|(static_cast<uint32_t>(data[5])<<8)|(static_cast<uint32_t>(data[6])<<16)|(static_cast<uint32_t>(data[7])<<24);
+		info.os=data[9];
+		info.is_text=(flg&0x01)!=0;
+		info.has_crc16=(flg&0x02)!=0;
+		std::size_t offset=10;
+		if (flg&0x04) { // FEXTRA
+			if (offset+2>size) throw std::out_of_range("gzip FEXTRA truncated");
+			uint16_t xlen=static_cast<uint16_t>(data[offset])|(static_cast<uint16_t>(data[offset+1])<<8);
+			offset+=2;
+			if (offset+xlen>size) throw std::out_of_range("gzip FEXTRA data truncated");
+			offset+=xlen;
+		}
+		if (flg&0x08) { // FNAME
+			while (offset<size && data[offset]!=0) {
+				info.filename.push_back(static_cast<char>(data[offset]));
+				offset++;
+			}
+			if (offset<size) offset++;
+		}
+		if (flg&0x10) { // FCOMMENT
+			while (offset<size && data[offset]!=0) {
+				info.comment.push_back(static_cast<char>(data[offset]));
+				offset++;
+			}
+			if (offset<size) offset++;
+		}
+		if (flg&0x02) { // FHCRC
+			if (offset+2>size) throw std::out_of_range("gzip FHCRC truncated");
+			offset+=2;
+		}
+		if (offset>=size) throw std::out_of_range("gzip header overflows data");
+		return offset;
 	}
 
 	static block_type resolve_block_type(deflate_block_type bt,deflate_level lv) noexcept {
@@ -488,13 +570,46 @@ class deflate {
 		return DBT_DYNAMIC;
 	}
 
+	friend class deflate_compressor;
+	friend class deflate_decompressor;
+
 public:
 	static std::size_t compress_bound(std::size_t input_size,deflate_stream_format fmt=DSF_ZLIB) noexcept {
 		std::size_t blocks=(input_size+65534)/65535;
 		std::size_t result=input_size+blocks*5+1;
-		if (fmt==stream_format::zlib) result+=6;
-		if (fmt==stream_format::gzip) result+=18;
+		if (fmt==DSF_ZLIB) result+=6;
+		if (fmt==DSF_GZIP) result+=18;
 		return result;
+	}
+
+	static bool is_valid_zlib_header(const uint8_t* data,std::size_t size) noexcept {
+		if (size<2) return false;
+		uint8_t cmf=data[0],flg=data[1];
+		if ((cmf&0x0F)!=8) return false;
+		return ((static_cast<unsigned>(cmf)<<8)+flg)%31==0;
+	}
+
+	static bool is_valid_zlib_header(const std::vector<uint8_t>& data) noexcept {
+		return is_valid_zlib_header(data.data(),data.size());
+	}
+
+	static bool is_valid_gzip_header(const uint8_t* data,std::size_t size) noexcept {
+		if (size<10) return false;
+		return data[0]==0x1F && data[1]==0x8B && data[2]==0x08;
+	}
+
+	static bool is_valid_gzip_header(const std::vector<uint8_t>& data) noexcept {
+		return is_valid_gzip_header(data.data(),data.size());
+	}
+
+	static deflate_stream_format detect_format(const uint8_t* data,std::size_t size) noexcept {
+		if (is_valid_gzip_header(data,size)) return DSF_GZIP;
+		if (is_valid_zlib_header(data,size)) return DSF_ZLIB;
+		return DSF_RAW;
+	}
+
+	static stream_format detect_format(const std::vector<uint8_t>& data) noexcept {
+		return detect_format(data.data(),data.size());
 	}
 
 	static std::vector<uint8_t> compress(const uint8_t* data,std::size_t size,deflate_level level=DL_NORMAL,deflate_stream_format fmt=DSF_ZLIB,deflate_block_type btype=DBT_AUTOMATIC) {
@@ -503,29 +618,18 @@ public:
 			bw.write_u8(0x78);
 			bw.write_u8(0x9C);
 		} else if (fmt==DSF_GZIP) {
-			bw.write_u8(0x1F); // ID1
-			bw.write_u8(0x8B); // ID2
-			bw.write_u8(0x08); // CM = deflate
-			bw.write_u8(0x00); // FLG = none
-			bw.write_u8(0x00); // MTIME
-			bw.write_u8(0x00);
-			bw.write_u8(0x00);
-			bw.write_u8(0x00);
-			uint8_t xfl=0x00;
-			if (level==DL_BEST) xfl=0x02;
-			else if (level==DL_FASTEST) xfl=0x04;
-			bw.write_u8(xfl); // XFL
-			bw.write_u8(0xFF); // OS = unknown
+			gzip_info info;
+			write_gzip_header(bw,info,level);
 		}
 		block_type effective=resolve_block_type(btype,level);
 		if (effective==DBT_STORED) encode_stored_blocks(bw,data,size,true);
 		else if (effective==DBT_FIXED) {
-			crypto::lz77 lz;
+			lz77 lz;
 			std::vector<uint8_t> tmp(data,data+size);
 			auto tokens=lz.encode(tmp);
 			encode_fixed_block(bw,tokens,true);
 		} else {
-			crypto::lz77 lz;
+			lz77 lz;
 			std::vector<uint8_t> tmp(data,data+size);
 			auto tokens=lz.encode(tmp);
 			encode_dynamic_block(bw,tokens,true);
@@ -571,6 +675,36 @@ public:
 	}
 #endif
 
+	static std::vector<uint8_t> compress(const uint8_t* data,std::size_t size,const gzip_info& info,deflate_level level=DL_NORMAL,deflate_block_type btype=DBT_AUTOMATIC) {
+		bitwise::bit_writer bw(bitwise::BO_LSBYTE);
+		write_gzip_header(bw,info,level);
+		block_type effective=resolve_block_type(btype,level);
+		if (effective==DBT_STORED) encode_stored_blocks(bw,data,size,true);
+		else {
+			lz77 lz;
+			auto tokens=lz.encode_chunk(data,size,true);
+			if (effective==DBT_FIXED) encode_fixed_block(bw,tokens,true);
+			else encode_dynamic_block(bw,tokens,true);
+		}
+		integrity::crc32 crc_calc;
+		crc_calc.update(data,size);
+		uint32_t crc_val=crc_calc.checksum();
+		uint32_t isize=static_cast<uint32_t>(size&0xFFFFFFFFu);
+		bw.write_u8(static_cast<uint8_t>(crc_val&0xFF));
+		bw.write_u8(static_cast<uint8_t>((crc_val>>8)&0xFF));
+		bw.write_u8(static_cast<uint8_t>((crc_val>>16)&0xFF));
+		bw.write_u8(static_cast<uint8_t>((crc_val>>24)&0xFF));
+		bw.write_u8(static_cast<uint8_t>(isize&0xFF));
+		bw.write_u8(static_cast<uint8_t>((isize>>8)&0xFF));
+		bw.write_u8(static_cast<uint8_t>((isize>>16)&0xFF));
+		bw.write_u8(static_cast<uint8_t>((isize>>24)&0xFF));
+		return bw.buffer();
+	}
+
+	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,const gzip_info& info,deflate_level level=DL_NORMAL,deflate_block_type btype=DBT_AUTOMATIC) {
+		return compress(data.data(),data.size(),info,level,btype);
+	}
+
 	template <typename _It,typename=std::enable_if_t<is_output_iter<_It,uint8_t>::value>>
 	static _It encode_to(_It out,const uint8_t* data,std::size_t size,deflate_level level=DL_NORMAL,deflate_stream_format fmt=DSF_ZLIB,deflate_block_type btype=DBT_AUTOMATIC) {
 		auto buf=compress(data,size,level,fmt,btype);
@@ -599,39 +733,17 @@ public:
 	}
 #endif
 
-	static std::vector<uint8_t> decompress(const uint8_t* data,std::size_t size,stream_format fmt=DSF_ZLIB) {
+	static std::vector<uint8_t> decompress(const uint8_t* data,std::size_t size,deflate_stream_format fmt=DSF_ZLIB) {
 		std::size_t offset=0;
 		if (fmt==DSF_ZLIB) {
 			if (size<2) throw std::runtime_error("zlib stream too short");
 			uint8_t cmf=data[0],flg=data[1];
-			if ((cmf&0x0F)!=8) throw std::runtime_error("not a deflate stream");
+			if ((cmf&0x0F)!=8) throw std::invalid_argument("not a deflate stream");
 			if (((static_cast<unsigned>(cmf)<<8)+flg)%31!=0) throw std::runtime_error("zlib FCHECK failed");
 			offset=2;
 		} else if (fmt==DSF_GZIP) {
-			if (size<10) throw std::runtime_error("gzip stream too short");
-			if (data[0]!=0x1F || data[1]!=0x8B) throw std::runtime_error("not a gzip stream");
-			if (data[2]!=8) throw std::runtime_error("unsupported gzip CM");
-			uint8_t flg=data[3];
-			offset=10;
-			if (flg&0x04) { // FEXTRA
-				if (offset+2>size) throw std::runtime_error("gzip FEXTRA truncated");
-				uint16_t xlen=static_cast<uint16_t>(data[offset])
-					|static_cast<uint16_t>(data[offset+1]<<8);
-				offset+=2+xlen;
-			}
-			if (flg&0x08) { // FNAME
-				while (offset<size && data[offset]!=0) offset++;
-				if (offset<size) offset++;
-			}
-			if (flg&0x10) { // FCOMMENT
-				while (offset<size && data[offset]!=0) offset++;
-				if (offset<size) offset++;
-			}
-			if (flg&0x02) { // FHCRC
-				if (offset+2>size) throw std::runtime_error("gzip FHCRC truncated");
-				offset+=2;
-			}
-			if (offset>=size) throw std::runtime_error("gzip header overflows data");
+			gzip_info info;
+			offset=read_gzip_header(data,size,info);
 		}
 		bitwise::bit_reader br(data+offset,size-offset,bitwise::BO_LSBYTE);
 		std::vector<uint8_t> out;
@@ -657,51 +769,361 @@ public:
 		return out;
 	}
 
-	static std::vector<uint8_t> decompress(const std::vector<uint8_t>& data,stream_format fmt=DSF_ZLIB) {
+	static std::vector<uint8_t> decompress(const std::vector<uint8_t>& data,deflate_stream_format fmt=DSF_ZLIB) {
 		return decompress(data.data(),data.size(),fmt);
 	}
 
-	static std::vector<uint8_t> decompress(std::string_view sv,stream_format fmt=DSF_ZLIB) {
+	static std::vector<uint8_t> decompress(std::string_view sv,deflate_stream_format fmt=DSF_ZLIB) {
 		return decompress(reinterpret_cast<const uint8_t*>(sv.data()),sv.size(),fmt);
 	}
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
-	static std::vector<uint8_t> decompress(std::span<const uint8_t> data,stream_format fmt=DSF_ZLIB) {
+	static std::vector<uint8_t> decompress(std::span<const uint8_t> data,deflate_stream_format fmt=DSF_ZLIB) {
 		return decompress(data.data(),data.size(),fmt);
 	}
 
-	static std::vector<uint8_t> decompress(std::span<const std::byte> data,stream_format fmt=DSF_ZLIB) {
+	static std::vector<uint8_t> decompress(std::span<const std::byte> data,deflate_stream_format fmt=DSF_ZLIB) {
 		return decompress(reinterpret_cast<const uint8_t*>(data.data()),data.size(),fmt);
 	}
 #endif
 
+	static std::vector<uint8_t> decompress(const uint8_t* data,std::size_t size,gzip_info& info) {
+		std::size_t offset=read_gzip_header(data,size,info);
+		bitwise::bit_reader br(data+offset,size-offset,bitwise::BO_LSBYTE);
+		std::vector<uint8_t> out;
+		out.reserve(size*3);
+		bool last=false;
+		while (!last) last=decode_block(br,out,data,size,offset);
+		if (size<8) throw std::runtime_error("gzip trailer truncated");
+		std::size_t tp=size-8;
+		uint32_t expect_crc=static_cast<uint32_t>(data[tp])|(static_cast<uint32_t>(data[tp+1])<<8)|(static_cast<uint32_t>(data[tp+2])<<16)|(static_cast<uint32_t>(data[tp+3])<<24);
+		uint32_t expect_size=static_cast<uint32_t>(data[tp+4])|(static_cast<uint32_t>(data[tp+5])<<8)|(static_cast<uint32_t>(data[tp+6])<<16)|(static_cast<uint32_t>(data[tp+7])<<24);
+		integrity::crc32 crc_calc;
+		crc_calc.update(out.data(),out.size());
+		if (crc_calc.checksum()!=expect_crc) throw std::runtime_error("gzip crc32 mismatch");
+		if (static_cast<uint32_t>(out.size()&0xFFFFFFFFu)!=expect_size) throw std::runtime_error("gzip isize mismatch");
+		return out;
+	}
+
+	static std::vector<uint8_t> decompress(const std::vector<uint8_t>& data,gzip_info& info) {
+		return decompress(data.data(),data.size(),info);
+	}
+
 	template <typename _It,typename=std::enable_if_t<is_output_iter<_It,uint8_t>::value>>
-	static _It decode_to(_It out,const uint8_t* data,std::size_t size,stream_format fmt=DSF_ZLIB) {
+	static _It decode_to(_It out,const uint8_t* data,std::size_t size,deflate_stream_format fmt=DSF_ZLIB) {
 		auto buf=decompress(data,size,fmt);
 		return std::copy(buf.begin(),buf.end(),out);
 	}
 
 	template <typename _It,typename=std::enable_if_t<is_output_iter<_It,uint8_t>::value>>
-	static _It decode_to(_It out,const std::vector<uint8_t>& data,stream_format fmt=DSF_ZLIB) {
+	static _It decode_to(_It out,const std::vector<uint8_t>& data,deflate_stream_format fmt=DSF_ZLIB) {
 		return decode_to(out,data.data(),data.size(),fmt);
 	}
 
 	template <typename _It,typename=std::enable_if_t<is_output_iter<_It,uint8_t>::value>>
-	static _It decode_to(_It out,std::string_view sv,stream_format fmt=DSF_ZLIB) {
+	static _It decode_to(_It out,std::string_view sv,deflate_stream_format fmt=DSF_ZLIB) {
 		return decode_to(out,reinterpret_cast<const uint8_t*>(sv.data()),sv.size(),fmt);
 	}
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
 	template <byte_output_iterator _It>
-	static _It decode_to(_It out,std::span<const uint8_t> data,stream_format fmt=DSF_ZLIB) {
+	static _It decode_to(_It out,std::span<const uint8_t> data,deflate_stream_format fmt=DSF_ZLIB) {
 		return decode_to(out,data.data(),data.size(),fmt);
 	}
 
 	template <byte_output_iterator _It>
-	static _It decode_to(_It out,std::span<const std::byte> data,stream_format fmt=DSF_ZLIB) {
+	static _It decode_to(_It out,std::span<const std::byte> data,deflate_stream_format fmt=DSF_ZLIB) {
 		return decode_to(out,reinterpret_cast<const uint8_t*>(data.data()),data.size(),fmt);
 	}
 #endif
+};
+
+class deflate_compressor {
+	deflate_level level_;
+	deflate_stream_format fmt_;
+	deflate_block_type btype_;
+	gzip_info gzip_info_;
+
+	bitwise::bit_writer bw_;
+	lz77 lz_;
+
+	std::vector<lz77::token> pending_tokens_;
+	std::size_t pending_bytes_=0;
+	std::size_t block_threshold_=65536;
+
+	integrity::adler32 adler_state_;
+	integrity::crc32 crc_state_;
+	uint32_t total_input_bytes_=0;
+
+	bool header_written_=false;
+	bool finished_=false;
+
+	deflate_block_type effective_btype_;
+
+	void write_header_() {
+		if (fmt_==DSF_ZLIB) {
+			bw_.write_u8(0x78);
+			bw_.write_u8(0x9C);
+		} else if (fmt_==DSF_GZIP) deflate::write_gzip_header(bw_,gzip_info_,level_);
+		header_written_=true;
+	}
+
+	void flush_block_(bool last) {
+		if (pending_tokens_.empty() && !last) return;
+		if (effective_btype_==DBT_STORED) deflate::encode_dynamic_block(bw_,pending_tokens_,last);
+		else if (effective_btype_==DBT_FIXED) deflate::encode_fixed_block(bw_,pending_tokens_,last);
+		else deflate::encode_dynamic_block(bw_,pending_tokens_,last);
+		pending_tokens_.clear();
+		pending_bytes_=0;
+	}
+
+	std::vector<uint8_t> take_output_() {
+		auto buf=bw_.buffer();
+		bw_=bitwise::bit_writer(bitwise::BO_LSBYTE);
+		return buf;
+	}
+
+public:
+	explicit deflate_compressor(deflate_level level=DL_NORMAL,deflate_stream_format fmt=DSF_ZLIB,deflate_block_type btype=DBT_AUTOMATIC,std::size_t block_threshold=65536) : level_(level) , fmt_(fmt) , btype_(btype), bw_(bitwise::BO_LSBYTE) , block_threshold_(block_threshold) , effective_btype_(deflate::resolve_block_type(btype,level)) { }
+	explicit deflate_compressor(const gzip_info& info,deflate_level level=DL_NORMAL,deflate_block_type btype=DBT_AUTOMATIC,std::size_t block_threshold=65536) : level_(level) , fmt_(DSF_GZIP) , btype_(btype) , gzip_info_(info) , bw_(bitwise::BO_LSBYTE) , block_threshold_(block_threshold) , effective_btype_(deflate::resolve_block_type(btype,level)) { }
+
+	void set_block_threshold(std::size_t n) noexcept { block_threshold_=n; }
+	std::size_t block_threshold() const noexcept { return block_threshold_; }
+
+	bool is_finished() const noexcept { return finished_; }
+
+	std::vector<uint8_t> feed(const uint8_t* data,std::size_t size) {
+		if (finished_) throw std::logic_error("already finished");
+		if (!header_written_) write_header_();
+		adler_state_.update(data,size);
+		crc_state_.update(data,size);
+		total_input_bytes_+=static_cast<uint32_t>(size&0xFFFFFFFFu);
+		auto new_tokens=lz_.encode_chunk(data,size,false);
+		pending_tokens_.insert(pending_tokens_.end(),new_tokens.begin(),new_tokens.end());
+		pending_bytes_+=size;
+		std::vector<uint8_t> output;
+		while (pending_bytes_>=block_threshold_) {
+			flush_block_(false);
+			auto chunk=take_output_();
+			output.insert(output.end(),chunk.begin(),chunk.end());
+		}
+		return output;
+	}
+
+	std::vector<uint8_t> feed(const std::vector<uint8_t>& data) {
+		return feed(data.data(),data.size());
+	}
+
+	std::vector<uint8_t> feed(std::string_view sv) {
+		return feed(reinterpret_cast<const uint8_t*>(sv.data()),sv.size());
+	}
+
+#if __cplusplus>=_STDEX_CPP20_VERSION
+	std::vector<uint8_t> feed(std::span<const uint8_t> data) {
+		return feed(data.data(),data.size());
+	}
+	std::vector<uint8_t> feed(std::span<const std::byte> data) {
+		return feed(reinterpret_cast<const uint8_t*>(data.data()),data.size());
+	}
+#endif
+
+	std::vector<uint8_t> flush() {
+		if (finished_) throw std::logic_error("already finished");
+		if (!header_written_) write_header_();
+		if (!pending_tokens_.empty()) flush_block_(false);
+		return take_output_();
+	}
+
+	std::vector<uint8_t> finish() {
+		if (finished_) throw std::logic_error("already finished");
+		if (!header_written_) write_header_();
+		auto tail_tokens=lz_.encode_chunk(nullptr,0,true);
+		pending_tokens_.insert(pending_tokens_.end(),tail_tokens.begin(),tail_tokens.end());
+		flush_block_(true);
+		if (fmt_==DSF_ZLIB) {
+			uint32_t ad=adler_state_.checksum();
+			bw_.write_u8(static_cast<uint8_t>(ad>>24));
+			bw_.write_u8(static_cast<uint8_t>((ad>>16)&0xFF));
+			bw_.write_u8(static_cast<uint8_t>((ad>>8)&0xFF));
+			bw_.write_u8(static_cast<uint8_t>(ad&0xFF));
+		} else if (fmt_==DSF_GZIP) {
+			uint32_t crc_val=crc_state_.checksum();
+			uint32_t isize=total_input_bytes_;
+			bw_.write_u8(static_cast<uint8_t>(crc_val&0xFF));
+			bw_.write_u8(static_cast<uint8_t>((crc_val>>8)&0xFF));
+			bw_.write_u8(static_cast<uint8_t>((crc_val>>16)&0xFF));
+			bw_.write_u8(static_cast<uint8_t>((crc_val>>24)&0xFF));
+			bw_.write_u8(static_cast<uint8_t>(isize&0xFF));
+			bw_.write_u8(static_cast<uint8_t>((isize>>8)&0xFF));
+			bw_.write_u8(static_cast<uint8_t>((isize>>16)&0xFF));
+			bw_.write_u8(static_cast<uint8_t>((isize>>24)&0xFF));
+		}
+		finished_=true;
+		return take_output_();
+	}
+
+	void reset() {
+		lz_.reset();
+		bw_=bitwise::bit_writer(bitwise::BO_LSBYTE);
+		pending_tokens_.clear();
+		pending_bytes_=0;
+		adler_state_.reset();
+		crc_state_.reset();
+		total_input_bytes_=0;
+		header_written_=false;
+		finished_=false;
+	}
+
+	void reset(deflate_level level,deflate_stream_format fmt,deflate_block_type btype=DBT_AUTOMATIC) {
+		level_=level;
+		fmt_=fmt;
+		btype_=btype;
+		effective_btype_=deflate::resolve_block_type(btype,level);
+		reset();
+	}
+};
+
+class deflate_decompressor {
+	deflate_stream_format fmt_;
+	std::vector<uint8_t> in_buf_;
+	std::vector<uint8_t> out_buf_;
+
+	integrity::adler32 adler_state_;
+	integrity::crc32 crc_state_;
+
+	bool header_parsed_=false;
+	std::size_t data_offset_=0;
+	bool done_=false;
+	gzip_info gzip_info_;
+
+	bool try_parse_header() {
+		if (fmt_==DSF_RAW) {
+			data_offset_=0;
+			header_parsed_=true;
+			return true;
+		}
+		if (fmt_==DSF_ZLIB) {
+			if (in_buf_.size()<2) return false;
+			uint8_t cmf=in_buf_[0],flg=in_buf_[1];
+			if ((cmf&0x0F)!=8) throw std::runtime_error("not a deflate stream");
+			if (((static_cast<unsigned>(cmf)<<8)+flg)%31!=0) throw std::runtime_error("zlib FCHECK failed");
+			data_offset_=2;
+			header_parsed_=true;
+			return true;
+		}
+		if (fmt_==DSF_GZIP) {
+			if (in_buf_.size()<10) return false;
+			try {
+				data_offset_=deflate::read_gzip_header(in_buf_.data(),in_buf_.size(),gzip_info_);
+				header_parsed_=true;
+				return true;
+			} catch (const std::exception&) {
+				if (in_buf_.size()>1024) throw;
+				return false;
+			}
+		}
+		return false;
+	}
+
+	void try_decompress() {
+		if (!header_parsed_ && !try_parse_header_()) return;
+		if (done_) return;
+		const uint8_t* raw=in_buf_.data();
+		std::size_t raw_size=in_buf_.size();
+		if (raw_size<=data_offset_+1) return;
+		bitwise::bit_reader br(raw+data_offset_,raw_size-data_offset_,bitwise::BO_LSBYTE);
+		std::size_t decoded_start=out_buf_.size();
+		bool last=false;
+		try {
+			while (!last) last=deflate::decode_block(br,out_buf_,raw,raw_size,data_offset_);
+		} catch (const std::runtime_error&) {
+			out_buf_.resize(decoded_start);
+			return;
+		}
+		if (out_buf_.size()>decoded_start) {
+			adler_state_.update(out_buf_.data()+decoded_start,out_buf_.size()-decoded_start);
+			crc_state_.update(out_buf_.data()+decoded_start,out_buf_.size()-decoded_start);
+		}
+		if (last) {
+			done_=true;
+			if (fmt_==DSF_ZLIB) {
+				if (in_buf_.size()<6) throw std::runtime_error("zlib too short for adler32");
+				std::size_t ap=in_buf_.size()-4;
+				uint32_t expect=(static_cast<uint32_t>(in_buf_[ap])<<24)|(static_cast<uint32_t>(in_buf_[ap+1])<<16)|(static_cast<uint32_t>(in_buf_[ap+2])<<8)|static_cast<uint32_t>(in_buf_[ap+3]);
+				if (adler_state_.checksum()!=expect) throw std::runtime_error("adler32 mismatch");
+			} else if (fmt_==DSF_GZIP) {
+				if (in_buf_.size()<8) throw std::runtime_error("gzip trailer truncated");
+				std::size_t tp=in_buf_.size()-8;
+				uint32_t expect_crc=static_cast<uint32_t>(in_buf_[tp])|(static_cast<uint32_t>(in_buf_[tp+1])<<8)|(static_cast<uint32_t>(in_buf_[tp+2])<<16)|(static_cast<uint32_t>(in_buf_[tp+3])<<24);
+				uint32_t expect_isize=static_cast<uint32_t>(in_buf_[tp+4])|(static_cast<uint32_t>(in_buf_[tp+5])<<8)|(static_cast<uint32_t>(in_buf_[tp+6])<<16)|(static_cast<uint32_t>(in_buf_[tp+7])<<24);
+				if (crc_state_.checksum()!=expect_crc) throw std::runtime_error("gzip crc32 mismatch");
+				if (static_cast<uint32_t>(out_buf_.size()&0xFFFFFFFFu)!=expect_isize) throw std::runtime_error("gzip isize mismatch");
+			}
+		}
+	}
+
+public:
+	explicit deflate_decompressor(deflate_stream_format fmt=DSF_ZLIB) : fmt_(fmt) { }
+
+	void feed(const uint8_t* data,std::size_t size) {
+		if (done_) throw std::logic_error("stream already done");
+		in_buf_.insert(in_buf_.end(),data,data+size);
+		try_decompress_();
+	}
+
+	void feed(const std::vector<uint8_t>& data) {
+		feed(data.data(),data.size());
+	}
+
+	void feed(std::string_view sv) {
+		feed(reinterpret_cast<const uint8_t*>(sv.data()),sv.size());
+	}
+
+#if __cplusplus>=_STDEX_CPP20_VERSION
+	void feed(std::span<const uint8_t> data) {
+		feed(data.data(),data.size());
+	}
+	void feed(std::span<const std::byte> data) {
+		feed(reinterpret_cast<const uint8_t*>(data.data()),data.size());
+	}
+#endif
+
+	[[nodiscard]]
+	std::vector<uint8_t> output() {
+		std::vector<uint8_t> result=std::move(out_buf_);
+		out_buf_.clear();
+		return result;
+	}
+
+	[[nodiscard]]
+	const std::vector<uint8_t>& peek() const noexcept {
+		return out_buf_;
+	}
+
+	[[nodiscard]]
+	bool done() const noexcept { return done_; }
+
+	[[nodiscard]]
+	std::size_t available() const noexcept { return out_buf_.size(); }
+
+	[[nodiscard]]
+	const gzip_info& info() const noexcept { return gzip_info_; }
+
+	void reset(deflate_stream_format fmt) {
+		fmt_=fmt;
+		in_buf_.clear();
+		out_buf_.clear();
+		adler_state_.reset();
+		crc_state_.reset();
+		header_parsed_=false;
+		data_offset_=0;
+		done_=false;
+		gzip_info_={};
+	}
+
+	void reset() {
+		reset(fmt_);
+	}
 };
 
 inline std::vector<uint8_t> deflate_compress(const std::vector<uint8_t>& data,deflate_level level=DL_NORMAL,deflate_stream_format fmt=DSF_ZLIB,deflate_block_type btype=DBT_AUTOMATIC) {
@@ -716,15 +1138,15 @@ inline std::vector<uint8_t> deflate_compress(std::string_view sv,deflate_level l
 	return deflate::compress(sv,level,fmt,btype);
 }
 
-inline std::vector<uint8_t> deflate_decompress(const std::vector<uint8_t>& data,stream_format fmt=DSF_ZLIB) {
+inline std::vector<uint8_t> deflate_decompress(const std::vector<uint8_t>& data,deflate_stream_format fmt=DSF_ZLIB) {
 	return deflate::decompress(data,fmt);
 }
 
-inline std::vector<uint8_t> deflate_decompress(const uint8_t* data,std::size_t size,stream_format fmt=DSF_ZLIB) {
+inline std::vector<uint8_t> deflate_decompress(const uint8_t* data,std::size_t size,deflate_stream_format fmt=DSF_ZLIB) {
 	return deflate::decompress(data,size,fmt);
 }
 
-inline std::vector<uint8_t> deflate_decompress(std::string_view sv,stream_format fmt=DSF_ZLIB) {
+inline std::vector<uint8_t> deflate_decompress(std::string_view sv,deflate_stream_format fmt=DSF_ZLIB) {
 	return deflate::decompress(sv,fmt);
 }
 
