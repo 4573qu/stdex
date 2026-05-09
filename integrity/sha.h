@@ -1,5 +1,5 @@
-//Last Modified At 2026/04/04
-//@Version 1.0.0.0
+//Last Modified At 2026/05/10
+//@Version 1.0.1.0
 #ifndef _STDEX_INTEGRITY_SHA_H_
 #define _STDEX_INTEGRITY_SHA_H_ 1
 
@@ -243,8 +243,8 @@ public:
 	}
 #endif
 
-	template <typename _Iterator>
-	void update(_Iterator begin,_Iterator end) noexcept {
+	template <typename _It>
+	void update(_It begin,_It end) noexcept {
 		for (auto it=begin;it!=end;++it) {
 			const std::uint8_t byte=static_cast<std::uint8_t>(*it);
 			static_cast<_Derived*>(this)->update(&byte,1);

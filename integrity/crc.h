@@ -1,5 +1,5 @@
-//Last Modified At 2026/04/16
-//@Version 1.0.0.1
+//Last Modified At 2026/05/10
+//@Version 1.0.1.0
 #ifndef _STDEX_INTEGRITY_CRC_H_
 #define _STDEX_INTEGRITY_CRC_H_ 1
 
@@ -114,8 +114,8 @@ public:
 		const uint8_t* bytes=static_cast<const uint8_t*>(data);
 		for (std::size_t i=0;i<length;i++) process_byte(bytes[i]);
 	}
-	template <typename _Iterator>
-	void update(_Iterator begin,_Iterator end) noexcept {
+	template <typename _It>
+	void update(_It begin,_It end) noexcept {
 		for (auto it=begin;it!=end;it++) process_byte(static_cast<uint8_t>(*it));
 	}
 	template <typename _Container>
