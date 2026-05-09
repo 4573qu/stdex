@@ -29,9 +29,9 @@ public:
 	using byte=uint8_t;
 
 	struct token {
-		uint16_t distance_;
-		uint16_t length_;
-		byte literal_;
+		uint16_t distance;
+		uint16_t length;
+		byte literal;
 	};
 
 private:
@@ -185,10 +185,10 @@ public:
 		std::vector<byte> result;
 		result.reserve(tokens.size()*2);
 		for (auto& it:tokens) {
-			if (it.length_==0) result.push_back(it.literal_);
+			if (it.length==0) result.push_back(it.literal);
 			else {
-				std::size_t start=result.size()-it.distance_;
-				for (std::size_t i=0;i<it.length_;i++) result.push_back(result[start+i]);
+				std::size_t start=result.size()-it.distance;
+				for (std::size_t i=0;i<it.length;i++) result.push_back(result[start+i]);
 			}
 		}
 		return result;

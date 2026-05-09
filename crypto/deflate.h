@@ -104,7 +104,7 @@ class deflate {
 
 		int decode(bitwise::bit_reader& br) const {
 			int code=0,len=1;
-			for (;len<=maxbits_;len++) {
+			for (;len<=maxbits;len++) {
 				code|=br.read_bits<uint8_t>(1)<<(len-1);
 				const auto& codes=codes_bl[len];
 				const auto& syms=syms_bl[len];
@@ -159,7 +159,7 @@ class deflate {
 			code=(code+bl_count[bits-1])<<1;
 			next_code[bits]=code;
 		}
-		h.table.assign(h.length_.size(),0);
+		h.table.assign(h.length.size(),0);
 		h.codes_bl.assign(maxbits+1,{});
 		h.syms_bl.assign(maxbits+1,{});
 		for (std::size_t n=0;n<h.length.size();n++) {
@@ -195,7 +195,7 @@ class deflate {
 
 	static canonical_tree build_dynamic_tree(const uint32_t* freq,int n) {
 		canonical_tree result;
-		result.length_.assign(n,0);
+		result.length.assign(n,0);
 		std::vector<uint32_t> freqs;
 		std::vector<int> symbols;
 		freqs.reserve(n);
@@ -208,14 +208,14 @@ class deflate {
 		}
 		if (freqs.empty()) return result;
 		if (freqs.size()==1) {
-			result.length_[symbols[0]]=1;
+			result.length[symbols[0]]=1;
 			build_canonical_table(result);
 			return result;
 		}
 		structure::huffman<int,uint32_t> huff;
 		huff.build_length_limited(symbols,freqs,14);
 		huff.for_each([&](int s,uint32_t,std::size_t d){
-			result.length_[s]=static_cast<uint8_t>(d);
+			result.length[s]=static_cast<uint8_t>(d);
 		});
 		build_canonical_table(result);
 		return result;
@@ -327,14 +327,14 @@ class deflate {
 		flush_run(prev,len_run);
 		canonical_tree cl=build_dynamic_tree(code_freq.data(),19);
 		int hclen=19-1;
-		while (hclen>=4 && cl.length_[order_[hclen]]==0) hclen--;
+		while (hclen>=4 && cl.length[order_[hclen]]==0) hclen--;
 		int hclen_count=hclen+1-4;
 		bw.write_bits<uint8_t>(5,hlit_count);
 		bw.write_bits<uint8_t>(5,hdist_count);
 		bw.write_bits<uint8_t>(4,hclen_count);
-		for (int i=0;i<hclen+1;i++) bw.write_bits<uint8_t>(3,cl.length_[order_[i]]);
+		for (int i=0;i<hclen+1;i++) bw.write_bits<uint8_t>(3,cl.length[order_[i]]);
 		for (const auto& it:runs) {
-			bw.write_bits<uint16_t>(cl.length_[it.sym_],cl.table_[it.sym_]);
+			bw.write_bits<uint16_t>(cl.length[it.sym_],cl.table[it.sym_]);
 			if (it.sym_>=16) bw.write_bits<uint8_t>(it.extra_bits_,it.extra_val_);
 		}
 	}
@@ -360,17 +360,17 @@ class deflate {
 		bw.write_bits<uint8_t>(1,last?1:0);
 		bw.write_bits<uint8_t>(2,1);
 		for (const auto& it:tokens) {
-			if (it.length_==0) {
-				auto [code,len]=get_litlen(it.literal_);
+			if (it.length==0) {
+				auto [code,len]=get_litlen(it.literal);
 				bw.write_bits<uint16_t>(len,bitwise::reverse_bits(code,len));
 			} else {
 				int ev=0,eb=0;
-				int lc=get_length_code(it.length_,ev,eb);
+				int lc=get_length_code(it.length,ev,eb);
 				auto [code,len]=get_litlen(lc);
 				bw.write_bits<uint16_t>(len,bitwise::reverse_bits(code,len));
 				if (eb>0) bw.write_bits<uint16_t>(eb,static_cast<uint64_t>(ev));
 				int dv=0,db=0;
-				int dc=get_dist_code(it.distance_,dv,db);
+				int dc=get_dist_code(it.distance,dv,db);
 				auto [dcode,dlen]=get_dist(dc);
 				bw.write_bits<uint16_t>(dlen,bitwise::reverse_bits(dcode,dlen));
 				if (db>0) bw.write_bits<uint16_t>(db,static_cast<uint64_t>(dv));
@@ -387,33 +387,33 @@ class deflate {
 		std::array<uint32_t,286> litlen_freq{};
 		std::array<uint32_t,30> dist_freq{};
 		for (const auto& it:tokens) {
-			if (it.length_==0) litlen_freq[it.literal_]++;
+			if (it.length==0) litlen_freq[it.literal]++;
 			else {
 				int ev=0,eb=0;
-				litlen_freq[get_length_code(it.length_,ev,eb)]++;
+				litlen_freq[get_length_code(it.length,ev,eb)]++;
 				int dv=0,db=0;
-				dist_freq[get_dist_code(it.distance_,dv,db)]++;
+				dist_freq[get_dist_code(it.distance,dv,db)]++;
 			}
 		}
 		litlen_freq[256]=1;
 		if (std::all_of(dist_freq.begin(),dist_freq.end(),[](uint32_t f){ return f==0; })) dist_freq[0]=1;
 		canonical_tree ll=build_dynamic_tree(litlen_freq.data(),286);
 		canonical_tree dt=build_dynamic_tree(dist_freq.data(),30);
-		write_dynamic_header(bw,ll.length_,dt.length_);
+		write_dynamic_header(bw,ll.length,dt.length);
 		for (const auto& it:tokens) {
-			if (it.length_==0) bw.write_bits(ll.length_[it.literal_],ll.table_[it.literal_]);
+			if (it.length==0) bw.write_bits(ll.length[it.literal],ll.table[it.literal]);
 			else {
 				int ev=0,eb=0;
-				int lc=get_length_code(it.length_,ev,eb);
-				bw.write_bits(ll.length_[lc],ll.table_[lc]);
+				int lc=get_length_code(it.length,ev,eb);
+				bw.write_bits(ll.length[lc],ll.table[lc]);
 				if (eb>0) bw.write_bits<uint16_t>(eb,static_cast<uint64_t>(ev));
 				int dv=0,db=0;
-				int dc=get_dist_code(it.distance_,dv,db);
-				bw.write_bits(dt.length_[dc],dt.table_[dc]);
+				int dc=get_dist_code(it.distance,dv,db);
+				bw.write_bits(dt.length[dc],dt.table[dc]);
 				if (db>0) bw.write_bits<uint16_t>(db,static_cast<uint64_t>(dv));
 			}
 		}
-		bw.write_bits(ll.length_[256],ll.table_[256]);
+		bw.write_bits(ll.length[256],ll.table[256]);
 		bw.flush_bits();
 	}
 
@@ -444,7 +444,7 @@ class deflate {
 			std::vector<uint8_t> code_len(19,0);
 			for (int i=0;i<hclen;i++) code_len[order_[i]]=br.read_bits<uint32_t>(3);
 			canonical_tree cl;
-			cl.length_=code_len;
+			cl.length=code_len;
 			build_canonical_table(cl);
 			std::vector<uint8_t> ll_len;
 			ll_len.reserve(hlit+hdist);
@@ -465,8 +465,8 @@ class deflate {
 				}
 			}
 			if (static_cast<int>(ll_len.size())!=total) throw std::runtime_error("bad dynamic code length sequence");
-			litlen.length_.assign(ll_len.begin(),ll_len.begin()+hlit);
-			dist.length_.assign(ll_len.begin()+hlit,ll_len.end());
+			litlen.length.assign(ll_len.begin(),ll_len.begin()+hlit);
+			dist.length.assign(ll_len.begin()+hlit,ll_len.end());
 			build_canonical_table(litlen);
 			build_canonical_table(dist);
 		} else throw std::runtime_error("reserved BTYPE");
@@ -860,7 +860,7 @@ class deflate_compressor {
 
 	deflate_block_type effective_btype_;
 
-	void write_header_() {
+	void write_header() {
 		if (fmt_==DSF_ZLIB) {
 			bw_.write_u8(0x78);
 			bw_.write_u8(0x9C);
@@ -868,7 +868,7 @@ class deflate_compressor {
 		header_written_=true;
 	}
 
-	void flush_block_(bool last) {
+	void flush_block(bool last) {
 		if (pending_tokens_.empty() && !last) return;
 		if (effective_btype_==DBT_STORED) deflate::encode_dynamic_block(bw_,pending_tokens_,last);
 		else if (effective_btype_==DBT_FIXED) deflate::encode_fixed_block(bw_,pending_tokens_,last);
@@ -877,7 +877,7 @@ class deflate_compressor {
 		pending_bytes_=0;
 	}
 
-	std::vector<uint8_t> take_output_() {
+	std::vector<uint8_t> take_output() {
 		auto buf=bw_.buffer();
 		bw_=bitwise::bit_writer(bitwise::BO_LSBYTE);
 		return buf;
@@ -894,7 +894,7 @@ public:
 
 	std::vector<uint8_t> feed(const uint8_t* data,std::size_t size) {
 		if (finished_) throw std::logic_error("already finished");
-		if (!header_written_) write_header_();
+		if (!header_written_) write_header();
 		adler_state_.update(data,size);
 		crc_state_.update(data,size);
 		total_input_bytes_+=static_cast<uint32_t>(size&0xFFFFFFFFu);
@@ -903,8 +903,8 @@ public:
 		pending_bytes_+=size;
 		std::vector<uint8_t> output;
 		while (pending_bytes_>=block_threshold_) {
-			flush_block_(false);
-			auto chunk=take_output_();
+			flush_block(false);
+			auto chunk=take_output();
 			output.insert(output.end(),chunk.begin(),chunk.end());
 		}
 		return output;
@@ -929,17 +929,17 @@ public:
 
 	std::vector<uint8_t> flush() {
 		if (finished_) throw std::logic_error("already finished");
-		if (!header_written_) write_header_();
-		if (!pending_tokens_.empty()) flush_block_(false);
-		return take_output_();
+		if (!header_written_) write_header();
+		if (!pending_tokens_.empty()) flush_block(false);
+		return take_output();
 	}
 
 	std::vector<uint8_t> finish() {
 		if (finished_) throw std::logic_error("already finished");
-		if (!header_written_) write_header_();
+		if (!header_written_) write_header();
 		auto tail_tokens=lz_.encode_chunk(nullptr,0,true);
 		pending_tokens_.insert(pending_tokens_.end(),tail_tokens.begin(),tail_tokens.end());
-		flush_block_(true);
+		flush_block(true);
 		if (fmt_==DSF_ZLIB) {
 			uint32_t ad=adler_state_.checksum();
 			bw_.write_u8(static_cast<uint8_t>(ad>>24));
@@ -959,7 +959,7 @@ public:
 			bw_.write_u8(static_cast<uint8_t>((isize>>24)&0xFF));
 		}
 		finished_=true;
-		return take_output_();
+		return take_output();
 	}
 
 	void reset() {
@@ -1026,7 +1026,7 @@ class deflate_decompressor {
 	}
 
 	void try_decompress() {
-		if (!header_parsed_ && !try_parse_header_()) return;
+		if (!header_parsed_ && !try_parse_header()) return;
 		if (done_) return;
 		const uint8_t* raw=in_buf_.data();
 		std::size_t raw_size=in_buf_.size();
@@ -1068,7 +1068,7 @@ public:
 	void feed(const uint8_t* data,std::size_t size) {
 		if (done_) throw std::logic_error("stream already done");
 		in_buf_.insert(in_buf_.end(),data,data+size);
-		try_decompress_();
+		try_decompress();
 	}
 
 	void feed(const std::vector<uint8_t>& data) {
