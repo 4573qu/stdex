@@ -94,6 +94,7 @@ public:
 		}
 		return *this;
 	}
+
 	void push_back(const _Tp& value) {
 		if (size_==_Capacity) throw std::runtime_error("ring_buffer is full");
 		new (&data_[tail_]) _Tp(value);

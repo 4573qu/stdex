@@ -227,6 +227,7 @@ public:
 		insert(init_list.begin(),init_list.end());
 		return *this;
 	}
+
 	mapped_type& at(const key_type& key) {
 		trie_node* node=find_node(key);
 		if (!node || !node->value_) throw std::out_of_range("trie::at: key not found");

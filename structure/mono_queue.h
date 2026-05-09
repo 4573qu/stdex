@@ -48,6 +48,7 @@ public:
 	mono_queue()=default;
 	explicit mono_queue(const compare_type& comp) : comp_(comp) { }
 	explicit mono_queue(size_type window_size,const compare_type& comp=compare_type()) : comp_(comp), window_size_(window_size), fixed_window_(window_size>0) { }
+
 	void push(const value_type& value) {
 		push_impl(value);
 	}
