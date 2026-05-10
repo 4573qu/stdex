@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/20
-//@Version 1.0.0.0
+//Last Modified At 2026/05/10
+//@Version 1.0.1.0
 #ifndef _STDEX_STRUCTURE_GRAPH_ALGORITHM_H_
 #define _STDEX_STRUCTURE_GRAPH_ALGORITHM_H_ 1
 
@@ -177,53 +177,54 @@ std::unordered_map<_Tp,std::unordered_set<_Tp>> inverse_topology_closure(const _
 
 template <typename _Tp,typename _Graph=std::unordered_map<_Tp,std::unordered_set<_Tp>>>
 struct tarjan {
-	const _Graph &graph_;
-	std::unordered_set<_Tp> nodes_;
-	std::unordered_map<_Tp,int> index_map_;
-	std::unordered_map<_Tp,int> lowlink_;
-	std::stack<_Tp> stack_;
-	std::unordered_set<_Tp> on_stack_;
-	int index_counter_;
-	std::vector<std::unordered_set<_Tp>> sccs_;
+	const _Graph &graph;
+	std::unordered_set<_Tp> nodes;
+	std::unordered_map<_Tp,int> index_map;
+	std::unordered_map<_Tp,int> lowlink;
+	std::stack<_Tp> stack;
+	std::unordered_set<_Tp> on_stack;
+	int index_counter;
+	std::vector<std::unordered_set<_Tp>> sccs;
+
+	tarjan(const _Graph &graph) : graph(graph) { }
 
 	void strong_connect(_Tp v) {
-		index_map_[v]=index_counter_;
-		lowlink_[v]=index_counter_++;
-		stack_.push(v);
-		on_stack_.insert(v);
-		if (algorithm::graph::find(graph_,v)) {
-			for (auto &it:algorithm::graph::get(graph_,v)) {
-				if (index_map_.find(it)==index_map_.end()) {
+		index_map[v]=index_counter;
+		lowlink[v]=index_counter++;
+		stack.push(v);
+		on_stack.insert(v);
+		if (algorithm::graph::find(graph,v)) {
+			for (auto &it:algorithm::graph::get(graph,v)) {
+				if (index_map.find(it)==index_map.end()) {
 					strong_connect(it);
-					lowlink_[v]=std::min(lowlink_[v],lowlink_[it]);
-				} else if (on_stack_.count(it)) lowlink_[v]=std::min(lowlink_[v],index_map_[it]);
+					lowlink[v]=std::min(lowlink[v],lowlink[it]);
+				} else if (on_stack.count(it)) lowlink[v]=std::min(lowlink[v],index_map[it]);
 			}
 		}
-		if (lowlink_[v]==index_map_[v]) {
+		if (lowlink[v]==index_map[v]) {
 			std::unordered_set<_Tp> scc;
 			_Tp w;
 			do {
-				w=stack_.top();
-				stack_.pop();
-				on_stack_.erase(w);
+				w=stack.top();
+				stack.pop();
+				on_stack.erase(w);
 				scc.insert(w);
 			} while (w!=v);
-			sccs_.push_back(scc);
+			sccs.push_back(scc);
 		}
 	}
-public:
-	tarjan(const _Graph &graph) : graph_(graph) {}
+
 	std::vector<std::unordered_set<_Tp>> run() {
-		sccs_.clear();
-		for (auto &it:algorithm::graph::get(graph_)) {
-			nodes_.insert(it.first);
-			for (auto &jt:it.second) nodes_.insert(jt);
+		sccs.clear();
+		for (auto &it:algorithm::graph::get(graph)) {
+			nodes.insert(it.first);
+			for (auto &jt:it.second) nodes.insert(jt);
 		}
-		index_counter_=0;
-		for (auto &it:nodes_) {
-			if (index_map_.find(it)==index_map_.end()) strong_connect(it);
+		index_counter=0;
+		for (auto &it:nodes) {
+			if (index_map.find(it)==index_map.end()) strong_connect(it);
 		}
-		return sccs_;
+		return sccs;
 	}
 };
 
