@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/15
-//@Version 1.0.0.0
+//Last Modified At 2026/05/11
+//@Version 1.0.1.0
 #ifndef _STDEX_STRUCTURE_TRIE_H_
 #define _STDEX_STRUCTURE_TRIE_H_ 1
 
@@ -183,8 +183,8 @@ public:
 	trie() : root_(create_node()) {}
 	explicit trie(const key_compare& comp,const allocator_type& alloc=allocator_type()) : root_(create_node()) , alloc_(alloc) , comp_(comp) { }
 	explicit trie(const allocator_type& alloc) : root_(create_node()) , alloc_(alloc) { }
-	template <typename _InputIt>
-	trie(_InputIt first,_InputIt last,const key_compare& comp=key_compare(),const allocator_type& alloc=allocator_type()) : root_(create_node()), alloc_(alloc), comp_(comp) {
+	template <typename _It>
+	trie(_It first,_It last,const key_compare& comp=key_compare(),const allocator_type& alloc=allocator_type()) : root_(create_node()), alloc_(alloc), comp_(comp) {
 		insert(first,last);
 	}
 	trie(std::initializer_list<value_type> init_list,const key_compare& comp=key_compare(),const allocator_type& alloc=allocator_type()) : root_(create_node()) , alloc_(alloc) , comp_(comp) {

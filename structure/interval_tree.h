@@ -1,5 +1,5 @@
-//Last Modified At 2026/01/27
-//@Version 1.1.0.0
+//Last Modified At 2026/05/11
+//@Version 1.1.1.0
 #ifndef _STDEX_STRUCTURE_INTERVAL_TREE_H_
 #define _STDEX_STRUCTURE_INTERVAL_TREE_H_ 1
 
@@ -64,8 +64,8 @@ public:
 	interval_tree()=default;
 	explicit interval_tree(const key_compare& comp,const allocator_type& alloc=allocator_type()) : base_type(comp,alloc) { }
 	explicit interval_tree(const allocator_type& alloc) : base_type(alloc) { }
-	template <typename _InputIt>
-	interval_tree(_InputIt first,_InputIt last,const key_compare& comp=key_compare(),const allocator_type& alloc=allocator_type()) : base_type(comp,alloc) {
+	template <typename _It>
+	interval_tree(_It first,_It last,const key_compare& comp=key_compare(),const allocator_type& alloc=allocator_type()) : base_type(comp,alloc) {
 		insert(first,last);
 	}
 	interval_tree(std::initializer_list<value_type> init_list,const key_compare& comp=key_compare(),const allocator_type& alloc=allocator_type()) : base_type(comp,alloc) {

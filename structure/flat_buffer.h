@@ -1,10 +1,11 @@
-//Last Modified At 2026/05/09
+//Last Modified At 2026/05/11
 //@Version 1.0.0.0
 #ifndef _STDEX_STRUCTURE_FLAT_BUFFER_H_
 #define _STDEX_STRUCTURE_FLAT_BUFFER_H_ 1
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
@@ -18,8 +19,8 @@
 #include <type_traits>
 #include <vector>
 
-#include "../bitwise/endianness.h"
-#include "../crypto/base.h"
+#include "../bitwise/endianness.h"//At Least 1.1
+#include "../crypto/base.h"//At Least 1.0
 
 #if __has_include("../macros/cpp_version.h")
 #include "../macros/cpp_version.h"//At Least 1.0

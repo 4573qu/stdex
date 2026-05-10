@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/24
-//@Version 1.0.0.1
+//Last Modified At 2026/05/11
+//@Version 1.0.1.1
 #ifndef _STDEX_STRUCTURE_FLAT_MAP_H_
 #define _STDEX_STRUCTURE_FLAT_MAP_H_ 1
 
@@ -74,8 +74,8 @@ public:
 	flat_map()=default;
 	explicit flat_map(const _Compare& comp,const _Allocator& alloc=_Allocator()) : data_(alloc) , comp_(comp) {}
 	explicit flat_map(const _Allocator& alloc) : data_(alloc) , comp_(_Compare()) {}
-	template <typename _InputIt>
-	flat_map(_InputIt first,_InputIt last,const _Compare& comp=_Compare(),const _Allocator& alloc=_Allocator()) : comp_(comp) {
+	template <typename _It>
+	flat_map(_It first,_It last,const _Compare& comp=_Compare(),const _Allocator& alloc=_Allocator()) : comp_(comp) {
 		insert(first,last);
 	}
 	flat_map(std::initializer_list<value_type> init,const _Compare& comp=_Compare(),const _Allocator& alloc=_Allocator()) : comp_(comp) {
