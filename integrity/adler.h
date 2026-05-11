@@ -9,7 +9,7 @@
 #include <type_traits>
 
 #if __has_include("../macros/cpp_version.h")
-#include "../macros/cpp_version.h"
+#include "../macros/cpp_version.h"//At Least 1.0
 #endif
 
 #ifndef _STDEX_CPP20_VERSION
