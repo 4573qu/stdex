@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/09
-//@Version 3.0.0.0
+//Last Modified At 2026/05/11
+//@Version 3.0.1.0
 #ifndef _STDEX_STRUCTURE_HUFFMAN_H_
 #define _STDEX_STRUCTURE_HUFFMAN_H_ 1
 
@@ -35,6 +35,36 @@ template <typename _Tp,typename _Freq=std::size_t,std::size_t _K=2,typename _Com
 class huffman {
 	static_assert(_K>=2,"K must be at least 2.");
 
+public:
+	struct node {
+		_Tp symbol{};
+		_Freq frequency{};
+		std::vector<std::shared_ptr<node>> kids;
+
+		node() = default;
+		node(const _Tp& symbol, _Freq freq) : symbol(symbol) , frequency(freq) { }
+		explicit node(std::vector<std::shared_ptr<node>> childrens) : symbol{} , kids(std::move(childrens)) {
+			if (kids.empty() || kids.size()>_K) throw std::invalid_argument("kids size must be in [1,K]");
+			frequency={};
+			for (auto& it:kids) {
+				if (!it) throw std::invalid_argument("null child node");
+				frequency+=it->frequency;
+
+			}
+		}
+		bool is_leaf() const noexcept { return kids.empty(); }
+		std::size_t child_count() const noexcept { return kids.size(); }
+
+		const std::shared_ptr<node>& child(std::size_t i) const {
+			if (i>=kids.size()) throw std::out_of_range("child index out of range");
+			return kids[i];
+		}
+		const std::shared_ptr<node>& operator [](std::size_t i) const {
+			return child(i);
+		}
+	};
+
+private:
 	template <typename _Tp,typename=void>
 	struct is_hashable : std::false_type {};
 	template <typename _Tp>
@@ -43,12 +73,12 @@ class huffman {
 	template <typename _Tp,typename=void>
 	struct is_freq_like : std::false_type {};
 	template <typename _Tp>
-	struct is_freq_like<_Tp,std::void_t<decltype(std::declval<_Tp>()+std::declval<_Tp>()),decltype(std::declval<_Tp>()<std::declval<_Tp>()),decltype(std::declval<_Tp>()+=std::declval<_Tp>())>> : std::true_type {};
+	struct is_freq_like<_Tp,std::void_t<decltype(std::declval<_Tp>()+std::declval<_Tp>()),decltype(std::declval<_Tp>()<std::declval<_Tp>()),decltype(std::declval<_Tp&>()+=std::declval<_Tp>())>> : std::true_type {};
 
 	template <typename _Tp,typename=void>
 	struct is_string_like : std::false_type {};
 	template <typename _Tp>
-	struct is_string_like<_Tp,std::void_t<typename _Tp::value_type,decltype(std::declval<_Tp>().push_back(std::declval<typename _T::value_type>())),decltype(std::declval<_Tp>().size()),decltype(std::declval<_Tp>().empty()),decltype(std::declval<_Tp>().begin()),decltype(std::declval<_Tp>().end()),decltype(std::declval<_Tp>().insert(std::declval<_Tp>().end(),std::declval<_Tp>().begin(),std::declval<_Tp>().end()))>> : std::true_type {};
+	struct is_string_like<_Tp,std::void_t<typename _Tp::value_type,decltype(std::declval<_Tp>().push_back(std::declval<typename _Tp::value_type>())),decltype(std::declval<_Tp>().size()),decltype(std::declval<_Tp>().empty()),decltype(std::declval<_Tp>().begin()),decltype(std::declval<_Tp>().end()),decltype(std::declval<_Tp>().insert(std::declval<_Tp>().end(),std::declval<_Tp>().begin(),std::declval<_Tp>().end()))>> : std::true_type {};
 
 	template <typename _Func,typename=void>
 	struct is_leaf_visitor : std::false_type {};
@@ -88,6 +118,7 @@ class huffman {
 	}
 
 	static void serialize_node_impl(const std::shared_ptr<node>& curr,std::ostream& out) {
+		static_assert(std::is_trivially_copyable<_Tp>::value, "_Tp must be trivially copyable for binary serialization to work.");
 		if (!curr) return;
 		if (curr->is_leaf()) {
 			out.put('L');
@@ -163,35 +194,6 @@ class huffman {
 	}
 
 public:
-	struct node {
-		_Tp symbol{};
-		_Freq frequency{};
-		std::vector<std::shared_ptr<node>> kids;
-
-		node()=default;
-		node(const _Tp& symbol,_Freq freq) : symbol(symbol) , frequency(freq) { }
-		explicit node(std::vector<std::shared_ptr<node>> kids) : symbol{} {
-			if (kids.empty() || kids.size()>_K) throw std::invalid_argument("kids size must be in [1,K]");
-			frequency={};
-			for (auto& it:kids) {
-				if (!it) throw std::invalid_argument("null child node");
-				frequency+=it->frequency;
-				kids.push_back(std::move(it));
-			}
-		}
-
-		bool is_leaf() const noexcept { return kids.empty(); }
-		std::size_t child_count() const noexcept { return kids.size(); }
-
-		const std::shared_ptr<node>& child(std::size_t i) const {
-			if (i>=kids.size()) throw std::out_of_range("child index out of range");
-			return kids[i];
-		}
-		const std::shared_ptr<node>& operator [](std::size_t i) const {
-			return child(i);
-		}
-	};
-
 	static constexpr std::size_t arity=_K;
 
 	huffman()=default;
@@ -536,7 +538,7 @@ public:
 	_Str serialize_codebook(const std::unordered_map<_Tp,_Str>& codebook) const {
 		std::basic_ostringstream<typename _Str::value_type> oss;
 		oss<<std::hex<<std::setfill('0');
-		for (const auto& it:codebook) oss<<static_cast<uint64_t>(it.first)<<':'<<t.second<<'\n';
+		for (const auto& it:codebook) oss<<static_cast<uint64_t>(it.first)<<':'<<it.second<<'\n';
 		return oss.str();
 	}
 

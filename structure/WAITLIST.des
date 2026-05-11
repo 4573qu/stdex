@@ -51,3 +51,13 @@ k_ary huffman with k-ary packagemerge(larmore-hirschberg)
 跳表
 trie->基数树
 Boost.Intrusive
+
+
+
+
+总结
+catalog.h 中的观察者模式实现非常轻量且现代：
+
+优点：摒弃了臃肿的面向对象多态，使用了现代 C++ 的 std::function + ID 机制，事件分类合理，生命周期管理安全。
+
+缺点：在并发模式（_Syn=true）下，持锁调用回调的设计存在严重的死锁隐患和性能瓶颈（如果回调执行耗时很长，会一直阻塞其他线程的读写）。
