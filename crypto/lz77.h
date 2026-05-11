@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/10
-//@Version 1.2.0.0
+//Last Modified At 2026/05/11
+//@Version 1.2.1.0
 #ifndef _STDEX_CRYPTO_LZ77_H_
 #define _STDEX_CRYPTO_LZ77_H_ 1
 
@@ -37,18 +37,18 @@ public:
 private:
 	static constexpr std::size_t hash_size_=std::size_t(1)<<_HashBits; // Hash table size (zlib uses 32K)
 
-	std::vector<int> head_; // hash -> latest position
-	std::vector<int> prev_; // previous position with same hash
+	std::vector<int64_t> head_; // hash -> latest position
+	std::vector<int64_t> prev_; // previous position with same hash
 	int lazy_len_=0;
 	int lazy_dist_=0;
 	// total input bytes fed so far (absolute position)
 	std::size_t total_pos_=0;
 
 	static uint64_t hash_func(uint64_t val) noexcept {
-		return ((val*2654435761u)>>(64-_HashBits))&(hash_size_-1);
+		return ((val*11400714819323198485ull)>>(64-_HashBits))&(hash_size_-1);
 	}
 
-	static uint64_t load3(const std::vector<byte>& data,std::size_t pos) noexcept {
+	static uint64_t load3(const byte* data,std::size_t pos) noexcept {
 		if (_MinMatch==3) return (static_cast<uint64_t>(data[pos])<<16)|(static_cast<uint64_t>(data[pos+1])<<8)|(static_cast<uint64_t>(data[pos+2]));
 		uint64_t result=0;
 		for (int i=0;i<_MinMatch;i++) result|=(static_cast<uint64_t>(data[pos+i])<<(8*(_MinMatch-1-i)));
@@ -56,8 +56,8 @@ private:
 	}
 
 	int insert_hash(std::size_t pos,uint64_t h) noexcept {
-		int prev_head=head_[h];
-		head_[h]=static_cast<int>(pos%_WindowSize);
+		int64_t prev_head=head_[h];
+		head_[h]=pos%_WindowSize;
 		prev_[pos%_WindowSize]=prev_head;
 		return prev_head;
 	}
@@ -73,8 +73,22 @@ private:
 			if (mat_slot<=cur_slot) abs_match=pos-(cur_slot-mat_slot);
 			else abs_match=pos-(_WindowSize-mat_slot+cur_slot);
 			int dist=static_cast<int>(pos-abs_match);
+			if (pos<static_cast<std::size_t>(dist)) {
+				match_pos=prev_[mat_slot];
+				continue; 
+			}
 			if (dist<=0 || dist>static_cast<int>(_WindowSize)) break;
-			int len=0;
+			if (best_len>0) {
+				if (pos+best_len>=size || data[abs_match+best_len]!=data[pos+best_len]) {
+					match_pos=prev_[mat_slot];
+					continue;
+				}
+			}
+			if (data[abs_match]!= data[pos]) {
+				match_pos=prev_[mat_slot];
+				continue;
+			}
+			int len=1;
 			while (len<static_cast<int>(_MaxMatch) && pos+static_cast<std::size_t>(len)<size && data[abs_match+len]==data[pos+len]) len++;
 			if (len>best_len) {
 				best_len=len;
@@ -116,23 +130,23 @@ public:
 		std::size_t position=0;
 		const std::size_t matchable_end=size>_MinMatch?size-(_MinMatch-1):0;
 		while (position<matchable_end) {
-			uint64_t hash=hash_func(load3(input,position));
-			auto [best_len,best_dist]=find_match(data,size,pos,hash);
-			insert_hash(pos,hash);
+			uint64_t hash=hash_func(load3(data,position));
+			auto [best_len,best_dist]=find_match(data,size,position,hash);
+			insert_hash(position,hash);
 			if constexpr (_Lazy) {
 				if (lazy_len_>=static_cast<int>(_MinMatch)) {
 					if (best_len>lazy_len_) {
-						tokens.push_back({0,0,data[pos-1]});
+						tokens.push_back({0,0,data[position-1]});
 						lazy_len_=best_len;
 						lazy_dist_=best_dist;
-						pos++;
+						position++;
 					} else {
 						tokens.push_back({static_cast<uint16_t>(lazy_dist_),static_cast<uint16_t>(lazy_len_),0});
 						std::size_t skip=static_cast<std::size_t>(lazy_len_)-1;
-						for (std::size_t s=0;s<skip && pos<matchable_end;s++,pos++) {
-							if (pos+_MinMatch<=size) {
-								uint64_t sh=hash_func(load_min(data,pos));
-								insert_hash(pos,sh);
+						for (std::size_t s=0;s<skip && position<matchable_end;s++,position++) {
+							if (position+_MinMatch<=size) {
+								uint64_t sh=hash_func(load3(data,position));
+								insert_hash(position,sh);
 							}
 						}
 						lazy_len_=0;
@@ -142,40 +156,39 @@ public:
 					if (best_len>=static_cast<int>(_MinMatch)) {
 						lazy_len_=best_len;
 						lazy_dist_=best_dist;
-						pos++;
+						position++;
 					} else {
-						tokens.push_back({0,0,data[pos]});
-						pos++;
+						tokens.push_back({0,0,data[position]});
+						position++;
 					}
 				}
 			} else {
 				if (best_len>=static_cast<int>(_MinMatch)) {
 					tokens.push_back({static_cast<uint16_t>(best_dist),static_cast<uint16_t>(best_len),0});
-					for (std::size_t s=1;s<static_cast<std::size_t>(best_len) && pos+s+_MinMatch<=size;s++) {
-						uint64_t sh=hash_func(load_min(data,pos+s));
-						insert_hash(pos+s,sh);
+					for (std::size_t s=1;s<static_cast<std::size_t>(best_len) && position+s+_MinMatch<=size;s++) {
+						uint64_t sh=hash_func(load3(data,position+s));
+						insert_hash(position+s,sh);
 					}
-					pos+=static_cast<std::size_t>(best_len);
+					position+=static_cast<std::size_t>(best_len);
 				} else {
-					tokens.push_back({0,0,data[pos]});
-					pos++;
+					tokens.push_back({0,0,data[position]});
+					position++;
 				}
 			}
 		}
-
 		if constexpr (_Lazy) {
 			if (lazy_len_>=static_cast<int>(_MinMatch)) {
 				if (lazy_dist_>0) {
 					tokens.push_back({static_cast<uint16_t>(lazy_dist_),static_cast<uint16_t>(lazy_len_),0});
-					pos+=static_cast<std::size_t>(lazy_len_)-1;
+					position+=static_cast<std::size_t>(lazy_len_)-1;
 					lazy_len_=0;
 					lazy_dist_=0;
 				}
 			}
 		}
-		while (pos<size) {
-			tokens.push_back({0,0,data[pos]});
-			pos++;
+		while (position<size) {
+			tokens.push_back({0,0,data[position]});
+			position++;
 		}
 		total_pos_+=size;
 		return tokens;

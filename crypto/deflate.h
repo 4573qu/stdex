@@ -19,17 +19,16 @@
 #include <utility>
 #include <vector>
 
-
-#include "../bitwise/bit_reader.h"
-#include "../bitwise/bit_writer.h"
-#include "../bitwise/bits.h"
-#include "../crypto/lz77.h"
-#include "../integrity/adler.h"
-#include "../integrity/crc.h"
-#include "../structure/huffman.h"
+#include "../bitwise/bit_reader.h"//At Least 1.3,Best Least 2.0
+#include "../bitwise/bit_writer.h"//At Least 2.1
+#include "../bitwise/bits.h"//At Least 1.2
+#include "../crypto/lz77.h"//At Least 1.2
+#include "../integrity/adler.h"//At Least 1.0
+#include "../integrity/crc.h"//At Least 1.0
+#include "../structure/huffman.h"//At Least 3.0
 
 #if __has_include("../macros/cpp_version.h")
-#include "../macros/cpp_version.h"
+#include "../macros/cpp_version.h"//At Least 1.0
 #endif
 
 #ifndef _STDEX_CPP20_VERSION
@@ -88,31 +87,59 @@ class deflate {
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
 	template <typename _It>
-	concept byte_output_iterator=std::output_iterator<_It,uint8_t>;
+	static constexpr bool is_byte_output_iter_v=requires(_It it,uint8_t v) {
+		{ *it=v };
+		{ it++ };
+	};
 #endif
 
 	struct canonical_tree {
 		std::vector<uint16_t> table;
 		std::vector<uint8_t> length;
 		int maxbits=0;
-		std::vector<std::vector<uint16_t>> codes_bl;
-		std::vector<std::vector<int>> syms_bl;
+		struct fast_entry {
+			uint16_t symbol;
+			uint8_t length;
+		};
+		std::vector<fast_entry> fast_table;
 
 		bool empty() const noexcept {
 			return length.empty() || maxbits==0;
 		}
 
-		int decode(bitwise::bit_reader& br) const {
-			int code=0,len=1;
-			for (;len<=maxbits;len++) {
-				code|=br.read_bits<uint8_t>(1)<<(len-1);
-				const auto& codes=codes_bl[len];
-				const auto& syms=syms_bl[len];
-				for (std::size_t i=0;i<codes.size();i++) {
-					if (codes[i]==(uint16_t)code) return syms[i];
+		void build_lookup() {
+			if (maxbits==0) return;
+			fast_table.assign(1<<maxbits,{0,0});
+			for (std::size_t n=0;n<length.size();n++) {
+				int len=length[n];
+				if (len>0) {
+					uint16_t code=table[n];
+					int diff=maxbits-len;
+					int num_fill=1<<diff;
+					for (int i=0;i<num_fill;i++) {
+						int index=code|(i<<len);
+						fast_table[index]={static_cast<uint16_t>(n),static_cast<uint8_t>(len)};
+					}
 				}
 			}
-			throw std::runtime_error("invalid huffman code");
+		}
+
+		int decode(bitwise::bit_reader& br) const {
+			if (br.size_bits()-br.tell_bits()>=static_cast<std::size_t>(maxbits)) {
+				uint32_t peek_val=br.peek_bits<uint32_t>(maxbits);
+				const auto& entry=fast_table[peek_val];
+				if (entry.length==0) throw std::runtime_error("invalid huffman code");
+				br.seek_bits(br.tell_bits()+entry.length);
+				return entry.symbol;
+			} else {
+				int code=0,len=1;
+				for (;len<=maxbits;len++) {
+					code|=br.read_bits<uint32_t>(1)<<(len-1);
+					const auto& entry=fast_table[code];
+					if (entry.length==len) return entry.symbol;
+				}
+				throw std::runtime_error("invalid huffman code");
+			}
 		}
 	};
 
@@ -145,8 +172,7 @@ class deflate {
 		}
 		h.maxbits=maxbits;
 		if (maxbits==0) {
-			h.codes_bl.clear();
-			h.syms_bl.clear();
+			h.fast_table.clear();
 			return;
 		}
 		std::vector<int> bl_count(maxbits+1,0);
@@ -160,8 +186,6 @@ class deflate {
 			next_code[bits]=code;
 		}
 		h.table.assign(h.length.size(),0);
-		h.codes_bl.assign(maxbits+1,{});
-		h.syms_bl.assign(maxbits+1,{});
 		for (std::size_t n=0;n<h.length.size();n++) {
 			int len=h.length[n];
 			if (len!=0) {
@@ -169,10 +193,9 @@ class deflate {
 				int rev=0;
 				for (int i=0;i<len;i++) rev=(rev<<1)|((val>>i)&1);
 				h.table[n]=static_cast<uint16_t>(rev);
-				h.codes_bl[len].push_back(h.table[n]);
-				h.syms_bl[len].push_back(static_cast<int>(n));
 			}
 		}
+		h.build_lookup();
 	}
 
 	static canonical_tree build_fixed_lit() {
@@ -356,7 +379,7 @@ class deflate {
 		}
 	}
 
-	static void encode_fixed_block(bitwise::bit_writer& bw,const std::vector<lz77::token>& tokens,bool last) {
+	static void encode_fixed_block(bitwise::bit_writer& bw,const std::vector<lz77<>::token>& tokens,bool last) {
 		bw.write_bits<uint8_t>(1,last?1:0);
 		bw.write_bits<uint8_t>(2,1);
 		for (const auto& it:tokens) {
@@ -381,7 +404,7 @@ class deflate {
 		bw.flush_bits();
 	}
 
-	static void encode_dynamic_block(bitwise::bit_writer& bw,const std::vector<lz77::token>& tokens,bool last) {
+	static void encode_dynamic_block(bitwise::bit_writer& bw,const std::vector<lz77<>::token>& tokens,bool last) {
 		bw.write_bits<uint8_t>(1,last?1:0);
 		bw.write_bits<uint8_t>(2,2);
 		std::array<uint32_t,286> litlen_freq{};
@@ -430,7 +453,7 @@ class deflate {
 			byte_pos+=4;
 			if (byte_pos+len>raw_size) throw std::out_of_range("stored block data overflow");
 			out.insert(out.end(),raw_buf+byte_pos,raw_buf+byte_pos+len);
-			br.bit_pos()=(byte_pos+len-base_offset)*8;
+			br.seek_bits((byte_pos+len-base_offset)*8);
 			return last;
 		}
 		canonical_tree litlen,dist;
@@ -563,7 +586,7 @@ class deflate {
 		return offset;
 	}
 
-	static block_type resolve_block_type(deflate_block_type bt,deflate_level lv) noexcept {
+	static deflate_block_type resolve_block_type(deflate_block_type bt,deflate_level lv) noexcept {
 		if (bt!=DBT_AUTOMATIC) return bt;
 		if (lv==DL_NONE) return DBT_STORED;
 		if (lv<=DL_FAST) return DBT_FIXED;
@@ -608,7 +631,7 @@ public:
 		return DSF_RAW;
 	}
 
-	static stream_format detect_format(const std::vector<uint8_t>& data) noexcept {
+	static deflate_stream_format detect_format(const std::vector<uint8_t>& data) noexcept {
 		return detect_format(data.data(),data.size());
 	}
 
@@ -621,15 +644,15 @@ public:
 			gzip_info info;
 			write_gzip_header(bw,info,level);
 		}
-		block_type effective=resolve_block_type(btype,level);
+		deflate_block_type effective=resolve_block_type(btype,level);
 		if (effective==DBT_STORED) encode_stored_blocks(bw,data,size,true);
 		else if (effective==DBT_FIXED) {
-			lz77 lz;
+			lz77<> lz;
 			std::vector<uint8_t> tmp(data,data+size);
 			auto tokens=lz.encode(tmp);
 			encode_fixed_block(bw,tokens,true);
 		} else {
-			lz77 lz;
+			lz77<> lz;
 			std::vector<uint8_t> tmp(data,data+size);
 			auto tokens=lz.encode(tmp);
 			encode_dynamic_block(bw,tokens,true);
@@ -678,10 +701,10 @@ public:
 	static std::vector<uint8_t> compress(const uint8_t* data,std::size_t size,const gzip_info& info,deflate_level level=DL_NORMAL,deflate_block_type btype=DBT_AUTOMATIC) {
 		bitwise::bit_writer bw(bitwise::BO_LSBYTE);
 		write_gzip_header(bw,info,level);
-		block_type effective=resolve_block_type(btype,level);
+		deflate_block_type effective=resolve_block_type(btype,level);
 		if (effective==DBT_STORED) encode_stored_blocks(bw,data,size,true);
 		else {
-			lz77 lz;
+			lz77<> lz;
 			auto tokens=lz.encode_chunk(data,size,true);
 			if (effective==DBT_FIXED) encode_fixed_block(bw,tokens,true);
 			else encode_dynamic_block(bw,tokens,true);
@@ -722,12 +745,12 @@ public:
 	}
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
-	template <byte_output_iterator _It>
+	template <typename _It> requires (is_byte_output_iter_v<_It>)
 	static _It encode_to(_It out,std::span<const uint8_t> data,deflate_level level=DL_NORMAL,deflate_stream_format fmt=DSF_ZLIB,deflate_block_type btype=DBT_AUTOMATIC) {
 		return encode_to(out,data.data(),data.size(),level,fmt,btype);
 	}
 
-	template <byte_output_iterator _It>
+	template <typename _It> requires (is_byte_output_iter_v<_It>)
 	static _It encode_to(_It out,std::span<const std::byte> data,deflate_level level=DL_NORMAL,deflate_stream_format fmt=DSF_ZLIB,deflate_block_type btype=DBT_AUTOMATIC) {
 		return encode_to(out,reinterpret_cast<const uint8_t*>(data.data()),data.size(),level,fmt,btype);
 	}
@@ -826,12 +849,12 @@ public:
 	}
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
-	template <byte_output_iterator _It>
+	template <typename _It> requires (is_byte_output_iter_v<_It>)
 	static _It decode_to(_It out,std::span<const uint8_t> data,deflate_stream_format fmt=DSF_ZLIB) {
 		return decode_to(out,data.data(),data.size(),fmt);
 	}
 
-	template <byte_output_iterator _It>
+	template <typename _It> requires (is_byte_output_iter_v<_It>)
 	static _It decode_to(_It out,std::span<const std::byte> data,deflate_stream_format fmt=DSF_ZLIB) {
 		return decode_to(out,reinterpret_cast<const uint8_t*>(data.data()),data.size(),fmt);
 	}
@@ -845,9 +868,9 @@ class deflate_compressor {
 	gzip_info gzip_info_;
 
 	bitwise::bit_writer bw_;
-	lz77 lz_;
+	lz77<> lz_;
 
-	std::vector<lz77::token> pending_tokens_;
+	std::vector<lz77<>::token> pending_tokens_;
 	std::size_t pending_bytes_=0;
 	std::size_t block_threshold_=65536;
 
