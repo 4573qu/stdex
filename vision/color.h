@@ -1,5 +1,5 @@
-//Last Modified At 2026/04/17
-//@Version 1.2.0.0
+//Last Modified At 2026/05/11
+//@Version 1.2.1.0
 #ifndef _STDEX_VISION_COLOR_H_
 #define _STDEX_VISION_COLOR_H_ 1
 
@@ -371,9 +371,9 @@ struct yuva {
 	}
 	float& luma() { return y; }
 	float& cb() { return u; }
-	float& u() { return u; }
+	float& ub() { return u; }
 	float& cr() { return v; }
-	float& v() { return v; }
+	float& vr() { return v; }
 	float& alpha() { return a; }
 	std::string to_yuv_string() {
 		uint16_t py=static_cast<uint16_t>(std::lround(std::clamp(y,0.0f,1.0f)*65535.0f));
@@ -429,12 +429,9 @@ struct xyza {
 	xyza(float tx,float ty,float tz,int alpha) : xyza(tx,ty,tz) {
 		set_alpha(alpha);
 	}
-	float& x() { return x; }
 	float& tx() { return x; }
-	float& y() { return y; }
 	float& ty() { return y; }
 	float& luma() { return y; }
-	float& z() { return z; }
 	float& tz() { return z; }
 	float& alpha() { return a; }
 	std::string to_xyz_string() {
@@ -491,10 +488,10 @@ struct laba {
 	}
 	float& lightness() { return l; }
 	float& l_star() { return l; }
-	float& a() { return as; }
+	float& ag() { return as; }
 	float& green_red() { return as; }
 	float& a_star() { return as;}
-	float& b() { return bs; }
+	float& by() { return bs; }
 	float& blue_yellow() { return bs; }
 	float& b_star() { return bs; }
 	float& alpha() { return a; }
@@ -605,9 +602,9 @@ struct oklaba {
 	}
 	float& lightness() { return lp; }
 	float& lightness_perceptual() { return lp; }
-	float& a() { return arg; }
+	float& ag() { return arg; }
 	float& axis_red_green() { return arg; }
-	float& b() { return ayb; }
+	float& by() { return ayb; }
 	float& axis_yellow_blue() { return ayb; }
 	float& alpha() { return a; }
 	std::string to_oklab_string() {
@@ -1069,9 +1066,9 @@ inline xyza rgba_to_xyza(rgba color,rgb_profile profile=rgb_profile()) {
 inline rgba xyza_to_rgba(xyza color,rgb_profile profile=rgb_profile()) {
 	float m00,m01,m02,m10,m11,m12,m20,m21,m22;
 	xyz_to_rgb_matrix(profile.space,m00,m01,m02,m10,m11,m12,m20,m21,m22);
-	float r=m00*color.x()+m01*color.y()+m02*color.z();
-	float g=m10*color.x()+m11*color.y()+m12*color.z();
-	float b=m20*color.x()+m21*color.y()+m22*color.z();
+	float r=m00*color.tx()+m01*color.ty()+m02*color.tz();
+	float g=m10*color.tx()+m11*color.ty()+m12*color.tz();
+	float b=m20*color.tx()+m21*color.ty()+m22*color.tz();
 	r=to_nonlinear(profile.transfer,r);
 	g=to_nonlinear(profile.transfer,g);
 	b=to_nonlinear(profile.transfer,b);
@@ -1091,9 +1088,9 @@ inline float lab_f_inv(float t) {
 }
 
 inline laba xyza_to_laba(xyza color,white_point wp=wp_d65()) {
-	float x=color.x()/wp.x;
-	float y=color.y()/wp.y;
-	float z=color.z()/wp.z;
+	float x=color.tx()/wp.x;
+	float y=color.ty()/wp.y;
+	float z=color.tz()/wp.z;
 	float fx=lab_f(x);
 	float fy=lab_f(y);
 	float fz=lab_f(z);
@@ -1102,8 +1099,8 @@ inline laba xyza_to_laba(xyza color,white_point wp=wp_d65()) {
 
 inline xyza laba_to_xyza(laba color,white_point wp=wp_d65()) {
 	float fy=(color.lightness()+16.0f)/116.0f;
-	float fx=fy+color.a()/500.0f;
-	float fz=fy-color.b()/200.0f;
+	float fx=fy+color.ag()/500.0f;
+	float fz=fy-color.by()/200.0f;
 	return xyza(wp.x*lab_f_inv(fx),wp.y*lab_f_inv(fy),wp.z*lab_f_inv(fz),color.alpha());
 }
 
@@ -1116,8 +1113,8 @@ inline rgba laba_to_rgba(laba color,rgb_profile profile=rgb_profile(),white_poin
 }
 
 inline lcha laba_to_lcha(laba color) {
-	float C=std::sqrt(color.a()*color.a()+color.b()*color.b());
-	float H=std::atan2(color.b(),color.a())*180.0f/3.14159265358979323846f;
+	float C=std::sqrt(color.ag()*color.ag()+color.by()*color.by());
+	float H=std::atan2(color.by(),color.ag())*180.0f/3.14159265358979323846f;
 	if (H<0) H+=360.0f;
 	return lcha(color.lightness(),C,H,color.alpha());
 }
@@ -1151,9 +1148,9 @@ inline oklaba rgba_to_oklaba(rgba color) {
 }
 
 inline rgba oklaba_to_rgba(oklaba color) {
-	float l_=color.lightness()+0.3963377774f*color.a()+0.2158037573f*color.b();
-	float m_=color.lightness()-0.1055613458f*color.a()-0.0638541728f*color.b();
-	float s_=color.lightness()-0.0894841775f*color.a()-1.2914855480f*color.b();
+	float l_=color.lightness()+0.3963377774f*color.ag()+0.2158037573f*color.by();
+	float m_=color.lightness()-0.1055613458f*color.ag()-0.0638541728f*color.by();
+	float s_=color.lightness()-0.0894841775f*color.ag()-1.2914855480f*color.by();
 	float l=l_*l_*l_;
 	float m=m_*m_*m_;
 	float s=s_*s_*s_;
@@ -1167,8 +1164,8 @@ inline rgba oklaba_to_rgba(oklaba color) {
 }
 
 inline oklcha oklaba_to_oklcha(oklaba color) {
-	float C=std::sqrt(color.a()*color.a()+color.b()*color.b());
-	float H=std::atan2(color.b(),color.a())*180.0f/3.14159265358979323846f;
+	float C=std::sqrt(color.ag()*color.ag()+color.by()*color.by());
+	float H=std::atan2(color.by(),color.ag())*180.0f/3.14159265358979323846f;
 	if (H<0) H+=360.0f;
 	return oklcha(color.lightness(),C,H,color.alpha());
 }
@@ -1248,14 +1245,14 @@ inline oklcha lerp_oklcha(oklcha a,oklcha b,float t) {
 
 inline float delta_e76(laba a,laba b) {
 	float dl=a.lightness()-b.lightness();
-	float da=a.a()-b.a();
-	float db=a.b()-b.b();
+	float da=a.ag()-b.ag();
+	float db=a.by()-b.by();
 	return std::sqrt(dl*dl+da*da+db*db);
 }
 inline float delta_e_ok(oklaba a,oklaba b) {
 	float dl=a.lightness()-b.lightness();
-	float da=a.a()-b.a();
-	float db=a.b()-b.b();
+	float da=a.ag()-b.ag();
+	float db=a.by()-b.by();
 	return std::sqrt(dl*dl+da*da+db*db);
 }
 
@@ -1522,7 +1519,7 @@ inline std::size_t cmyka::from_string(const std::string& s,bool initialize,bool 
 }
 
 inline std::size_t yuva::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) y=u()=v()=a=0;
+	if (initialize) y=u=v=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'Y','U')) {
 		rgba temp;
@@ -1558,7 +1555,7 @@ inline std::size_t yuva::from_string(const std::string& s,bool initialize,bool s
 }
 
 inline std::size_t xyza::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) x()=y()=z()=a=0;
+	if (initialize) x=y=z=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'X','Z')) {
 		rgba temp;
@@ -1592,7 +1589,7 @@ inline std::size_t xyza::from_string(const std::string& s,bool initialize,bool s
 }
 
 inline std::size_t laba::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) l=as=bs=a()=0;
+	if (initialize) l=as=bs=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'L','B')) {
 		rgba temp;
@@ -1660,7 +1657,7 @@ inline std::size_t lcha::from_string(const std::string& s,bool initialize,bool s
 }
 
 inline std::size_t oklaba::from_string(const std::string& s,bool initialize,bool strict) {
-	if (initialize) lp=arg=ayb=a()=0;
+	if (initialize) lp=arg=ayb=a=0;
 	std::size_t pos=0;
 	if (!parse_packed_prefix(s,pos,'O','B'))  {
 		rgba temp;

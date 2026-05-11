@@ -1,5 +1,5 @@
-//Last Modified At 2026/03/14
-//@Version 2.0.0.0
+//Last Modified At 2026/05/12
+//@Version 2.1.0.0
 #ifndef _STDEX_BITWISE_BIT_WRITER_H_
 #define _STDEX_BITWISE_BIT_WRITER_H_ 1
 
@@ -38,42 +38,80 @@ private:
 	template <typename _Tp>
 	void write_bits_msb(std::size_t nbits,_Tp value) {
 		ensure_bits(bit_pos_+nbits);
+		uint8_t current_byte=buffer_[bit_pos_/CHAR_BIT];
+		std::size_t curr_byte_pos=bit_pos_%CHAR_BIT;
 		_Tp high_bit_mask=static_cast<_Tp>(1)<<(nbits-1);
-		for (std::size_t i=0; i < nbits;i++) {
+		for (std::size_t i=0;i<nbits;i++) {
 			bool bit=(value&high_bit_mask)!=0;
 			value<<=1;
-			write_bit_msb_layout(bit_pos_++,bit);
+			current_byte=(current_byte<<1)|static_cast<uint8_t>(bit);
+			curr_byte_pos++;
+			bit_pos_++;
+			if (curr_byte_pos==CHAR_BIT) {
+				buffer_[(bit_pos_-1)/CHAR_BIT]=current_byte;
+				current_byte=0;
+				curr_byte_pos=0;
+			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=current_byte;
 		}
 		if (bit_pos_>bit_size_) bit_size_=bit_pos_;
 	}
 	template <typename _Tp>
 	void write_bits_lsb(std::size_t nbits,_Tp value) {
 		ensure_bits(bit_pos_+nbits);
+		uint8_t current_byte=buffer_[bit_pos_/CHAR_BIT];
+		std::size_t curr_byte_pos=bit_pos_%CHAR_BIT;
 		for (std::size_t i=0;i<nbits;i++) {
 			bool bit=(value&1u)!=0;
 			value>>=1;
-			write_bit_lsb_layout(bit_pos_++,bit);
+			current_byte|=static_cast<uint8_t>(bit)<<curr_byte_pos;
+			curr_byte_pos++;
+			bit_pos_++;
+			if (curr_byte_pos==CHAR_BIT) {
+				buffer_[(bit_pos_-1)/CHAR_BIT]=current_byte;
+				current_byte=0;
+				curr_byte_pos=0;
+			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=current_byte;
 		}
 		if (bit_pos_>bit_size_) bit_size_=bit_pos_;
 	}
 	template <typename _Tp>
 	void write_bits_msbit(std::size_t nbits,_Tp value) {
 		ensure_bits(bit_pos_+nbits);
+		uint8_t current_byte=buffer_[bit_pos_/CHAR_BIT];
+		std::size_t curr_byte_pos=bit_pos_%CHAR_BIT;
+		current_byte=reverse_bits(current_byte,curr_byte_pos);
 		_Tp high_bit_mask=static_cast<_Tp>(1)<<(nbits-1);
 		for (std::size_t i=0;i<nbits;i++) {
 			bool bit=(value&high_bit_mask)!=0;
 			value<<=1;
-			write_bit_lsb_layout(bit_pos_++,bit);
+			current_byte=(current_byte<<1)|static_cast<uint8_t>(bit);
+			curr_byte_pos++;
+			bit_pos_++;
+			if (curr_byte_pos==CHAR_BIT) {
+				buffer_[(bit_pos_-1)/CHAR_BIT]=reverse_bits(current_byte);
+				current_byte=0;
+				curr_byte_pos=0;
+			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=reverse_bits(current_byte,curr_byte_pos);
 		}
 		if (bit_pos_>bit_size_) bit_size_=bit_pos_;
 	}
 	template <typename _Tp>
 	void write_bits_lsbit(std::size_t nbits,_Tp value) {
 		ensure_bits(bit_pos_+nbits);
+		uint8_t current_byte=buffer_[bit_pos_/CHAR_BIT];
+		std::size_t curr_byte_pos=bit_pos_%CHAR_BIT;
+		current_byte=reverse_bits(current_byte,curr_byte_pos);
 		for (std::size_t i=0;i<nbits;i++) {
 			bool bit=(value&1u)!=0;
 			value>>=1;
-			write_bit_msb_layout(bit_pos_++,bit);
+			current_byte|=static_cast<uint8_t>(bit)<<curr_byte_pos;
+			curr_byte_pos++;
+			bit_pos_++;
+			if (curr_byte_pos==CHAR_BIT) {
+				buffer_[(bit_pos_-1)/CHAR_BIT]=reverse_bits(current_byte);
+				current_byte=0;
+				curr_byte_pos=0;
+			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=reverse_bits(current_byte,curr_byte_pos);
 		}
 		if (bit_pos_>bit_size_) bit_size_=bit_pos_;
 	}
