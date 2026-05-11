@@ -1,5 +1,5 @@
-//Last Modified At 2025/11/08
-//@Version 1.1.0.0
+//Last Modified At 2026/05/11
+//@Version 1.2.0.0
 #ifndef _STDEX_BITWISE_BITS_H_
 #define _STDEX_BITWISE_BITS_H_ 1
 
@@ -17,7 +17,7 @@
 #endif
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
-#include <bits>
+#include <bit>
 #endif
 
 namespace stdex {
