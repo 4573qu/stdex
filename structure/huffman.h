@@ -73,7 +73,7 @@ private:
 	template <typename _Tp,typename=void>
 	struct is_freq_like : std::false_type {};
 	template <typename _Tp>
-	struct is_freq_like<_Tp,std::void_t<decltype(std::declval<_Tp>()+std::declval<_Tp>()),decltype(std::declval<_Tp>()<std::declval<_Tp>()),decltype(std::declval<_Tp&>()+=std::declval<_Tp>())>> : std::true_type {};
+	struct is_freq_like<_Tp,std::void_t<decltype(std::declval<_Tp>()+std::declval<_Tp>()),decltype(std::declval<_Tp&>()+=std::declval<_Tp>())>> : std::true_type {};
 
 	template <typename _Tp,typename=void>
 	struct is_string_like : std::false_type {};
@@ -85,13 +85,13 @@ private:
 	template <typename _Func>
 	struct is_leaf_visitor<_Func,std::void_t<decltype(std::declval<_Func>()(std::declval<const _Tp&>(),std::declval<_Freq>(),std::declval<std::size_t>()))>> : std::true_type {};
 
-	static_assert(is_freq_like<_Freq>::value,"_Freq must support +, <, and += operators.");
+	static_assert(is_freq_like<_Freq>::value,"_Freq must support + and += operators.");
 
 	static constexpr char keycodes_[16]={
 		'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'
 	};
 	//static_assert(_K<=16,"K must not exceed 16 (keycodes_ has 16 entries).");
-	template	<typename _Ch>
+	template <typename _Ch>
 	static std::vector<_Ch> make_default_codes_() {
 		if constexpr (_K<=16) {
 			return std::vector<_Ch>(keycodes_,keycodes_+_K);
@@ -164,7 +164,10 @@ private:
 
 	static void collect_depths_impl(const std::shared_ptr<node>& curr,std::vector<std::size_t>& depths,std::size_t depth) {
 		if (!curr) return;
-		if (curr->is_leaf()) { depths.push_back(depth); return; }
+		if (curr->is_leaf()) { 
+			depths.push_back(depth);
+			return;
+		}
 		for (const auto& it:curr->kids) collect_depths_impl(it,depths,depth+1);
 	}
 
