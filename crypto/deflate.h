@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/10
-//@Version 1.0.0.0
+//Last Modified At 2026/05/13
+//@Version 1.0.1.0
 #ifndef _STDEX_CRYPTO_DEFLATE_H_
 #define _STDEX_CRYPTO_DEFLATE_H_ 1
 
@@ -19,10 +19,10 @@
 #include <utility>
 #include <vector>
 
-#include "../bitwise/bit_reader.h"//At Least 1.3,Best Least 2.0
-#include "../bitwise/bit_writer.h"//At Least 2.1
+#include "../bitwise/bit_reader.h"//At Least 2.1
+#include "../bitwise/bit_writer.h"//At Least 2.2
 #include "../bitwise/bits.h"//At Least 1.2
-#include "../crypto/lz77.h"//At Least 1.2
+#include "../crypto/lz77.h"//At Least 1.2.2
 #include "../integrity/adler.h"//At Least 1.0
 #include "../integrity/crc.h"//At Least 1.0
 #include "../structure/huffman.h"//At Least 3.0
@@ -125,20 +125,21 @@ class deflate {
 		}
 
 		int decode(bitwise::bit_reader& br) const {
-			if (br.size_bits()-br.tell_bits()>=static_cast<std::size_t>(maxbits)) {
+			std::size_t remaining=br.size_bits()-br.tell_bits();
+			if (remaining>=static_cast<std::size_t>(maxbits)) {
 				uint32_t peek_val=br.peek_bits<uint32_t>(maxbits);
 				const auto& entry=fast_table[peek_val];
 				if (entry.length==0) throw std::runtime_error("invalid huffman code");
-				br.seek_bits(br.tell_bits()+entry.length);
+				br.drop_bits(entry.length);
 				return entry.symbol;
-			} else {
-				int code=0,len=1;
-				for (;len<=maxbits;len++) {
-					code|=br.read_bits<uint32_t>(1)<<(len-1);
-					const auto& entry=fast_table[code];
-					if (entry.length==len) return entry.symbol;
-				}
-				throw std::runtime_error("invalid huffman code");
+			 } else {
+				int avail=static_cast<int>(remaining);
+				if (avail==0) throw std::runtime_error("unexpected end of stream");
+				uint32_t peek_val=br.peek_bits<uint32_t>(avail);
+				const auto& entry=fast_table[peek_val];
+				if (entry.length==0 || entry.length>avail) throw std::runtime_error("invalid huffman code");
+				br.drop_bits(entry.length);
+				return entry.symbol;
 			}
 		}
 	};
@@ -216,7 +217,7 @@ class deflate {
 		return h;
 	}
 
-	static canonical_tree build_dynamic_tree(const uint32_t* freq,int n) {
+	static canonical_tree build_dynamic_tree(const uint32_t* freq,int n,int max_bits=15) {
 		canonical_tree result;
 		result.length.assign(n,0);
 		std::vector<uint32_t> freqs;
@@ -231,12 +232,15 @@ class deflate {
 		}
 		if (freqs.empty()) return result;
 		if (freqs.size()==1) {
-			result.length[symbols[0]]=1;
+			int sym0=symbols[0];
+			int sym1=(sym0==0)?1:0;
+			result.length[sym0]=1;
+			result.length[sym1]=1;
 			build_canonical_table(result);
 			return result;
 		}
 		structure::huffman<int,uint32_t> huff;
-		huff.build_length_limited(symbols,freqs,14);
+		huff.build_length_limited(symbols,freqs,max_bits);
 		huff.for_each([&](int s,uint32_t,std::size_t d){
 			result.length[s]=static_cast<uint8_t>(d);
 		});
@@ -348,7 +352,7 @@ class deflate {
 			}
 		}
 		flush_run(prev,len_run);
-		canonical_tree cl=build_dynamic_tree(code_freq.data(),19);
+		canonical_tree cl=build_dynamic_tree(code_freq.data(),19,7);
 		int hclen=19-1;
 		while (hclen>=4 && cl.length[order_[hclen]]==0) hclen--;
 		int hclen_count=hclen+1-4;
@@ -379,7 +383,7 @@ class deflate {
 		}
 	}
 
-	static void encode_fixed_block(bitwise::bit_writer& bw,const std::vector<lz77<>::token>& tokens,bool last) {
+	static void encode_fixed_block(bitwise::bit_writer& bw,const std::vector<lz77_token>& tokens,bool last) {
 		bw.write_bits<uint8_t>(1,last?1:0);
 		bw.write_bits<uint8_t>(2,1);
 		for (const auto& it:tokens) {
@@ -404,7 +408,7 @@ class deflate {
 		bw.flush_bits();
 	}
 
-	static void encode_dynamic_block(bitwise::bit_writer& bw,const std::vector<lz77<>::token>& tokens,bool last) {
+	static void encode_dynamic_block(bitwise::bit_writer& bw,const std::vector<lz77_token>& tokens,bool last) {
 		bw.write_bits<uint8_t>(1,last?1:0);
 		bw.write_bits<uint8_t>(2,2);
 		std::array<uint32_t,286> litlen_freq{};
@@ -493,10 +497,34 @@ class deflate {
 			build_canonical_table(litlen);
 			build_canonical_table(dist);
 		} else throw std::runtime_error("reserved BTYPE");
+		out.reserve(out.size()+65536);
+		std::size_t local_size=out.size();
+		std::size_t local_cap=out.capacity();
+		out.resize(local_cap);
+		uint8_t* out_ptr = out.data();
+		const auto* ll_tab=litlen.fast_table.data();
+		const auto* d_tab=dist.fast_table.data();
+		const int ll_mb=litlen.maxbits;
+		const int d_mb=dist.maxbits;
 		while (true) {
-			int sym=litlen.decode(br);
+			int sym;
+			std::size_t remaining=br.size_bits()-br.tell_bits();
+			if (remaining>=static_cast<std::size_t>(ll_mb)) {
+				uint32_t v=br.peek_bits<uint32_t>(ll_mb);
+				const auto& e=ll_tab[v];
+				if (e.length==0) throw std::runtime_error("invalid huffman code");
+				br.drop_bits(e.length);
+				sym=e.symbol;
+			} else sym=litlen.decode(br);
 			if (sym<256) {
-				out.push_back(static_cast<uint8_t>(sym));
+				if (local_size+258>local_cap) {
+					out.resize(local_size);
+					out.reserve(local_cap*2);
+					local_cap=out.capacity();
+					out.resize(local_cap);
+					out_ptr=out.data();
+				}
+				out_ptr[local_size++]=static_cast<uint8_t>(sym);
 				continue;
 			}
 			if (sym==256) {
@@ -504,46 +532,79 @@ class deflate {
 				break;
 			}
 			if (sym>285) throw std::runtime_error("bad length symbol");
-			int mlen=length_codes_[sym-257].first;
-			if (length_codes_[sym-257].second) mlen+=br.read_bits<uint32_t>(length_codes_[sym-257].second);
-			int dsym=dist.decode(br);
+			const auto& lce=length_codes_[sym-257];
+			int mlen=lce.first;
+			if (lce.second) mlen+=br.read_bits<uint32_t>(lce.second);
+			int dsym;
+			remaining=br.size_bits()-br.tell_bits();
+			if (remaining>=static_cast<std::size_t>(d_mb)) {
+				uint32_t v=br.peek_bits<uint32_t>(d_mb);
+				const auto& e=d_tab[v];
+				if (e.length==0) throw std::runtime_error("invalid huffman code");
+				br.drop_bits(e.length);
+				dsym=e.symbol;
+			} else dsym=dist.decode(br);
 			if (dsym>29) throw std::runtime_error("bad distance symbol");
-			int mdist=dist_codes_[dsym].first;
-			if (dist_codes_[dsym].second) mdist+=br.read_bits<uint32_t>(dist_codes_[dsym].second);
-			if (static_cast<std::size_t>(mdist)>out.size()) throw std::out_of_range("distance too far back");
-			std::size_t start=out.size()-mdist;
-			for (int i=0;i<mlen;i++) out.push_back(out[start+(i%mdist)]);
+			const auto& dce=dist_codes_[dsym];
+			int mdist=dce.first;
+			if (dce.second) mdist+=br.read_bits<uint32_t>(dce.second);
+			if (static_cast<std::size_t>(mdist)>local_size) throw std::out_of_range("distance too far back");
+			if (local_size+static_cast<std::size_t>(mlen)>local_cap) {
+				out.resize(local_size);
+				out.reserve(local_size+mlen+65536);
+				local_cap=out.capacity();
+				out.resize(local_cap);
+				out_ptr=out.data();
+			}
+			uint8_t* dst=out_ptr+local_size;
+			const uint8_t* src=dst-mdist;
+			if (mdist>=mlen) std::memcpy(dst,src,mlen);
+			else {
+				for (int i=0;i<mlen;i++) dst[i]=src[i];
+			}
+			local_size+=mlen;
 		}
+		out.resize(local_size);
 		return last;
 	}
 
 	static void write_gzip_header(bitwise::bit_writer& bw,const gzip_info& info,deflate_level level) {
-		bw.write_u8(0x1F);
-		bw.write_u8(0x8B);
-		bw.write_u8(0x08); // CM=8 deflate
+		integrity::crc32 hcrc;
+		auto write_u8_crc=[&](uint8_t v) {
+			bw.write_u8(v);
+			hcrc.update(&v,1);
+		};
+		write_u8_crc(0x1F);
+		write_u8_crc(0x8B);
+		write_u8_crc(0x08); // CM=8 deflate
 		uint8_t flg=0;
 		if (info.is_text) flg|=0x01;
 		if (info.has_crc16) flg|=0x02;
 		if (!info.filename.empty()) flg|=0x08;
 		if (!info.comment.empty()) flg|=0x10;
-		bw.write_u8(flg);
+		write_u8_crc(flg);
 		// MTIME little-endian
-		bw.write_u8(static_cast<uint8_t>(info.mtime&0xFF));
-		bw.write_u8(static_cast<uint8_t>((info.mtime>>8)&0xFF));
-		bw.write_u8(static_cast<uint8_t>((info.mtime>>16)&0xFF));
-		bw.write_u8(static_cast<uint8_t>((info.mtime>>24)&0xFF));
+		write_u8_crc(static_cast<uint8_t>(info.mtime&0xFF));
+		write_u8_crc(static_cast<uint8_t>((info.mtime>>8)&0xFF));
+		write_u8_crc(static_cast<uint8_t>((info.mtime>>16)&0xFF));
+		write_u8_crc(static_cast<uint8_t>((info.mtime>>24)&0xFF));
 		uint8_t xfl=0;
 		if (level==DL_BEST) xfl=0x02;
 		else if (level==DL_FASTEST) xfl=0x04;
-		bw.write_u8(xfl);
-		bw.write_u8(info.os);
+		write_u8_crc(xfl);
+		write_u8_crc(info.os);
 		if (!info.filename.empty()) {
-			for (char c:info.filename) bw.write_u8(static_cast<uint8_t>(c));
-			bw.write_u8(0);
+			for (char c:info.filename) write_u8_crc(static_cast<uint8_t>(c));
+			write_u8_crc(0);
 		}
 		if (!info.comment.empty()) {
-			for (char c:info.comment) bw.write_u8(static_cast<uint8_t>(c));
-			bw.write_u8(0);
+			for (char c:info.comment) write_u8_crc(static_cast<uint8_t>(c));
+			write_u8_crc(0);
+		}
+		if (info.has_crc16) {
+			uint32_t val=hcrc.checksum();
+			bw.write_u8(val&0xFF);
+			bw.write_u8((val>>8)&0xFF);
 		}
 	}
 
@@ -580,6 +641,12 @@ class deflate {
 		}
 		if (flg&0x02) { // FHCRC
 			if (offset+2>size) throw std::out_of_range("gzip FHCRC truncated");
+			integrity::crc32 hcrc;
+			hcrc.update(data,offset);
+			uint32_t computed=hcrc.checksum();
+			uint16_t computed16=static_cast<uint16_t>(computed&0xFFFF);
+			uint16_t stored16=static_cast<uint16_t>(data[offset])|(static_cast<uint16_t>(data[offset+1])<<8);
+			if (computed16!=stored16) throw std::runtime_error("gzip header CRC16 mismatch");
 			offset+=2;
 		}
 		if (offset>=size) throw std::out_of_range("gzip header overflows data");
@@ -638,8 +705,18 @@ public:
 	static std::vector<uint8_t> compress(const uint8_t* data,std::size_t size,deflate_level level=DL_NORMAL,deflate_stream_format fmt=DSF_ZLIB,deflate_block_type btype=DBT_AUTOMATIC) {
 		bitwise::bit_writer bw(bitwise::BO_LSBYTE);
 		if (fmt==DSF_ZLIB) {
-			bw.write_u8(0x78);
-			bw.write_u8(0x9C);
+			uint8_t cmf=0x78;
+			uint8_t flevel=0;
+			if (level<=DL_FASTEST) flevel=0;
+			else if (level<=DL_FAST) flevel=1;
+			else if (level<=DL_NORMAL) flevel=2;
+			else flevel=3;
+			uint8_t flg=static_cast<uint8_t>(flevel<<6);
+			uint16_t combined=(static_cast<uint16_t>(cmf)<<8)|flg;
+			uint8_t rem=static_cast<uint8_t>(combined%31);
+			if (rem!=0) flg|=static_cast<uint8_t>(31-rem);
+			bw.write_u8(cmf);
+			bw.write_u8(flg);
 		} else if (fmt==DSF_GZIP) {
 			gzip_info info;
 			write_gzip_header(bw,info,level);
@@ -647,15 +724,25 @@ public:
 		deflate_block_type effective=resolve_block_type(btype,level);
 		if (effective==DBT_STORED) encode_stored_blocks(bw,data,size,true);
 		else if (effective==DBT_FIXED) {
-			lz77<> lz;
-			std::vector<uint8_t> tmp(data,data+size);
-			auto tokens=lz.encode(tmp);
-			encode_fixed_block(bw,tokens,true);
+			if (level<=DL_FASTEST) {
+				lz77_base<4,false,3,258,32768,15,5,4,8> lz;
+				auto tokens=lz.encode(data,size);
+				encode_fixed_block(bw,tokens,true);
+			} else {
+				lz77_base<16,false,3,258,32768,15,5,4,16> lz;
+				auto tokens=lz.encode(data,size);
+				encode_fixed_block(bw,tokens,true);
+			}
 		} else {
-			lz77<> lz;
-			std::vector<uint8_t> tmp(data,data+size);
-			auto tokens=lz.encode(tmp);
-			encode_dynamic_block(bw,tokens,true);
+			if (level>=DL_BEST) {
+				lz77_base<4096,true,3,258,32768,15,5,32,258> lz;
+				auto tokens=lz.encode(data,size);
+				encode_dynamic_block(bw,tokens,true);
+			} else {
+				lz77_base<128,true,3,258,32768,15,5,8,128> lz;
+				auto tokens=lz.encode(data,size);
+				encode_dynamic_block(bw,tokens,true);
+			}
 		}
 		if (fmt==DSF_ZLIB) {
 			uint32_t ad=integrity::adler32::calculate(data,size);
