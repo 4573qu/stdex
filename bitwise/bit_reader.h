@@ -235,15 +235,25 @@ class bit_reader_view {
 	}
 
 public:
-	explicit bit_reader_view(bit_reader& br) : reader_(br) , buf_(br.bit_buf_) , bits_in_buf_(br.bits_in_buf_) , byte_pos_(br.byte_pos_) , data_(br.data_) , bend_((br.bit_size_+CHAR_BIT-1)/CHAR_BIT) {
-		reader_.bit_buf_=0;
-		reader_.bits_in_buf_=0;
+	explicit bit_reader_view(bit_reader& br) : reader_(br) {
+		borrow();
 	}
 	~bit_reader_view() {
 		if (!returned_) return_to_reader();
 	}
 	bit_reader_view(const bit_reader_view&)=delete;
 	bit_reader_view& operator =(const bit_reader_view&)=delete;
+
+	void borrow() {
+		if (returned_) returned_=false;
+		buf_=reader_.bit_buf_;
+		bits_in_buf_=reader_.bits_in_buf_;
+		byte_pos_=reader_.byte_pos_;
+		data_=reader_.data_;
+		bend_=(reader_.bit_size_+CHAR_BIT-1)/CHAR_BIT;
+		reader_.bit_buf_=0;
+		reader_.bits_in_buf_=0;
+	}
 
 	void return_to_reader() {
 		reader_.bit_buf_=buf_;
