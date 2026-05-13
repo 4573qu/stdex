@@ -50,7 +50,7 @@ private:
 			bit_pos_++;
 			if (curr_byte_pos==CHAR_BIT) {
 				buffer_[(bit_pos_-1)/CHAR_BIT]=current_byte;
-				current_byte=buffer_[bit_pos_/CHAR_BIT];
+				current_byte=0;
 				curr_byte_pos=0;
 			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=current_byte;
 		}
@@ -69,7 +69,7 @@ private:
 			bit_pos_++;
 			if (curr_byte_pos==CHAR_BIT) {
 				buffer_[(bit_pos_-1)/CHAR_BIT]=current_byte;
-				current_byte=buffer_[bit_pos_/CHAR_BIT];
+				current_byte=0;
 				curr_byte_pos=0;
 			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=current_byte;
 		}
@@ -90,7 +90,7 @@ private:
 			bit_pos_++;
 			if (curr_byte_pos==CHAR_BIT) {
 				buffer_[(bit_pos_-1)/CHAR_BIT]=current_byte;//reverse_bits(current_byte);
-				current_byte=buffer_[bit_pos_/CHAR_BIT];
+				current_byte=0;
 				curr_byte_pos=0;
 			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=current_byte;//reverse_bits(current_byte,curr_byte_pos);
 		}
@@ -110,7 +110,7 @@ private:
 			bit_pos_++;
 			if (curr_byte_pos==CHAR_BIT) {
 				buffer_[(bit_pos_-1)/CHAR_BIT]=current_byte;//reverse_bits(current_byte);
-				current_byte=buffer_[bit_pos_/CHAR_BIT];
+				current_byte=0;
 				curr_byte_pos=0;
 			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=current_byte;//reverse_bits(current_byte,curr_byte_pos);
 		}
@@ -125,10 +125,10 @@ public:
 	}
 
 	void seek_bits(std::size_t pos) {
-	if (pos>bit_size_) {
-		ensure_bits(pos);
-		bit_size_=pos;
-	}
+		if (pos>bit_size_) {
+			ensure_bits(pos);
+			bit_size_=pos;
+		}
 		bit_pos_=pos;
 	}
 	[[nodiscard]]

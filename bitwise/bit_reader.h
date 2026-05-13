@@ -37,7 +37,7 @@ private:
 	std::size_t byte_pos_=0;
 
 	void fill_buffer() {
-		while (bits_in_buf_<=sizeof(bit_buf_)-CHAR_BIT && byte_pos_<(bit_size_+CHAR_BIT-1)/CHAR_BIT) {
+		while (bits_in_buf_<=sizeof(bit_buf_)*CHAR_BIT-CHAR_BIT && byte_pos_<(bit_size_+CHAR_BIT-1)/CHAR_BIT) {
 			uint8_t next_byte=data_[byte_pos_++];
 			if (order_==BO_MSBIT) next_byte=reverse_bits(next_byte);
 			else if (order_==BO_LSBIT) {
@@ -84,7 +84,7 @@ public:
 	std::size_t size_bits() const noexcept { return bit_size_; }
 
 	void seek_bits(std::size_t pos) {
-		if (pos>bit_size_) throw std::out_of_range("Seek bits out of range");
+		if (pos>bit_size_) throw std::out_of_range("seek_bits out of range");
 		bit_pos_=pos;
 		byte_pos_=bit_pos_/CHAR_BIT;
 		bit_buf_=0;
@@ -112,7 +112,7 @@ public:
 		if (bit_pos_+nbits>bit_size_) throw std::runtime_error("Unexpected EOF");
 		fill_buffer();
 		if (bits_in_buf_>=static_cast<int>(nbits)) {
-			_Tp result;
+			_Tp result=0;
  			if (order_==BO_LSBYTE || order_==BO_LSBIT) {
 				result=static_cast<_Tp>(bit_buf_&((1ULL<<nbits)-1));
 				bit_buf_>>=nbits;
@@ -190,7 +190,7 @@ public:
 	}
 
 	void drop_bits(std::size_t nbits) {
-		if (bits_in_buf_<static_cast<int>(nbits)) throw std::runtime_error("drop exceeds buffer");
+		if (bits_in_buf_<static_cast<int>(nbits)) throw std::runtime_error("drop_bits exceeds buffer");
 		if (order_==BO_LSBYTE || order_==BO_LSBIT) bit_buf_>>=nbits;
 		bits_in_buf_-=static_cast<int>(nbits);
 		bit_pos_+=nbits;
@@ -236,8 +236,8 @@ class bit_reader_view {
 
 public:
 	explicit bit_reader_view(bit_reader& br) : reader_(br) , buf_(br.bit_buf_) , bits_in_buf_(br.bits_in_buf_) , byte_pos_(br.byte_pos_) , data_(br.data_) , bend_((br.bit_size_+CHAR_BIT-1)/CHAR_BIT) {
-		br_.bit_buf_=0;
-		br_.bits_in_buf_=0;
+		reader_.bit_buf_=0;
+		reader_.bits_in_buf_=0;
 	}
 	~bit_reader_view() {
 		if (!returned_) return_to_reader();
@@ -278,7 +278,7 @@ public:
 	}
 
 	[[nodiscard]]
-	bool eof() const noexcept { return bit_pos_>=bit_size_; }
+	bool eof() const noexcept { return remaining_bits()==0; }
 };
 
 inline bit_reader_view bit_reader::borrow_view() {
