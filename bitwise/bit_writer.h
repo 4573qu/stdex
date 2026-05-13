@@ -1,11 +1,12 @@
-//Last Modified At 2026/05/12
-//@Version 2.1.0.0
+//Last Modified At 2026/05/13
+//@Version 2.2.0.0
 #ifndef _STDEX_BITWISE_BIT_WRITER_H_
 #define _STDEX_BITWISE_BIT_WRITER_H_ 1
 
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <ostream>
 #include <stdexcept>
 #include <type_traits>
@@ -44,12 +45,12 @@ private:
 		for (std::size_t i=0;i<nbits;i++) {
 			bool bit=(value&high_bit_mask)!=0;
 			value<<=1;
-			current_byte=(current_byte<<1)|static_cast<uint8_t>(bit);
+			current_byte|=static_cast<uint8_t>(bit)<<(CHAR_BIT-1-curr_byte_pos);
 			curr_byte_pos++;
 			bit_pos_++;
 			if (curr_byte_pos==CHAR_BIT) {
 				buffer_[(bit_pos_-1)/CHAR_BIT]=current_byte;
-				current_byte=0;
+				current_byte=buffer_[bit_pos_/CHAR_BIT];
 				curr_byte_pos=0;
 			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=current_byte;
 		}
@@ -68,7 +69,7 @@ private:
 			bit_pos_++;
 			if (curr_byte_pos==CHAR_BIT) {
 				buffer_[(bit_pos_-1)/CHAR_BIT]=current_byte;
-				current_byte=0;
+				current_byte=buffer_[bit_pos_/CHAR_BIT];
 				curr_byte_pos=0;
 			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=current_byte;
 		}
@@ -79,19 +80,19 @@ private:
 		ensure_bits(bit_pos_+nbits);
 		uint8_t current_byte=buffer_[bit_pos_/CHAR_BIT];
 		std::size_t curr_byte_pos=bit_pos_%CHAR_BIT;
-		current_byte=reverse_bits(current_byte,curr_byte_pos);
+		//current_byte=reverse_bits(current_byte,curr_byte_pos);
 		_Tp high_bit_mask=static_cast<_Tp>(1)<<(nbits-1);
 		for (std::size_t i=0;i<nbits;i++) {
 			bool bit=(value&high_bit_mask)!=0;
 			value<<=1;
-			current_byte=(current_byte<<1)|static_cast<uint8_t>(bit);
+			current_byte|=static_cast<uint8_t>(bit)<<curr_byte_pos;
 			curr_byte_pos++;
 			bit_pos_++;
 			if (curr_byte_pos==CHAR_BIT) {
-				buffer_[(bit_pos_-1)/CHAR_BIT]=reverse_bits(current_byte);
-				current_byte=0;
+				buffer_[(bit_pos_-1)/CHAR_BIT]=current_byte;//reverse_bits(current_byte);
+				current_byte=buffer_[bit_pos_/CHAR_BIT];
 				curr_byte_pos=0;
-			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=reverse_bits(current_byte,curr_byte_pos);
+			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=current_byte;//reverse_bits(current_byte,curr_byte_pos);
 		}
 		if (bit_pos_>bit_size_) bit_size_=bit_pos_;
 	}
@@ -100,18 +101,18 @@ private:
 		ensure_bits(bit_pos_+nbits);
 		uint8_t current_byte=buffer_[bit_pos_/CHAR_BIT];
 		std::size_t curr_byte_pos=bit_pos_%CHAR_BIT;
-		current_byte=reverse_bits(current_byte,curr_byte_pos);
+		//current_byte=reverse_bits(current_byte,curr_byte_pos);
 		for (std::size_t i=0;i<nbits;i++) {
 			bool bit=(value&1u)!=0;
 			value>>=1;
-			current_byte|=static_cast<uint8_t>(bit)<<curr_byte_pos;
+			current_byte|=static_cast<uint8_t>(bit)<<(CHAR_BIT-1-curr_byte_pos);
 			curr_byte_pos++;
 			bit_pos_++;
 			if (curr_byte_pos==CHAR_BIT) {
-				buffer_[(bit_pos_-1)/CHAR_BIT]=reverse_bits(current_byte);
-				current_byte=0;
+				buffer_[(bit_pos_-1)/CHAR_BIT]=current_byte;//reverse_bits(current_byte);
+				current_byte=buffer_[bit_pos_/CHAR_BIT];
 				curr_byte_pos=0;
-			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=reverse_bits(current_byte,curr_byte_pos);
+			} else if (i==nbits-1) buffer_[bit_pos_/CHAR_BIT]=current_byte;//reverse_bits(current_byte,curr_byte_pos);
 		}
 		if (bit_pos_>bit_size_) bit_size_=bit_pos_;
 	}
@@ -124,6 +125,10 @@ public:
 	}
 
 	void seek_bits(std::size_t pos) {
+	if (pos>bit_size_) {
+		ensure_bits(pos);
+		bit_size_=pos;
+	}
 		bit_pos_=pos;
 	}
 	[[nodiscard]]
@@ -176,7 +181,7 @@ public:
 		std::size_t byte_pos=bit_pos_/CHAR_BIT;
 		if (buffer_.size()<byte_pos+byte_count) buffer_.resize(byte_pos+byte_count,0);
 		const uint8_t* src=reinterpret_cast<const uint8_t*>(data);
-		for (std::size_t i=0;i<byte_count;i++) buffer_[byte_pos+i]=src[i];
+		std::memcpy(buffer_.data()+byte_pos,src,byte_count);
 		bit_pos_+=byte_count*CHAR_BIT;
 		if (bit_pos_>bit_size_) bit_size_=bit_pos_;
 	}
@@ -188,7 +193,9 @@ public:
 	}
 	void write_stream(std::ostream& os) {
 		byte_align();
-		if (!buffer_.empty()) os.write(reinterpret_cast<const char*>(buffer_.data()),buffer_.size());
+		std::size_t valid_bytes=size_bytes();
+		if (valid_bytes>0) os.write(reinterpret_cast<const char*>(buffer_.data()),valid_bytes);
+
 	}
 
 	void clear() noexcept {
@@ -197,6 +204,18 @@ public:
 		bit_size_=0;
 	}
 
+	void rewind() { seek_bits(0); }
+	[[nodiscard]]
+	std::size_t remaining_bits() const noexcept {
+		return bit_size_>bit_pos_?bit_size_-bit_pos_:0;
+	}
+	[[nodiscard]]
+	std::size_t remaining_bytes() const noexcept {
+		return (remaining_bits()+CHAR_BIT -1)/CHAR_BIT;
+	}
+
+	[[nodiscard]]
+	const uint8_t* data() const noexcept { return buffer_.data(); }
 	const std::vector<uint8_t>& buffer() const& noexcept {
 		return buffer_;
 	}
