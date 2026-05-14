@@ -1,5 +1,5 @@
 //Last Modified At 2026/05/13
-//@Version 1.0.1.0
+//@Version 1.1.0.0
 #ifndef _STDEX_CRYPTO_DEFLATE_H_
 #define _STDEX_CRYPTO_DEFLATE_H_ 1
 
@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "../bitwise/bit_reader.h"//At Least 2.1
+#include "../bitwise/bit_reader.h"//At Least 2.2
 #include "../bitwise/bit_writer.h"//At Least 2.2
 #include "../bitwise/bits.h"//At Least 1.2
 #include "../crypto/lz77.h"//At Least 1.2.2
@@ -129,15 +129,15 @@ class deflate {
 			if (remaining>=static_cast<std::size_t>(maxbits)) {
 				uint32_t peek_val=br.peek_bits<uint32_t>(maxbits);
 				const auto& entry=fast_table[peek_val];
-				if (entry.length==0) throw std::runtime_error("invalid huffman code");
+				if (entry.length==0) throw std::runtime_error("Invalid huffman code");
 				br.drop_bits(entry.length);
 				return entry.symbol;
 			 } else {
 				int avail=static_cast<int>(remaining);
-				if (avail==0) throw std::runtime_error("unexpected end of stream");
+				if (avail==0) throw std::runtime_error("Unexpected end of stream");
 				uint32_t peek_val=br.peek_bits<uint32_t>(avail);
 				const auto& entry=fast_table[peek_val];
-				if (entry.length==0 || entry.length>avail) throw std::runtime_error("invalid huffman code");
+				if (entry.length==0 || entry.length>avail) throw std::runtime_error("Invalid huffman code");
 				br.drop_bits(entry.length);
 				return entry.symbol;
 			}
@@ -450,12 +450,12 @@ class deflate {
 		if (btype==0) {
 			br.byte_align();
 			std::size_t byte_pos=base_offset+(br.bit_pos()/8);
-			if (byte_pos+4>raw_size) throw std::out_of_range("stored block overflow");
+			if (byte_pos+4>raw_size) throw std::out_of_range("Stored block overflow");
 			uint16_t len=static_cast<uint16_t>(raw_buf[byte_pos])|static_cast<uint16_t>(raw_buf[byte_pos+1]<<8);
 			uint16_t nlen=static_cast<uint16_t>(raw_buf[byte_pos+2])|static_cast<uint16_t>(raw_buf[byte_pos+3]<<8);
-			if (static_cast<uint16_t>(len^0xFFFF)!=nlen) throw std::runtime_error("stored block nlen mismatch");
+			if (static_cast<uint16_t>(len^0xFFFF)!=nlen) throw std::runtime_error("Stored block nlen mismatch");
 			byte_pos+=4;
-			if (byte_pos+len>raw_size) throw std::out_of_range("stored block data overflow");
+			if (byte_pos+len>raw_size) throw std::out_of_range("Stored block data overflow");
 			out.insert(out.end(),raw_buf+byte_pos,raw_buf+byte_pos+len);
 			br.seek_bits((byte_pos+len-base_offset)*8);
 			return last;
@@ -491,28 +491,30 @@ class deflate {
 					while (rep--) ll_len.push_back(0);
 				}
 			}
-			if (static_cast<int>(ll_len.size())!=total) throw std::runtime_error("bad dynamic code length sequence");
+			if (static_cast<int>(ll_len.size())!=total) throw std::runtime_error("Bad dynamic code length sequence");
 			litlen.length.assign(ll_len.begin(),ll_len.begin()+hlit);
 			dist.length.assign(ll_len.begin()+hlit,ll_len.end());
 			build_canonical_table(litlen);
 			build_canonical_table(dist);
-		} else throw std::runtime_error("reserved BTYPE");
+		} else throw std::runtime_error("Reserved BTYPE");
 		out.reserve(out.size()+65536);
 		std::size_t local_size=out.size();
 		std::size_t local_cap=out.capacity();
 		out.resize(local_cap);
-		uint8_t* out_ptr = out.data();
+		uint8_t* out_ptr=out.data();
+		const std::size_t safe_limit=br.size_bits()>64?br.size_bits()-64:0;
 		const auto* ll_tab=litlen.fast_table.data();
 		const auto* d_tab=dist.fast_table.data();
 		const int ll_mb=litlen.maxbits;
 		const int d_mb=dist.maxbits;
 		while (true) {
+			br.fill_buffer();
 			int sym;
-			std::size_t remaining=br.size_bits()-br.tell_bits();
-			if (remaining>=static_cast<std::size_t>(ll_mb)) {
-				uint32_t v=br.peek_bits<uint32_t>(ll_mb);
+			std::size_t used_bits=br.remaining_bits();
+			if (used_bits>=static_cast<std::size_t>(ll_mb)) {
+				uint32_t v=br.peek_bits(ll_mb);
 				const auto& e=ll_tab[v];
-				if (e.length==0) throw std::runtime_error("invalid huffman code");
+				if (e.length==0) throw std::runtime_error("Invalid huffman code");
 				br.drop_bits(e.length);
 				sym=e.symbol;
 			} else sym=litlen.decode(br);
@@ -531,24 +533,32 @@ class deflate {
 				br.byte_align();
 				break;
 			}
-			if (sym>285) throw std::runtime_error("bad length symbol");
-			const auto& lce=length_codes_[sym-257];
+			if (sym>285) throw std::runtime_error("Bad length symbol");
+			const auto& lce=length_codes_[sym - 257];
 			int mlen=lce.first;
-			if (lce.second) mlen+=br.read_bits<uint32_t>(lce.second);
+			if (lce.second) {
+				br.fill_buffer();
+				mlen+=br.peek_bits(lce.second);
+				br.drop_bits(lce.second);
+			}
+			br.fill_buffer();
 			int dsym;
-			remaining=br.size_bits()-br.tell_bits();
-			if (remaining>=static_cast<std::size_t>(d_mb)) {
-				uint32_t v=br.peek_bits<uint32_t>(d_mb);
+			if (br.remaining_bits()>=static_cast<std::size_t>(d_mb)) {
+				uint32_t v=br.peek_bits(d_mb);
 				const auto& e=d_tab[v];
-				if (e.length==0) throw std::runtime_error("invalid huffman code");
+				if (e.length==0) throw std::runtime_error("Invalid huffman code");
 				br.drop_bits(e.length);
 				dsym=e.symbol;
 			} else dsym=dist.decode(br);
-			if (dsym>29) throw std::runtime_error("bad distance symbol");
+			if (dsym>29) throw std::runtime_error("Bad distance symbol");
 			const auto& dce=dist_codes_[dsym];
 			int mdist=dce.first;
-			if (dce.second) mdist+=br.read_bits<uint32_t>(dce.second);
-			if (static_cast<std::size_t>(mdist)>local_size) throw std::out_of_range("distance too far back");
+			if (dce.second) {
+				br.fill_buffer();
+				mdist+=br.peek_bits(dce.second);
+				br.drop_bits(dce.second);
+			}
+			if (static_cast<std::size_t>(mdist)>local_size) throw std::out_of_range("Distance too far back");
 			if (local_size+static_cast<std::size_t>(mlen)>local_cap) {
 				out.resize(local_size);
 				out.reserve(local_size+mlen+65536);
@@ -559,9 +569,7 @@ class deflate {
 			uint8_t* dst=out_ptr+local_size;
 			const uint8_t* src=dst-mdist;
 			if (mdist>=mlen) std::memcpy(dst,src,mlen);
-			else {
-				for (int i=0;i<mlen;i++) dst[i]=src[i];
-			}
+			else for (int i=0;i<mlen;i++) dst[i]=src[i];
 			local_size+=mlen;
 		}
 		out.resize(local_size);
@@ -609,9 +617,9 @@ class deflate {
 	}
 
 	static std::size_t read_gzip_header(const uint8_t* data,std::size_t size,gzip_info& info) {
-		if (size<10) throw std::runtime_error("gzip stream too short");
-		if (data[0]!=0x1F || data[1]!=0x8B) throw std::invalid_argument("not a gzip stream");
-		if (data[2]!=8) throw std::invalid_argument("unsupported gzip CM");
+		if (size<10) throw std::runtime_error("Gzip stream too short");
+		if (data[0]!=0x1F || data[1]!=0x8B) throw std::invalid_argument("Not a gzip stream");
+		if (data[2]!=8) throw std::invalid_argument("Unsupported gzip CM");
 		uint8_t flg=data[3];
 		info.mtime=static_cast<uint32_t>(data[4])|(static_cast<uint32_t>(data[5])<<8)|(static_cast<uint32_t>(data[6])<<16)|(static_cast<uint32_t>(data[7])<<24);
 		info.os=data[9];
@@ -619,10 +627,10 @@ class deflate {
 		info.has_crc16=(flg&0x02)!=0;
 		std::size_t offset=10;
 		if (flg&0x04) { // FEXTRA
-			if (offset+2>size) throw std::out_of_range("gzip FEXTRA truncated");
+			if (offset+2>size) throw std::out_of_range("Gzip FEXTRA truncated");
 			uint16_t xlen=static_cast<uint16_t>(data[offset])|(static_cast<uint16_t>(data[offset+1])<<8);
 			offset+=2;
-			if (offset+xlen>size) throw std::out_of_range("gzip FEXTRA data truncated");
+			if (offset+xlen>size) throw std::out_of_range("Gzip FEXTRA data truncated");
 			offset+=xlen;
 		}
 		if (flg&0x08) { // FNAME
@@ -640,16 +648,16 @@ class deflate {
 			if (offset<size) offset++;
 		}
 		if (flg&0x02) { // FHCRC
-			if (offset+2>size) throw std::out_of_range("gzip FHCRC truncated");
+			if (offset+2>size) throw std::out_of_range("Gzip FHCRC truncated");
 			integrity::crc32 hcrc;
 			hcrc.update(data,offset);
 			uint32_t computed=hcrc.checksum();
 			uint16_t computed16=static_cast<uint16_t>(computed&0xFFFF);
 			uint16_t stored16=static_cast<uint16_t>(data[offset])|(static_cast<uint16_t>(data[offset+1])<<8);
-			if (computed16!=stored16) throw std::runtime_error("gzip header CRC16 mismatch");
+			if (computed16!=stored16) throw std::runtime_error("Gzip header CRC16 mismatch");
 			offset+=2;
 		}
-		if (offset>=size) throw std::out_of_range("gzip header overflows data");
+		if (offset>=size) throw std::out_of_range("Gzip header overflows data");
 		return offset;
 	}
 
@@ -846,10 +854,10 @@ public:
 	static std::vector<uint8_t> decompress(const uint8_t* data,std::size_t size,deflate_stream_format fmt=DSF_ZLIB) {
 		std::size_t offset=0;
 		if (fmt==DSF_ZLIB) {
-			if (size<2) throw std::runtime_error("zlib stream too short");
+			if (size<2) throw std::runtime_error("Zlib stream too short");
 			uint8_t cmf=data[0],flg=data[1];
-			if ((cmf&0x0F)!=8) throw std::invalid_argument("not a deflate stream");
-			if (((static_cast<unsigned>(cmf)<<8)+flg)%31!=0) throw std::runtime_error("zlib FCHECK failed");
+			if ((cmf&0x0F)!=8) throw std::invalid_argument("Not a deflate stream");
+			if (((static_cast<unsigned>(cmf)<<8)+flg)%31!=0) throw std::runtime_error("Zlib FCHECK failed");
 			offset=2;
 		} else if (fmt==DSF_GZIP) {
 			gzip_info info;
@@ -861,20 +869,20 @@ public:
 		bool last=false;
 		while (!last) last=decode_block(br,out,data,size,offset);
 		if (fmt==DSF_ZLIB) {
-			if (size<6) throw std::runtime_error("zlib too short for adler32");
+			if (size<6) throw std::runtime_error("Zlib too short for adler32");
 			std::size_t ap=size-4;
 			uint32_t expect=(static_cast<uint32_t>(data[ap])<<24)|(static_cast<uint32_t>(data[ap+1])<<16)|(static_cast<uint32_t>(data[ap+2])<<8)|static_cast<uint32_t>(data[ap+3]);
 			uint32_t actual=integrity::adler32::calculate(out.data(),out.size());
-			if (actual!=expect) throw std::runtime_error("adler32 mismatch");
+			if (actual!=expect) throw std::runtime_error("Adler32 mismatch");
 		} else if (fmt==DSF_GZIP) {
-			if (size<8) throw std::runtime_error("gzip trailer truncated");
+			if (size<8) throw std::runtime_error("Gzip trailer truncated");
 			std::size_t tp=size-8;
 			uint32_t expect_crc=static_cast<uint32_t>(data[tp])|(static_cast<uint32_t>(data[tp+1])<<8)|(static_cast<uint32_t>(data[tp+2])<<16)|(static_cast<uint32_t>(data[tp+3])<<24);
 			uint32_t expect_size=static_cast<uint32_t>(data[tp+4])|(static_cast<uint32_t>(data[tp+5])<<8)|(static_cast<uint32_t>(data[tp+6])<<16)|(static_cast<uint32_t>(data[tp+7])<<24);
 			integrity::crc32 crc_calc;
 			crc_calc.update(out.data(),out.size());
-			if (crc_calc.checksum()!=expect_crc) throw std::runtime_error("gzip crc32 mismatch");
-			if (static_cast<uint32_t>(out.size()&0xFFFFFFFFu)!=expect_size) throw std::runtime_error("gzip isize mismatch");
+			if (crc_calc.checksum()!=expect_crc) throw std::runtime_error("Gzip crc32 mismatch");
+			if (static_cast<uint32_t>(out.size()&0xFFFFFFFFu)!=expect_size) throw std::runtime_error("Gzip isize mismatch");
 		}
 		return out;
 	}
@@ -904,14 +912,14 @@ public:
 		out.reserve(size*3);
 		bool last=false;
 		while (!last) last=decode_block(br,out,data,size,offset);
-		if (size<8) throw std::runtime_error("gzip trailer truncated");
+		if (size<8) throw std::runtime_error("Gzip trailer truncated");
 		std::size_t tp=size-8;
 		uint32_t expect_crc=static_cast<uint32_t>(data[tp])|(static_cast<uint32_t>(data[tp+1])<<8)|(static_cast<uint32_t>(data[tp+2])<<16)|(static_cast<uint32_t>(data[tp+3])<<24);
 		uint32_t expect_size=static_cast<uint32_t>(data[tp+4])|(static_cast<uint32_t>(data[tp+5])<<8)|(static_cast<uint32_t>(data[tp+6])<<16)|(static_cast<uint32_t>(data[tp+7])<<24);
 		integrity::crc32 crc_calc;
 		crc_calc.update(out.data(),out.size());
-		if (crc_calc.checksum()!=expect_crc) throw std::runtime_error("gzip crc32 mismatch");
-		if (static_cast<uint32_t>(out.size()&0xFFFFFFFFu)!=expect_size) throw std::runtime_error("gzip isize mismatch");
+		if (crc_calc.checksum()!=expect_crc) throw std::runtime_error("Gzip crc32 mismatch");
+		if (static_cast<uint32_t>(out.size()&0xFFFFFFFFu)!=expect_size) throw std::runtime_error("Gzip isize mismatch");
 		return out;
 	}
 
@@ -1003,7 +1011,7 @@ public:
 	bool is_finished() const noexcept { return finished_; }
 
 	std::vector<uint8_t> feed(const uint8_t* data,std::size_t size) {
-		if (finished_) throw std::logic_error("already finished");
+		if (finished_) throw std::logic_error("Already finished");
 		if (!header_written_) write_header();
 		adler_state_.update(data,size);
 		crc_state_.update(data,size);
@@ -1038,14 +1046,14 @@ public:
 #endif
 
 	std::vector<uint8_t> flush() {
-		if (finished_) throw std::logic_error("already finished");
+		if (finished_) throw std::logic_error("Already finished");
 		if (!header_written_) write_header();
 		if (!pending_tokens_.empty()) flush_block(false);
 		return take_output();
 	}
 
 	std::vector<uint8_t> finish() {
-		if (finished_) throw std::logic_error("already finished");
+		if (finished_) throw std::logic_error("Already finished");
 		if (!header_written_) write_header();
 		auto tail_tokens=lz_.encode_chunk(nullptr,0,true);
 		pending_tokens_.insert(pending_tokens_.end(),tail_tokens.begin(),tail_tokens.end());
@@ -1115,8 +1123,8 @@ class deflate_decompressor {
 		if (fmt_==DSF_ZLIB) {
 			if (in_buf_.size()<2) return false;
 			uint8_t cmf=in_buf_[0],flg=in_buf_[1];
-			if ((cmf&0x0F)!=8) throw std::runtime_error("not a deflate stream");
-			if (((static_cast<unsigned>(cmf)<<8)+flg)%31!=0) throw std::runtime_error("zlib FCHECK failed");
+			if ((cmf&0x0F)!=8) throw std::runtime_error("Not a deflate stream");
+			if (((static_cast<unsigned>(cmf)<<8)+flg)%31!=0) throw std::runtime_error("Zlib FCHECK failed");
 			data_offset_=2;
 			header_parsed_=true;
 			return true;
@@ -1157,17 +1165,17 @@ class deflate_decompressor {
 		if (last) {
 			done_=true;
 			if (fmt_==DSF_ZLIB) {
-				if (in_buf_.size()<6) throw std::runtime_error("zlib too short for adler32");
+				if (in_buf_.size()<6) throw std::runtime_error("Zlib too short for adler32");
 				std::size_t ap=in_buf_.size()-4;
 				uint32_t expect=(static_cast<uint32_t>(in_buf_[ap])<<24)|(static_cast<uint32_t>(in_buf_[ap+1])<<16)|(static_cast<uint32_t>(in_buf_[ap+2])<<8)|static_cast<uint32_t>(in_buf_[ap+3]);
-				if (adler_state_.checksum()!=expect) throw std::runtime_error("adler32 mismatch");
+				if (adler_state_.checksum()!=expect) throw std::runtime_error("Adler32 mismatch");
 			} else if (fmt_==DSF_GZIP) {
-				if (in_buf_.size()<8) throw std::runtime_error("gzip trailer truncated");
+				if (in_buf_.size()<8) throw std::runtime_error("Gzip trailer truncated");
 				std::size_t tp=in_buf_.size()-8;
 				uint32_t expect_crc=static_cast<uint32_t>(in_buf_[tp])|(static_cast<uint32_t>(in_buf_[tp+1])<<8)|(static_cast<uint32_t>(in_buf_[tp+2])<<16)|(static_cast<uint32_t>(in_buf_[tp+3])<<24);
 				uint32_t expect_isize=static_cast<uint32_t>(in_buf_[tp+4])|(static_cast<uint32_t>(in_buf_[tp+5])<<8)|(static_cast<uint32_t>(in_buf_[tp+6])<<16)|(static_cast<uint32_t>(in_buf_[tp+7])<<24);
-				if (crc_state_.checksum()!=expect_crc) throw std::runtime_error("gzip crc32 mismatch");
-				if (static_cast<uint32_t>(out_buf_.size()&0xFFFFFFFFu)!=expect_isize) throw std::runtime_error("gzip isize mismatch");
+				if (crc_state_.checksum()!=expect_crc) throw std::runtime_error("Gzip crc32 mismatch");
+				if (static_cast<uint32_t>(out_buf_.size()&0xFFFFFFFFu)!=expect_isize) throw std::runtime_error("Gzip isize mismatch");
 			}
 		}
 	}
@@ -1176,7 +1184,7 @@ public:
 	explicit deflate_decompressor(deflate_stream_format fmt=DSF_ZLIB) : fmt_(fmt) { }
 
 	void feed(const uint8_t* data,std::size_t size) {
-		if (done_) throw std::logic_error("stream already done");
+		if (done_) throw std::logic_error("Stream already done");
 		in_buf_.insert(in_buf_.end(),data,data+size);
 		try_decompress();
 	}

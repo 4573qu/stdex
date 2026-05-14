@@ -169,13 +169,14 @@ public:
 						position++;
 					} else {
 						tokens.push_back({static_cast<uint16_t>(lazy_dist_),static_cast<uint16_t>(lazy_len_),0});
-						std::size_t skip=static_cast<std::size_t>(lazy_len_)-2;
-						for (std::size_t s=0;s<skip && position<matchable_end;s++,position++) {
-							if (position+_MinMatch<=size) {
-								uint64_t sh=hash_func(load3(data,position));
-								insert_hash(position,sh);
+						std::size_t skip=static_cast<std::size_t>(lazy_len_)-1;
+						for (std::size_t s=1;s<skip;s++) {
+							if (position+_MinMatch<=size && position+s<matchable_end) {
+								uint64_t sh=hash_func(load3(data,position+s));
+								insert_hash(position+s,sh);
 							}
 						}
+						position+=skip;
 						lazy_len_=0;
 						lazy_dist_=0;
 					}
@@ -207,7 +208,7 @@ public:
 			if (lazy_len_>=static_cast<int>(_MinMatch)) {
 				if (lazy_dist_>0) {
 					tokens.push_back({static_cast<uint16_t>(lazy_dist_),static_cast<uint16_t>(lazy_len_),0});
-					position+=static_cast<std::size_t>(lazy_len_)-2;
+					position+=static_cast<std::size_t>(lazy_len_)-1;
 					lazy_len_=0;
 					lazy_dist_=0;
 				}
