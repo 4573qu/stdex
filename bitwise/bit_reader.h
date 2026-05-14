@@ -1,5 +1,5 @@
 //Last Modified At 2026/05/13
-//@Version 2.1.0.0
+//@Version 2.2.0.0
 #ifndef _STDEX_BITWISE_BIT_READER_H_
 #define _STDEX_BITWISE_BIT_READER_H_ 1
 
@@ -20,8 +20,6 @@ namespace stdex {
 
 namespace bitwise {
 
-class bit_reader_view;
-
 class bit_reader {
 public:
 	using iterator=bit_iterator<const uint8_t>;
@@ -36,27 +34,13 @@ private:
 	int bits_in_buf_=0;
 	std::size_t byte_pos_=0;
 
-	void fill_buffer() {
-		while (bits_in_buf_<=sizeof(bit_buf_)*CHAR_BIT-CHAR_BIT && byte_pos_<(bit_size_+CHAR_BIT-1)/CHAR_BIT) {
-			uint8_t next_byte=data_[byte_pos_++];
-			if (order_==BO_MSBIT) next_byte=reverse_bits(next_byte);
-			else if (order_==BO_LSBIT) {
-				std::size_t valid_bits=CHAR_BIT;
-				if (byte_pos_==(bit_size_+CHAR_BIT-1)/CHAR_BIT) {
-					valid_bits=bit_size_ %CHAR_BIT;
-					if (valid_bits==0) valid_bits=CHAR_BIT;
-				}
-				next_byte=reverse_bits(next_byte,valid_bits);
-			}
-			if (order_==BO_LSBYTE || order_==BO_LSBIT) bit_buf_|=static_cast<uint64_t>(next_byte)<<bits_in_buf_;
-			else bit_buf_=(bit_buf_<<CHAR_BIT)|next_byte;
-			bits_in_buf_+=CHAR_BIT;
-		}
-	}
-
-	friend class bit_reader_view;
-
 public:
+	struct bit_state {
+		uint64_t buf;
+		int bits_in_buf;
+		std::size_t byte_pos;
+	};
+
 	bit_reader()=default;
 	bit_reader(const void* ptr,std::size_t byte_size,bit_order order=is_little_endian()?BO_LSBYTE:BO_MSBYTE) : data_(reinterpret_cast<const uint8_t*>(ptr)) , bit_size_(byte_size*CHAR_BIT) , order_(order) { }
 	explicit bit_reader(std::vector<uint8_t>&& buf,bit_order order=is_little_endian()?BO_LSBYTE:BO_MSBYTE) : owned_(std::move(buf)) , order_(order) {
@@ -74,6 +58,24 @@ public:
 	bit_reader(_It first,_It last,bit_order order=is_little_endian()?BO_LSBYTE:BO_MSBYTE) : owned_(first,last) , order_(order) {
 		data_=owned_.data();
 		bit_size_=owned_.size()*CHAR_BIT;
+	}
+
+	void fill_buffer() {
+		while (bits_in_buf_<=sizeof(bit_buf_)*CHAR_BIT-CHAR_BIT && byte_pos_<(bit_size_+CHAR_BIT-1)/CHAR_BIT) {
+			uint8_t next_byte=data_[byte_pos_++];
+			if (order_==BO_MSBIT) next_byte=reverse_bits(next_byte);
+			else if (order_==BO_LSBIT) {
+				std::size_t valid_bits=CHAR_BIT;
+				if (byte_pos_==(bit_size_+CHAR_BIT-1)/CHAR_BIT) {
+					valid_bits=bit_size_ %CHAR_BIT;
+					if (valid_bits==0) valid_bits=CHAR_BIT;
+				}
+				next_byte=reverse_bits(next_byte,valid_bits);
+			}
+			if (order_==BO_LSBYTE || order_==BO_LSBIT) bit_buf_|=static_cast<uint64_t>(next_byte)<<bits_in_buf_;
+			else bit_buf_=(bit_buf_<<CHAR_BIT)|next_byte;
+			bits_in_buf_+=CHAR_BIT;
+		}
 	}
 
 	[[nodiscard]]
@@ -165,7 +167,7 @@ public:
 		seek_bits(bit_pos_+byte_count*CHAR_BIT);
 	}
 
-	uint8_t  read_u8()  { return read_bits<uint8_t>(8);  }
+	uint8_t read_u8()  { return read_bits<uint8_t>(8);  }
 	uint16_t read_u16() { return read_bits<uint16_t>(16); }
 	uint32_t read_u32() { return read_bits<uint32_t>(32); }
 	uint64_t read_u64() { return read_bits<uint64_t>(64); }
@@ -196,6 +198,20 @@ public:
 		bit_pos_+=nbits;
 	}
 
+	bit_state get_state() {
+		bit_state result={bit_buf_,bits_in_buf_,byte_pos_};
+		bit_buf_=0;
+		bits_in_buf_=0;
+		return result;
+	}
+
+	void set_state(const bit_state& s) {
+		bit_buf_=s.buf;
+		bits_in_buf_=s.bits_in_buf;
+		byte_pos_=s.byte_pos;
+		bit_pos_=byte_pos_*CHAR_BIT-bits_in_buf_;
+	}
+
 	[[nodiscard]]
 	bool is_aligned() const noexcept { return (bit_pos_%CHAR_BIT)==0; }
 
@@ -215,85 +231,7 @@ public:
 	std::size_t bit_pos() { return bit_pos_; }
 	bit_order& bit_order() noexcept { return order_; }
 	const uint8_t* data() const noexcept { return data_; }
-
-	bit_reader_view borrow_view();
 };
-
-class bit_reader_view {
-	bit_reader& reader_;
-	uint64_t buf_;
-	int bits_in_buf_;
-	std::size_t byte_pos_;
-	const uint8_t* data_;
-	std::size_t bend_;
-	bool returned_=false;
-
-	void swap_reader() {
-		std::swap(buf_,reader_.bit_buf_);
-		std::swap(bits_in_buf_,reader_.bits_in_buf_);
-		std::swap(byte_pos_,reader_.byte_pos_);
-	}
-
-public:
-	explicit bit_reader_view(bit_reader& br) : reader_(br) {
-		borrow();
-	}
-	~bit_reader_view() {
-		if (!returned_) return_to_reader();
-	}
-	bit_reader_view(const bit_reader_view&)=delete;
-	bit_reader_view& operator =(const bit_reader_view&)=delete;
-
-	void borrow() {
-		if (returned_) returned_=false;
-		buf_=reader_.bit_buf_;
-		bits_in_buf_=reader_.bits_in_buf_;
-		byte_pos_=reader_.byte_pos_;
-		data_=reader_.data_;
-		bend_=(reader_.bit_size_+CHAR_BIT-1)/CHAR_BIT;
-		reader_.bit_buf_=0;
-		reader_.bits_in_buf_=0;
-	}
-
-	void return_to_reader() {
-		reader_.bit_buf_=buf_;
-		reader_.bits_in_buf_=bits_in_buf_;
-		reader_.byte_pos_=byte_pos_;
-		reader_.bit_pos_=byte_pos_*CHAR_BIT-bits_in_buf_;
-		returned_=true;
-	}
-
-	void refill() {
-		swap_reader();
-		reader_.fill_buffer();
-		swap_reader();
-	}
-
-	template <typename _Tp=uint32_t>
-	_Tp peek(int n) {
-		swap_reader();
-		_Tp result=reader_.peek_bits<_Tp>(n);
-		swap_reader();
-		return result;
-	}
-
-	void consume(int n) {
-		swap_reader();
-		reader_.drop_bits(n);
-		swap_reader();
-	}
-
-	std::size_t remaining_bits() const noexcept {
-		return (bend_-byte_pos_)*CHAR_BIT+bits_in_buf_;
-	}
-
-	[[nodiscard]]
-	bool eof() const noexcept { return remaining_bits()==0; }
-};
-
-inline bit_reader_view bit_reader::borrow_view() {
-	return bit_reader_view(*this);
-}
 
 }
 
