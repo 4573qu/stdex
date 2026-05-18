@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/11
-//@Version 3.0.1.0
+//Last Modified At 2026/05/19
+//@Version 3.1.0.0
 #ifndef _STDEX_STRUCTURE_HUFFMAN_H_
 #define _STDEX_STRUCTURE_HUFFMAN_H_ 1
 
@@ -44,10 +44,10 @@ public:
 		node() = default;
 		node(const _Tp& symbol, _Freq freq) : symbol(symbol) , frequency(freq) { }
 		explicit node(std::vector<std::shared_ptr<node>> childrens) : symbol{} , kids(std::move(childrens)) {
-			if (kids.empty() || kids.size()>_K) throw std::invalid_argument("kids size must be in [1,K]");
+			if (kids.empty() || kids.size()>_K) throw std::invalid_argument("Kids size must be in [1,_K]");
 			frequency={};
 			for (auto& it:kids) {
-				if (!it) throw std::invalid_argument("null child node");
+				if (!it) throw std::invalid_argument("Null child node");
 				frequency+=it->frequency;
 
 			}
@@ -56,7 +56,7 @@ public:
 		std::size_t child_count() const noexcept { return kids.size(); }
 
 		const std::shared_ptr<node>& child(std::size_t i) const {
-			if (i>=kids.size()) throw std::out_of_range("child index out of range");
+			if (i>=kids.size()) throw std::out_of_range("Child index out of range");
 			return kids[i];
 		}
 		const std::shared_ptr<node>& operator [](std::size_t i) const {
@@ -96,7 +96,7 @@ private:
 		if constexpr (_K<=16) {
 			return std::vector<_Ch>(keycodes_,keycodes_+_K);
 		} else {
-			static_assert(_K<=16,"K>16: no default codebook, provide codes explicitly");
+			static_assert(_K<=16,"_K>16 with no default codebook, provide codes explicitly");
 			return {};
 		}
 	}
@@ -133,7 +133,7 @@ private:
 
 	static std::shared_ptr<node> deserialize_node_impl(std::istream& in) {
 		int c=in.get();
-		if (c==EOF) throw std::runtime_error("unexpected EOF in huffman tree");
+		if (c==EOF) throw std::runtime_error("Unexpected EOF");
 		if (static_cast<char>(c)=='L') {
 			_Tp sym{};
 			in.read(reinterpret_cast<char*>(&sym),sizeof(_Tp));
@@ -141,15 +141,15 @@ private:
 			return std::make_shared<node>(sym,_Freq{});
 		} else if (static_cast<char>(c)=='I') {
 			int cnt_c=in.get();
-			if (cnt_c==EOF) throw std::runtime_error("unexpected EOF reading child count");
+			if (cnt_c==EOF) throw std::runtime_error("Unexpected EOF reading child count");
 			std::size_t cnt=static_cast<std::size_t>(static_cast<uint8_t>(cnt_c));
-			if (cnt==0 || cnt>_K) throw std::runtime_error("invalid child count in huffman tree");
+			if (cnt==0 || cnt>_K) throw std::runtime_error("Invalid child count in huffman tree");
 			std::vector<std::shared_ptr<node>> kids;
 			kids.reserve(cnt);
 			for (std::size_t i=0;i<cnt;i++) kids.push_back(deserialize_node_impl(in));
 			return std::make_shared<node>(std::move(kids));
 		}
-		throw std::runtime_error("invalid node tag in huffman tree");
+		throw std::runtime_error("Invalid node tag in huffman tree");
 	}
 
 	template <typename _Func>
@@ -192,7 +192,7 @@ private:
 				i++;
 			}
 		}
-		if (by_depth[0].size()!=1) throw std::runtime_error("length assignment does not yield a valid K-ary huffman tree");
+		if (by_depth[0].size()!=1) throw std::runtime_error("Length assignment does not yield a valid _K-ary huffman tree");
 		return by_depth[0][0];
 	}
 
@@ -220,8 +220,8 @@ public:
 	explicit operator bool() const noexcept { return static_cast<bool>(root_); }
 
 	void build(const std::vector<_Tp>& symbols,const std::vector<_Freq>& frequencies) {
-		if (symbols.size()!=frequencies.size()) throw std::invalid_argument("symbol and frequency size mismatch");
-		if (symbols.empty()) throw std::invalid_argument("empty symbol table");
+		if (symbols.size()!=frequencies.size()) throw std::invalid_argument("Symbol and frequency size mismatch");
+		if (symbols.empty()) throw std::invalid_argument("Empty symbol table");
 		struct comp_ {
 			bool operator ()(const std::shared_ptr<node>& lhs,const std::shared_ptr<node>& rhs) const {
 				_Compare cmp;
@@ -272,13 +272,13 @@ public:
 		const std::size_t n=frequencies.size();
 		if (n==0) return {};
 		if (n==1) return {1};
-		if (max_depth==0) throw std::invalid_argument("max_depth must be >= 1");
+		if (max_depth==0) throw std::invalid_argument("Max_depth cannot be negative than 1");
 		std::size_t min_cap=_K,min_d=1;
 		while (min_cap<n) {
 			min_cap*=_K;
 			min_d++;
 		}
-		if (max_depth<min_d) throw std::invalid_argument("max_depth too small for given number of symbols");
+		if (max_depth<min_d) throw std::invalid_argument("Max_depth too small for given number of symbols");
 		std::size_t padding=(((_K-1)-(n-1)%(_K-1))%(_K-1));
 		std::size_t n_eff=n+padding;
 		std::size_t width=_K*(n_eff-1)/(_K-1);
@@ -299,8 +299,9 @@ public:
 		for (std::size_t i=0;i<padding;i++) sorted_orig.push_back({_Freq{},-1});
 		std::vector<std::size_t> order(n);
 		std::iota(order.begin(),order.end(),0);
-		std::stable_sort(order.begin(),order.end(),[&](std::size_t a,std::size_t b){
-			return frequencies[a]<frequencies[b];
+		std::stable_sort(order.begin(),order.end(),[&](std::size_t lhs,std::size_t rhs){
+			_Compare cmp;
+			return cmp(frequencies[rhs],frequencies[lhs]);
 		});
 		for (std::size_t i=0;i<n;i++) sorted_orig.push_back({frequencies[order[i]],static_cast<int>(order[i])});
 		std::vector<std::size_t> curr_list;
@@ -358,13 +359,13 @@ public:
 	static std::vector<std::size_t> get_fast_lengths(std::size_t n,std::size_t max_depth) {
 		if (n==0) return {};
 		if (n==1) return {1};
-		if (max_depth==0) throw std::invalid_argument("max_depth must be >= 1");
+		if (max_depth==0) throw std::invalid_argument("Max_depth cannot be negative than 1");
 		std::size_t depth=1,capacity=_K;
 		while (capacity<n && depth<max_depth) {
 			depth++;
 			capacity*=_K;
 		}
-		if (capacity<n) throw std::invalid_argument("max_depth too small for given n");
+		if (capacity<n) throw std::invalid_argument("Max_depth too small for given n");
 		std::vector<std::size_t> counts(depth+1,0);
 		counts[depth]=capacity;
 		std::size_t extra=capacity-n;
@@ -374,18 +375,26 @@ public:
 			counts[d-1]+=can;
 			extra-=can;
 		}
-		std::vector<std::size_t> result;
-		result.reserve(n);
+		std::vector<std::size_t> length_sorted;
+		length_sorted.reserve(n);
 		for (std::size_t d=1;d<=depth;d++) {
-			for (std::size_t i=0;i<counts[d];i++) result.push_back(d);
+			for (std::size_t i=0;i<counts[d];i++) length_sorted.push_back(d);
 		}
-		result.resize(n);
+		length_sorted.resize(n);
+		std::vector<std::size_t> order(n);
+		std::iota(order.begin(),order.end(),0);
+		std::stable_sort(order.begin(),order.end(),[&](std::size_t lhs,std::size_t rhs){
+			_Compare cmp;
+			return cmp(frequencies[lhs],frequencies[rhs]);
+		});
+		std::vector<std::size_t> result(n);
+		for (std::size_t i=0;i<n;i++) result[order[i]]=lengths_sorted[i];
 		return result;
 	}
 
 	void build_from_lengths(const std::vector<_Tp>& symbols,const std::vector<_Freq>& frequencies,const std::vector<std::size_t>& lengths) {
-		if (symbols.size()!=frequencies.size()) throw std::invalid_argument("symbol and frequency size mismatch");
-		if (symbols.size()!=lengths.size()) throw std::invalid_argument("symbol and length size mismatch");
+		if (symbols.size()!=frequencies.size()) throw std::invalid_argument("Symbol and frequency size mismatch");
+		if (symbols.size()!=lengths.size()) throw std::invalid_argument("Symbol and length size mismatch");
 		const std::size_t n=symbols.size();
 		if (n==0) {
 			root_=nullptr;
@@ -397,10 +406,10 @@ public:
 		}
 		std::vector<std::size_t> order(n);
 		std::iota(order.begin(),order.end(),0);
-		std::stable_sort(order.begin(),order.end(),[&](std::size_t a,std::size_t b){
-			if (lengths[a]!=lengths[b]) return lengths[a]<lengths[b];
+		std::stable_sort(order.begin(),order.end(),[&](std::size_t lhs,std::size_t rhs){
+			if (lengths[lhs]!=lengths[rhs]) return lengths[lhs]<lengths[rhs];
 			_Compare cmp;
-			return cmp(frequencies[a],frequencies[b]);
+			return cmp(frequencies[lhs],frequencies[rhs]);
 		});
 		std::vector<std::size_t> sl(n);
 		std::vector<std::shared_ptr<node>> sn(n);
@@ -412,7 +421,7 @@ public:
 	}
 
 	void build_length_limited(const std::vector<_Tp>& symbols,const std::vector<_Freq>& frequencies,std::size_t max_depth) {
-		if (symbols.size()!=frequencies.size()) throw std::invalid_argument("symbol and frequency size mismatch");
+		if (symbols.size()!=frequencies.size()) throw std::invalid_argument("Symbol and frequency size mismatch");
 		if (symbols.empty()) {
 			root_=nullptr;
 			return;
@@ -427,8 +436,8 @@ public:
 
 	template <typename _Str=std::string,typename=std::enable_if_t<is_string_like<_Str>::value>>
 	std::unordered_map<_Tp,_Str> build_codebook(const std::vector<typename _Str::value_type>& codes=make_default_codes_<typename _Str::value_type>()) const {
-		if (!root_) throw std::runtime_error("huffman tree is empty");
-		if (codes.size()<_K) throw std::invalid_argument("codes vector size less than K");
+		if (!root_) throw std::runtime_error("Huffman tree is empty");
+		if (codes.size()<_K) throw std::invalid_argument("Codes vector size less than _K");
 		std::unordered_map<_Tp,_Str> table;
 		build_codes_impl<_Str>(root_,_Str{},table,codes);
 		return table;
@@ -445,7 +454,7 @@ public:
 		_Str result;
 		for (const auto& it:symbols) {
 			auto jt=table.find(it);
-			if (jt==table.end()) throw std::runtime_error("symbol not in huffman codebook");
+			if (jt==table.end()) throw std::runtime_error("Symbol not in huffman codebook");
 			result.insert(result.end(),jt->second.begin(),jt->second.end());
 		}
 		return result;
@@ -453,8 +462,8 @@ public:
 
 	template<typename _Str=std::string,typename=std::enable_if_t<is_string_like<_Str>::value>>
 	std::vector<_Tp> decode(const _Str& encoded,const std::vector<typename _Str::value_type>& codes=make_default_codes_<typename _Str::value_type>()) const {
-		if (!root_) throw std::runtime_error("huffman tree is empty");
-		if (codes.size()<_K) throw std::invalid_argument("codes vector size less than K");
+		if (!root_) throw std::runtime_error("Huffman tree is empty");
+		if (codes.size()<_K) throw std::invalid_argument("Codes vector size less than _K");
 		std::vector<_Tp> result;
 		auto curr=root_;
 		for (std::size_t i=0;i<encoded.size();) {
@@ -470,8 +479,8 @@ public:
 					break;
 				}
 			}
-			if (idx<0) throw std::invalid_argument("invalid character at position "+std::to_string(i));
-			if (static_cast<std::size_t>(idx)>=curr->kids.size()) throw std::invalid_argument("code leads to non-existent child at position "+std::to_string(i));
+			if (idx<0) throw std::invalid_argument("Invalid character at position "+std::to_string(i));
+			if (static_cast<std::size_t>(idx)>=curr->kids.size()) throw std::invalid_argument("Code leads to non-existent child");
 			curr=curr->kids[static_cast<std::size_t>(idx)];
 			i++;
 			if (curr->is_leaf()) {
@@ -479,20 +488,20 @@ public:
 				curr=root_;
 			}
 		}
-		if (curr!=root_) throw std::runtime_error("incomplete code sequence at end of input");
+		if (curr!=root_) throw std::runtime_error("Incomplete code sequence at end of input");
 		return result;
 	}
 
 	template<typename _Str=std::string,typename=std::enable_if_t<is_string_like<_Str>::value>>
 	static std::unordered_map<_Tp,_Str> canonical_codebook_from_lengths(const std::vector<_Tp>& symbols,const std::vector<std::size_t>& lengths,const std::vector<typename _Str::value_type>& codes=make_default_codes_<typename _Str::value_type>()) {
-		if (symbols.size()!=lengths.size()) throw std::invalid_argument("symbol and length size mismatch");
-		if (codes.size()<_K) throw std::invalid_argument("codes vector size less than K");
+		if (symbols.size()!=lengths.size()) throw std::invalid_argument("Symbol and length size mismatch");
+		if (codes.size()<_K) throw std::invalid_argument("Codes vector size less than _K");
 		const std::size_t n=symbols.size();
 		if (n==0) return {};
 		std::vector<std::size_t> order(n);
 		std::iota(order.begin(),order.end(),0);
-		std::stable_sort(order.begin(),order.end(),[&](std::size_t a,std::size_t b){
-			return lengths[a]<lengths[b];
+		std::stable_sort(order.begin(),order.end(),[&](std::size_t lhs,std::size_t rhs){
+			return lengths[lhs]<lengths[rhs];
 		});
 		std::unordered_map<_Tp,_Str> table;
 		std::vector<std::size_t> code_val(_K,0);
@@ -658,9 +667,13 @@ public:
 			for (const auto& it:curr->kids) collect(it);
 		};
 		collect(root_);
-		std::sort(all_freqs.begin(),all_freqs.end());
+		std::sort(all_freqs.begin(),all_freqs.end(),[](const _Freq& lhs,const _Freq& rhs){
+			_Compare cmp;
+			return cmp(rhs,lhs);
+		});
 		for (std::size_t i=0;i+1<all_freqs.size();i+=2) {
-			if (all_freqs[i]>all_freqs[i+1]) return false;
+			_Compare cmp;
+			if (cmp(all_freqs[i+1],all_freqs[i])) return false;
 		}
 		return true;
 	}
