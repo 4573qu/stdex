@@ -4,6 +4,7 @@
 #define _STDEX_UTILITY_FP_H_ 1
 
 #include <algorithm>
+#include <any>
 #include <cstddef>
 #include <functional>
 #include <iterator>
@@ -14,6 +15,22 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#if __has_include("../macros/cpp_version.h")
+#include "../macros/cpp_version.h"//At Least 1.0
+#endif
+
+#ifndef _STDEX_CPP20_VERSION
+#define _STDEX_CPP20_VERSION 202002L
+#endif
+#ifndef _STDEX_CPP23_VERSION
+#define _STDEX_CPP23_VERSION 202302L
+#endif
+
+#if __cplusplus>=_STDEX_CPP20_VERSION
+#include <concepts>
+#include <ranges>
+#endif
 
 namespace stdex {
 
@@ -61,11 +78,24 @@ auto compose(_Func&& func,_Funcs&&... funcs) {
 }
 
 inline auto map=curry([](auto func,auto container){
+#if __cplusplus>=_STDEX_CPP20_VERSION
+	static_assert(std::ranges::range<decltype(container)>,"map requires a range.");
 	std::vector<std::decay_t<decltype(func(*std::begin(container)))>> result;
-	result.reserve(container.size());
+	result.reserve(std::ranges::distance(container));
+#else
+	std::vector<std::decay_t<decltype(func(*std::begin(container)))>> result;
+	result.reserve(std::size(container));
+#endif
 	for (auto&& it:container) result.push_back(func(std::forward<decltype(it)>(it)));
 	return result;
 });
+
+#if __cplusplus>=_STDEX_CPP23_VERSION
+template <template <typename...> typename _Container>
+auto map_as=curry([](auto func,auto container){
+	return container | std::views::transform(func) | std::ranges::to<_Container>();
+});
+#endif
 
 inline auto filter=curry([](auto predicate,auto container){
 	std::decay_t<decltype(container)> result;
@@ -128,6 +158,13 @@ inline auto zip=curry([](auto c1,auto c2){
 });
 
 inline auto zip_with=curry([](auto binary_op,auto c1,auto c2){
+#if __cplusplus>=_STDEX_CPP23_VERSION
+	return std::views::zip_transform(binary_op,c1,c2) | std::ranges::to<std::vector<std::decay_t<decltype(binary_op(*std::begin(c1),*std::begin(c2)))>>>();
+#else
+#if __cplusplus>=_STDEX_CPP20_VERSION
+	static_assert(std::ranges::range<decltype(c1)>,"zip_with requires c1 to be a range.");
+	static_assert(std::ranges::range<decltype(c2)>,"zip_with requires c2 to be a range.");
+#endif
 	std::vector<std::decay_t<decltype(binary_op(*std::begin(c1),*std::begin(c2)))>> result;
 	auto it1=std::begin(c1);
 	auto it2=std::begin(c2);
@@ -137,18 +174,47 @@ inline auto zip_with=curry([](auto binary_op,auto c1,auto c2){
 		it2++;
  	}
 	return result;
+#endif
 });
 
+#if __cplusplus>=_STDEX_CPP23_VERSION
+template <template <typename...> typename _Container>
+auto zip_with_as=curry([](auto binary_op,auto c1,auto c2){
+	return std::views::zip_transform(binary_op,c1,c2) | std::ranges::to<_Container>();
+});
+#endif
+
 inline auto concat_map=curry([](auto func,auto container){
+#if __cplusplus>=_STDEX_CPP23_VERSION
+	return container | std::views::transform(func) | std::views::join | std::ranges::to<std::vector<std::decay_t<decltype(*std::begin(std::declval<std::decay_t<decltype(func(*std::begin(container)))>>()))>>>();
+#else
+#if __cplusplus>=_STDEX_CPP20_VERSION
+	static_assert(std::ranges::range<decltype(container)>,"concat_map requires a range.");
+	static_assert(std::ranges::range<std::decay_t<decltype(func(*std::begin(container)))>>,"concat_map requires func to return a range.");
+#endif
 	std::vector<std::decay_t<decltype(*std::begin(std::declval<std::decay_t<decltype(func(*std::begin(container)))>>()))>> result;
 	for (auto&& it:container) {
 		auto inner=func(std::forward<decltype(it)>(it));
 		for (auto&& jt:inner) result.push_back(std::move(jt));
 	}
 	return result;
+#endif
 });
 
+#if __cplusplus>=_STDEX_CPP23_VERSION
+template <template <typename...> typename _Container>
+auto concat_map_as=curry([](auto func,auto container){
+	return container | std::views::transform(func) | std::views::join | std::ranges::to<_Container>();
+});
+#endif
+
 inline auto take=curry([](std::size_t n,auto container){
+#if __cplusplus>=_STDEX_CPP23_VERSION
+	return container | std::views::take(n) | std::ranges::to<std::vector<std::decay_t<decltype(*std::begin(container))>>>();
+#else
+#if __cplusplus>=_STDEX_CPP20_VERSION
+	static_assert(std::ranges::range<decltype(container)>,"take requires a range.");
+#endif
 	std::vector<std::decay_t<decltype(*std::begin(container))>> result;
 	result.reserve(n);
 	std::size_t count=0;
@@ -157,9 +223,16 @@ inline auto take=curry([](std::size_t n,auto container){
 		result.push_back(std::move(it));
 	}
 	return result;
+#endif
 });
 
 inline auto drop=curry([](std::size_t n,auto container){
+#if __cplusplus>=_STDEX_CPP23_VERSION
+	return container | std::views::drop(n) | std::ranges::to<std::vector<std::decay_t<decltype(*std::begin(container))>>>();
+#else
+#if __cplusplus>=_STDEX_CPP20_VERSION
+	static_assert(std::ranges::range<decltype(container)>,"drop requires a range.");
+#endif
 	std::vector<std::decay_t<decltype(*std::begin(container))>> result;
 	std::size_t count=0;
 	for (auto&& it:container) {
@@ -167,18 +240,32 @@ inline auto drop=curry([](std::size_t n,auto container){
 		result.push_back(std::move(it));
 	}
 	return result;
+#endif
 });
 
 inline auto take_while=curry([](auto predicate,auto container){
+#if __cplusplus>=_STDEX_CPP23_VERSION
+	return container | std::views::take_while(predicate) | std::ranges::to<std::vector<std::decay_t<decltype(*std::begin(container))>>>();
+#else
+#if __cplusplus>=_STDEX_CPP20_VERSION
+	static_assert(std::ranges::range<decltype(container)>,"take_while requires a range.");
+#endif
 	std::vector<std::decay_t<decltype(*std::begin(container))>> result;
 	for (auto&& it:container) {
 		if (!predicate(it)) break;
 		result.push_back(std::move(it));
 	}
 	return result;
+#endif
 });
 
 inline auto drop_while=curry([](auto predicate,auto container){
+#if __cplusplus>=_STDEX_CPP23_VERSION
+	return container | std::views::drop_while(predicate) | std::ranges::to<std::vector<std::decay_t<decltype(*std::begin(container))>>>();
+#else
+#if __cplusplus>=_STDEX_CPP20_VERSION
+	static_assert(std::ranges::range<decltype(container)>,"drop_while requires a range.");
+#endif
 	std::vector<std::decay_t<decltype(*std::begin(container))>> result;
 	bool dropping=true;
 	for (auto&& it:container) {
@@ -187,7 +274,30 @@ inline auto drop_while=curry([](auto predicate,auto container){
 		result.push_back(std::move(it));
 	}
 	return result;
+#endif
 });
+
+#if __cplusplus>=_STDEX_CPP23_VERSION
+template <template <typename...> typename _Container>
+auto take_as=curry([](std::size_t n,auto container){
+	return container | std::views::take(n) | std::ranges::to<_Container>();
+});
+
+template <template <typename...> typename _Container>
+auto drop_as=curry([](std::size_t n,auto container){
+	return container | std::views::drop(n) | std::ranges::to<_Container>();
+});
+
+template <template <typename...> typename _Container>
+auto take_while_as=curry([](auto predicate,auto container){
+	return container | std::views::take_while(predicate) | std::ranges::to<_Container>();
+});
+
+template <template <typename...> typename _Container>
+auto drop_while_as=curry([](auto predicate,auto container){
+	return container | std::views::drop_while(predicate) | std::ranges::to<_Container>();
+});
+#endif
 
 inline auto partition=curry([](auto predicate,auto container) {
 	std::decay_t<decltype(container)> yes,no;
@@ -303,16 +413,43 @@ inline auto unfold=curry([](auto func,auto seed){
 
 template <typename _Func>
 auto memoize(_Func&& func) {
-	auto cache=std::make_shared<std::unordered_map<std::size_t,std::decay_t<decltype(func(std::declval<int>()))>>>();
+#if __cplusplus>=_STDEX_CPP20_VERSION
+	auto cache=std::make_shared<std::unordered_map<std::size_t,std::vector<std::pair<std::vector<std::any>,std::any>>>>();
+	return [f=std::forward<_Func>(func),cache](auto&&... args) mutable requires (std::equality_comparable<std::decay_t<decltype(args)>>&&...){
+		std::size_t seed=0;
+		((seed^=std::hash<std::decay_t<decltype(args)>>{}(args)+0x9e3779b9+(seed<<6)+(seed>>2)),...);
+		std::vector<std::any> key={std::any(args)...};
+		auto& bucket=(*cache)[seed];
+		for (auto& [k,v]:bucket) {
+			if (k.size()!=key.size()) continue;
+			bool match=true;
+			std::size_t i=0;
+			([&](){
+				if (!match) return;
+				using arg_t=std::decay_t<decltype(args)>;
+				auto* lhs=std::any_cast<arg_t>(&k[i]);
+				auto* rhs=std::any_cast<arg_t>(&key[i]);
+				if (!lhs||!rhs||!(*lhs==*rhs)) match=false;
+				i++;
+			}(),...);
+			if (match) return std::any_cast<std::decay_t<decltype(f(std::forward<decltype(args)>(args)...))>>(v);
+		}
+		auto result=f(std::forward<decltype(args)>(args)...);
+		bucket.emplace_back(std::move(key),std::any(result));
+		return result;
+	};
+#else
+	auto cache=std::make_shared<std::unordered_map<std::size_t,std::any>>();
 	return [f=std::forward<_Func>(func),cache](auto&&... args) mutable{
 		std::size_t seed=0;
 		((seed^=std::hash<std::decay_t<decltype(args)>>{}(args)+0x9e3779b9+(seed<<6)+(seed>>2)),...);
 		auto it=cache->find(seed);
-		if (it!=cache->end()) return it->second;
+		if (it!=cache->end()) return std::any_cast<std::decay_t<decltype(f(std::forward<decltype(args)>(args)...))>>(it->second);
 		auto result=f(std::forward<decltype(args)>(args)...);
 		(*cache)[seed]=result;
 		return result;
 	};
+#endif
 }
 
 template <typename _Tp,typename _Func>
