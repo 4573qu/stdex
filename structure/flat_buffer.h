@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/11
-//@Version 1.0.0.0
+//Last Modified At 2026/05/27
+//@Version 1.0.0.1
 #ifndef _STDEX_STRUCTURE_FLAT_BUFFER_H_
 #define _STDEX_STRUCTURE_FLAT_BUFFER_H_ 1
 
@@ -101,7 +101,7 @@ _Tp from_little_endian(_Tp val) noexcept {
 }
 
 inline void normalize_endian(uint8_t* buf,std::size_t size,bool src_is_little) noexcept {
-	bool host_is_little=bitwise::is_little_endian();
+	constexpr bool host_is_little=bitwise::is_little_endian();
 	if (src_is_little!=host_is_little) std::reverse(buf,buf+size);
 }
 
@@ -377,12 +377,12 @@ public:
 	}
 	[[nodiscard]]
 	reference at(size_type offset) {
-		if (offset>=data_.size()) throw std::out_of_range("At out of range");//"flat_buffer::at: offset "+std::to_string(offset)+" out of range [0,"+std::to_string(data_.size())+")");
+		if (offset>=data_.size()) throw std::out_of_range("at out of range");//"flat_buffer::at: offset "+std::to_string(offset)+" out of range [0,"+std::to_string(data_.size())+")");
 		return data_[offset];
 	}
 	[[nodiscard]]
 	const_reference at(size_type offset) const {
-		if (offset>=data_.size()) throw std::out_of_range("At out of range");//"flat_buffer::at: offset "+std::to_string(offset)+" out of range [0,"+std::to_string(data_.size())+")");
+		if (offset>=data_.size()) throw std::out_of_range("at out of range");//"flat_buffer::at: offset "+std::to_string(offset)+" out of range [0,"+std::to_string(data_.size())+")");
 		return data_[offset];
 	}
 
@@ -577,7 +577,7 @@ public:
 		} else if constexpr (has_adl_serialize_v<std::decay_t<_Tp>>) {
 			serialize_to_flat_buffer(*this,val);
 		} else {
-			static_assert(sizeof(std::decay_t<_Tp>)==0,"flat_buffer::write: no serializer found for type. Provide a flat_buffer_serializer<T> specialization or a serialize_to_flat_buffer(flat_buffer&,const std::decay_t<_Tp>&) ADL function.");
+			static_assert(sizeof(std::decay_t<_Tp>)==0,"flat_buffer::write: no serializer found for type. Provide a flat_buffer_serializer<_Tp> specialization or a serialize_to_flat_buffer(flat_buffer&,const std::decay_t<_Tp>&) ADL function.");
 		}
 		return *this;
 	}
@@ -814,7 +814,7 @@ public:
 			deserialize_from_flat_buffer(*this,offset,result);
 			return result;
 		} else {
-			static_assert(sizeof(std::decay_t<_Tp>)==0,"flat_buffer::get: no deserializer found for type. Provide a flat_buffer_serializer<T> specialization or a deserialize_from_flat_buffer(const flat_buffer&,size_type,std::decay_t<_Tp>&) ADL function.");
+			static_assert(sizeof(std::decay_t<_Tp>)==0,"flat_buffer::get: no deserializer found for type. Provide a flat_buffer_serializer<_Tp> specialization or a deserialize_from_flat_buffer(const flat_buffer&,size_type,std::decay_t<_Tp>&) ADL function.");
 		}
 	}
 
@@ -1103,7 +1103,7 @@ public:
 		} else if constexpr (has_adl_serialized_size_v<std::decay_t<_Tp>>) {
 			return serialized_size_in_flat_buffer(*this,offset,static_cast<std::decay_t<_Tp>*>(nullptr));
 		} else {
-			static_assert(sizeof(std::decay_t<_Tp>)==0,"flat_buffer::serialized_size_of: no serialized_size found for type. Provide flat_buffer_serializer<T>::serialized_size or serialized_size_in_flat_buffer(const flat_buffer&,size_type,T*) ADL function.");
+			static_assert(sizeof(std::decay_t<_Tp>)==0,"flat_buffer::serialized_size_of: no serialized_size found for type. Provide flat_buffer_serializer<_Tp>::serialized_size or serialized_size_in_flat_buffer(const flat_buffer&,size_type,T*) ADL function.");
 			return 0;
 		}
 	}
@@ -1500,18 +1500,13 @@ struct flat_buffer_serializer<std::float64_t> {
 template <>
 struct flat_buffer_serializer<std::float128_t> {
 	static void serialize(flat_buffer& buf,std::float128_t val) {
-		// float128_t = 16字节，按元数据协议存储（平台相关大小）
 		static_assert(sizeof(std::float128_t)<=255,"float128_t size exceeds portable protocol limit");
-		// 复用 portable_raw 协议思路：直接写16字节 + 字节序标记
-		// 此处借道 write_raw + 手动构造头部，因为 write_portable_raw 是 private
-		// 通过 flat_buffer_serializer<uint8_t> 逐字节写头
 		flat_buffer_serializer<uint8_t>::serialize(buf,static_cast<uint8_t>(FBTT_LONG_DOUBLE));
 		flat_buffer_serializer<uint8_t>::serialize(buf,static_cast<uint8_t>(sizeof(std::float128_t)));
 		flat_buffer_serializer<uint8_t>::serialize(buf,is_little_endian_host()?0x00u:0x01u);
 		buf.write_raw(&val,sizeof(std::float128_t));
 	}
 	static std::float128_t deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
-		// 手动读取元数据头
 		if (offset+3>buf.size()) throw std::out_of_range("flat_buffer_serializer<float128_t>::deserialize header truncated");
 		uint8_t byte_size=buf[offset+1];
 		uint8_t endian_flag=buf[offset+2];
