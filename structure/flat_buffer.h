@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/27
-//@Version 1.0.0.1
+//Last Modified At 2026/05/28
+//@Version 1.1.0.0
 #ifndef _STDEX_STRUCTURE_FLAT_BUFFER_H_
 #define _STDEX_STRUCTURE_FLAT_BUFFER_H_ 1
 
@@ -111,7 +111,7 @@ template <typename _Tp,typename=void>
 struct is_serializer_valid : std::false_type {};
 
 template <typename _Tp>
-struct is_serializer_valid<_Tp,std::void_t<decltype(flat_buffer_serializer<_Tp>::serialize(std::declval<flat_buffer&>(),std::declval<const _Tp&>())),decltype(flat_buffer_serializer<_Tp>::deserialize(std::declval<const flat_buffer&>(),std::declval<flat_buffer::size_type>()))>> : std::true_type {};
+struct is_serializer_valid<_Tp,std::void_t<decltype(flat_buffer_serializer<_Tp>::serialize(std::declval<flat_buffer&>(),std::declval<const _Tp&>())),decltype(flat_buffer_serializer<_Tp>::deserialize(std::declval<const flat_buffer&>(),std::declval<std::size_t>()))>> : std::true_type {};
 
 template <typename _Tp>
 constexpr bool is_serializer_valid_v=is_serializer_valid<_Tp>::value;
@@ -120,7 +120,7 @@ template <typename _Tp,typename=void>
 struct serializer_has_size : std::false_type {};
 
 template <typename _Tp>
-struct serializer_has_size<_Tp,std::void_t<decltype(flat_buffer_serializer<_Tp>::serialized_size(std::declval<const flat_buffer&>(),std::declval<flat_buffer::size_type>()))>> : std::true_type {};
+struct serializer_has_size<_Tp,std::void_t<decltype(flat_buffer_serializer<_Tp>::serialized_size(std::declval<const flat_buffer&>(),std::declval<std::size_t>()))>> : std::true_type {};
 
 template <typename _Tp>
 constexpr bool serializer_has_size_v=serializer_has_size<_Tp>::value;
@@ -138,7 +138,7 @@ template <typename _Tp,typename=void>
 struct has_adl_deserialize : std::false_type {};
 
 template <typename _Tp>
-struct has_adl_deserialize<_Tp,std::void_t<decltype(deserialize_from_flat_buffer(std::declval<const flat_buffer&>(),std::declval<flat_buffer::size_type>(),std::declval<_Tp&>()))>> : std::true_type {};
+struct has_adl_deserialize<_Tp,std::void_t<decltype(deserialize_from_flat_buffer(std::declval<const flat_buffer&>(),std::declval<std::size_t>(),std::declval<_Tp&>()))>> : std::true_type {};
 
 template <typename _Tp>
 constexpr bool has_adl_deserialize_v=has_adl_deserialize<_Tp>::value;
@@ -147,16 +147,25 @@ template <typename _Tp,typename=void>
 struct has_adl_serialized_size : std::false_type {};
 
 template <typename _Tp>
-struct has_adl_serialized_size<_Tp,std::void_t<decltype(serialized_size_in_flat_buffer(std::declval<const flat_buffer&>(),std::declval<flat_buffer::size_type>(),static_cast<_Tp*>(nullptr)))>> : std::true_type {};
+struct has_adl_serialized_size<_Tp,std::void_t<decltype(serialized_size_in_flat_buffer(std::declval<const flat_buffer&>(),std::declval<std::size_t>(),static_cast<_Tp*>(nullptr)))>> : std::true_type {};
 
 template <typename _Tp>
 constexpr bool has_adl_serialized_size_v=has_adl_serialized_size<_Tp>::value;
 
 template <typename _Tp>
-struct is_builtin_type : std::integral_constant<bool,std::is_same<_Tp,bool>::value || std::is_same<_Tp,int8_t>::value || std::is_same<_Tp,uint8_t>::value || std::is_same<_Tp,int16_t>::value || std::is_same<_Tp,uint16_t>::value || std::is_same<_Tp,int32_t>::value || std::is_same<_Tp,uint32_t>::value || std::is_same<_Tp,int64_t>::value || std::is_same<_Tp,uint64_t>::value || std::is_same<_Tp,float>::value || std::is_same<_Tp,double>::value || std::is_same<_Tp,long>::value || std::is_same<_Tp,unsigned long>::value || std::is_same<_Tp,long double>::value || std::is_same<_Tp,wchar_t>::value || std::is_same<_Tp,std::string>::value || std::is_same<_Tp,std::string_view>::value || std::is_same<_Tp,std::vector<uint8_t>>::value || std::is_same<_Tp,flat_buffer>::value> {};
+struct is_builtin_type : std::integral_constant<bool,std::is_same<_Tp,bool>::value || std::is_same<_Tp,int8_t>::value || std::is_same<_Tp,uint8_t>::value || std::is_same<_Tp,int16_t>::value || std::is_same<_Tp,uint16_t>::value || std::is_same<_Tp,int32_t>::value || std::is_same<_Tp,uint32_t>::value || std::is_same<_Tp,int64_t>::value || std::is_same<_Tp,uint64_t>::value || std::is_same<_Tp,float>::value || std::is_same<_Tp,double>::value || std::is_same<_Tp,long>::value || std::is_same<_Tp,unsigned long>::value || std::is_same<_Tp,long long>::value || std::is_same<_Tp,unsigned long long>::value || std::is_same<_Tp,long double>::value || std::is_same<_Tp,wchar_t>::value || std::is_same<_Tp,std::string>::value || std::is_same<_Tp,std::string_view>::value || std::is_same<_Tp,std::vector<uint8_t>>::value || std::is_same<_Tp,flat_buffer>::value> {};
 
-template<typename _Tp>
+template <typename _Tp>
 constexpr bool is_builtin_type_v=is_builtin_type<_Tp>::value;
+
+template <typename _Tp,typename... _Us>
+inline constexpr bool is_any_of_v=(std::is_same<_Tp,_Us>::value || ...);
+
+template <typename _Tp>
+inline constexpr bool is_fixed_width_builtin_v=is_any_of_v<_Tp,bool,int8_t,uint8_t,int16_t,uint16_t,int32_t,uint32_t,int64_t,uint64_t,float,double>;
+
+template <typename _Tp,typename _Pinned>
+inline constexpr bool needs_own_definition_v=std::is_same<_Tp,_Pinned>::value && !is_fixed_width_builtin_v<_Tp>;
 
 class flat_buffer {
 public:
@@ -515,14 +524,26 @@ public:
 		write_le(bits);
 		return *this;
 	}
-	flat_buffer& write(long val) {
+	template <typename _Tp,std::enable_if_t<needs_own_definition_v<_Tp,long>,int> =0>
+	flat_buffer& write(_Tp val) {
 		static_assert(sizeof(long)<=255,"long size exceeds portable protocol limit.");
 		write_portable_raw(FBTT_LONG_INT,& val,static_cast<uint8_t>(sizeof(long)));
 		return *this;
 	}
-	flat_buffer& write(unsigned long val) {
+	template <typename _Tp,std::enable_if_t<needs_own_definition_v<_Tp,unsigned long>,int> =0>
+	flat_buffer& write(_Tp val) {
 		static_assert(sizeof(unsigned long)<=255,"unsigned long size exceeds portable protocol limit.");
 		write_portable_raw(FBTT_ULONG_INT,& val,static_cast<uint8_t>(sizeof(unsigned long)));
+		return *this;
+	}
+	template <typename _Tp,std::enable_if_t<needs_own_definition_v<_Tp,long long>,int> =0>
+	flat_buffer& write(_Tp val) {
+		write_le(static_cast<uint64_t>(val));
+		return *this;
+	}
+	template <typename _Tp,std::enable_if_t<needs_own_definition_v<_Tp,unsigned long long>,int> =0>
+	flat_buffer& write(_Tp val) {
+		write_le(static_cast<uint64_t>(val));
 		return *this;
 	}
 	flat_buffer& write(long double val) {
@@ -715,6 +736,14 @@ public:
 		return val;
 	}
 	[[nodiscard]]
+	long long read_llong(size_type offset) const {
+		return static_cast<int64_t>(read_le<uint64_t>(offset));
+	}
+	[[nodiscard]]
+	unsigned long long read_ullong(size_type offset) const {
+		return read_le<uint64_t>(offset);
+	}
+	[[nodiscard]]
 	long double read_long_double(size_type offset) const {
 		uint8_t buf[sizeof(long double)];
 		uint8_t stored_size=0;
@@ -795,6 +824,10 @@ public:
 			return read_long(offset);
 		} else if constexpr (std::is_same<std::decay_t<_Tp>,unsigned long>::value) {
 			return read_ulong(offset);
+		} else if constexpr (std::is_same<std::decay_t<_Tp>,long long>::value) {
+			return read_llong(offset);
+		} else if constexpr (std::is_same<std::decay_t<_Tp>,unsigned long long>::value) {
+			return read_ullong(offset);
 		} else if constexpr (std::is_same<std::decay_t<_Tp>,long double>::value) {
 			return read_long_double(offset);
 		} else if constexpr (std::is_same<std::decay_t<_Tp>,wchar_t>::value) {
@@ -1085,7 +1118,7 @@ public:
 			return 2;
 		} else if constexpr (std::is_same<std::decay_t<_Tp>,int32_t>::value || std::is_same<std::decay_t<_Tp>,uint32_t>::value) {
 			return 4;
-		} else if constexpr (std::is_same<std::decay_t<_Tp>,int64_t>::value || std::is_same<std::decay_t<_Tp>,uint64_t>::value) {
+		} else if constexpr (std::is_same<std::decay_t<_Tp>,int64_t>::value || std::is_same<std::decay_t<_Tp>,uint64_t>::value || std::is_same<std::decay_t<_Tp>,long long>::value || std::is_same<std::decay_t<_Tp>,unsigned long long>::value) {
 			return 8;
 		} else if constexpr (std::is_same<std::decay_t<_Tp>,float>::value) {
 			return 4;
@@ -1220,7 +1253,9 @@ struct flat_buffer_serializer<bool> {
 
 template <>
 struct flat_buffer_serializer<int8_t> {
-	static void serialize(flat_buffer& buf,int8_t val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,int8_t val) {
+		buf.write(val);
+	}
 	static int8_t deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_int8(offset);
 	}
@@ -1231,7 +1266,9 @@ struct flat_buffer_serializer<int8_t> {
 
 template<>
 struct flat_buffer_serializer<uint8_t> {
-	static void serialize(flat_buffer& buf,uint8_t val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,uint8_t val) {
+		buf.write(val);
+	}
 	static uint8_t deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_uint8(offset);
 	}
@@ -1242,7 +1279,9 @@ struct flat_buffer_serializer<uint8_t> {
 
 template <>
 struct flat_buffer_serializer<int16_t> {
-	static void serialize(flat_buffer& buf,int16_t val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,int16_t val) {
+		buf.write(val);
+	}
 	static int16_t deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_int16(offset);
 	}
@@ -1253,7 +1292,9 @@ struct flat_buffer_serializer<int16_t> {
 
 template <>
 struct flat_buffer_serializer<uint16_t> {
-	static void serialize(flat_buffer& buf,uint16_t val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,uint16_t val) {
+		buf.write(val);
+	}
 	static uint16_t deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_uint16(offset);
 	}
@@ -1264,7 +1305,9 @@ struct flat_buffer_serializer<uint16_t> {
 
 template <>
 struct flat_buffer_serializer<int32_t> {
-	static void serialize(flat_buffer& buf,int32_t val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,int32_t val) {
+		buf.write(val);
+	}
 	static int32_t deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_int32(offset);
 	}
@@ -1275,7 +1318,9 @@ struct flat_buffer_serializer<int32_t> {
 
 template <>
 struct flat_buffer_serializer<uint32_t> {
-	static void serialize(flat_buffer& buf,uint32_t val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,uint32_t val) {
+		buf.write(val);
+	}
 	static uint32_t deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_uint32(offset);
 	}
@@ -1286,7 +1331,9 @@ struct flat_buffer_serializer<uint32_t> {
 
 template <>
 struct flat_buffer_serializer<int64_t> {
-	static void serialize(flat_buffer& buf,int64_t val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,int64_t val) {
+		buf.write(val);
+	}
 	static int64_t deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_int64(offset);
 	}
@@ -1297,7 +1344,9 @@ struct flat_buffer_serializer<int64_t> {
 
 template <>
 struct flat_buffer_serializer<uint64_t> {
-	static void serialize(flat_buffer& buf,uint64_t val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,uint64_t val) {
+		buf.write(val);
+	}
 	static uint64_t deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_uint64(offset);
 	}
@@ -1308,7 +1357,9 @@ struct flat_buffer_serializer<uint64_t> {
 
 template <>
 struct flat_buffer_serializer<float> {
-	static void serialize(flat_buffer& buf,float val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,float val) {
+		buf.write(val);
+	}
 	static float deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_float(offset);
 	}
@@ -1319,7 +1370,9 @@ struct flat_buffer_serializer<float> {
 
 template <>
 struct flat_buffer_serializer<double> {
-	static void serialize(flat_buffer& buf,double val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,double val) {
+		buf.write(val);
+	}
 	static double deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_double(offset);
 	}
@@ -1328,10 +1381,12 @@ struct flat_buffer_serializer<double> {
 	}
 };
 
-template <>
-struct flat_buffer_serializer<long> {
-	static void serialize(flat_buffer& buf,long val) { buf.write(val); }
-	static long deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
+template <typename _Tp>
+struct flat_buffer_serializer<_Tp,std::enable_if_t<needs_own_definition_v<_Tp,long>>> {
+	static void serialize(flat_buffer& buf,_Tp val) {
+		buf.write(val);
+	}
+	static _Tp deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_long(offset);
 	}
 	static flat_buffer::size_type serialized_size(const flat_buffer& buf,flat_buffer::size_type offset) {
@@ -1341,10 +1396,12 @@ struct flat_buffer_serializer<long> {
 	}
 };
 
-template <>
-struct flat_buffer_serializer<unsigned long> {
-	static void serialize(flat_buffer& buf,unsigned long val) { buf.write(val); }
-	static unsigned long deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
+template <typename _Tp>
+struct flat_buffer_serializer<_Tp,std::enable_if_t<needs_own_definition_v<_Tp,unsigned long>>> {
+	static void serialize(flat_buffer& buf,_Tp val) {
+		buf.write(val);
+	}
+	static _Tp deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_ulong(offset);
 	}
 	static flat_buffer::size_type serialized_size(const flat_buffer& buf,flat_buffer::size_type offset) {
@@ -1354,9 +1411,37 @@ struct flat_buffer_serializer<unsigned long> {
 	}
 };
 
+template <typename _Tp>
+struct flat_buffer_serializer<_Tp,std::enable_if_t<needs_own_definition_v<_Tp,long long>>> {
+	static void serialize(flat_buffer& buf,_Tp val) {
+		buf.write(val);
+	}
+	static _Tp deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
+		return static_cast<_Tp>(buf.read_int64(offset));
+	}
+	static flat_buffer::size_type serialized_size(const flat_buffer&,flat_buffer::size_type) noexcept {
+		return 8;
+	}
+};
+
+template <typename _Tp>
+struct flat_buffer_serializer<_Tp,std::enable_if_t<needs_own_definition_v<_Tp,unsigned long long>>> {
+	static void serialize(flat_buffer& buf,_Tp val) {
+		buf.write(val);
+	}
+	static _Tp deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
+		return static_cast<_Tp>(buf.read_uint64(offset));
+	}
+	static flat_buffer::size_type serialized_size(const flat_buffer&,flat_buffer::size_type) noexcept {
+		return 8;
+	}
+};
+
 template <>
 struct flat_buffer_serializer<long double> {
-	static void serialize(flat_buffer& buf,long double val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,long double val) {
+		buf.write(val);
+	}
 	static long double deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_long_double(offset);
 	}
@@ -1369,7 +1454,9 @@ struct flat_buffer_serializer<long double> {
 
 template <>
 struct flat_buffer_serializer<wchar_t> {
-	static void serialize(flat_buffer& buf,wchar_t val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,wchar_t val) {
+		buf.write(val);
+	}
 	static wchar_t deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_wchar(offset);
 	}
@@ -1382,7 +1469,9 @@ struct flat_buffer_serializer<wchar_t> {
 
 template <>
 struct flat_buffer_serializer<std::string> {
-	static void serialize(flat_buffer& buf,const std::string& val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,const std::string& val) {
+		buf.write(val);
+	}
 	static std::string deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_string(offset);
 	}
@@ -1394,7 +1483,9 @@ struct flat_buffer_serializer<std::string> {
 
 template <>
 struct flat_buffer_serializer<std::string_view> {
-	static void serialize(flat_buffer& buf,std::string_view val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,std::string_view val) {
+		buf.write(val);
+	}
 	static std::string_view deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_string_view(offset);
 	}
@@ -1406,7 +1497,9 @@ struct flat_buffer_serializer<std::string_view> {
 
 template <>
 struct flat_buffer_serializer<std::vector<uint8_t>> {
-	static void serialize(flat_buffer& buf,const std::vector<uint8_t>& val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,const std::vector<uint8_t>& val) {
+		buf.write(val);
+	}
 	static std::vector<uint8_t> deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_length_prefixed_bytes(offset);
 	}
@@ -1418,7 +1511,9 @@ struct flat_buffer_serializer<std::vector<uint8_t>> {
 
 template <>
 struct flat_buffer_serializer<flat_buffer> {
-	static void serialize(flat_buffer& buf,const flat_buffer& val) { buf.write(val); }
+	static void serialize(flat_buffer& buf,const flat_buffer& val) {
+		buf.write(val);
+	}
 	static flat_buffer deserialize(const flat_buffer& buf,flat_buffer::size_type offset) {
 		return buf.read_flat_buffer(offset);
 	}
