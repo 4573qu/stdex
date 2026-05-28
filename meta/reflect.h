@@ -1,5 +1,5 @@
-//Last Modified At 2026/04/15
-//@Version 1.2.0.0
+//Last Modified At 2026/05/29
+//@Version 1.2.1.0
 #ifndef _STDEX_META_REFLECT_H_
 #define _STDEX_META_REFLECT_H_ 1
 
@@ -2505,6 +2505,11 @@ bool enum_from_string(std::string_view name,_Tp& value) noexcept {
 		}
 	}
 	return false;
+}
+
+template <typename _Tp>
+bool enum_from_string(std::string name,_Tp& value) noexcept {
+	return enum_from_string(std::string_view(name),value);
 }
 
 template <typename _Tp>

@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/11
-//@Version 1.2.1.0
+//Last Modified At 2026/05/29
+//@Version 1.3.0.0
 #ifndef _STDEX_VISION_COLOR_H_
 #define _STDEX_VISION_COLOR_H_ 1
 
@@ -893,11 +893,11 @@ inline rgba hsva_to_rgba(hsva color) {
 	return rgba(static_cast<int>(r*255),static_cast<int>(g*255),static_cast<int>(b*255),color.alpha());
 }
 
-hsva hsla_to_hsva(hsla color) {
+inline hsva hsla_to_hsva(hsla color) {
 	return rgba_to_hsva(hsla_to_rgba(color));
 }
 
-hsla hsva_to_hsla(hsva color) {
+inline hsla hsva_to_hsla(hsva color) {
 	return rgba_to_hsla(hsva_to_rgba(color));
 }
 

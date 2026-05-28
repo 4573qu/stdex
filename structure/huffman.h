@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/19
-//@Version 3.1.0.0
+//Last Modified At 2026/05/29
+//@Version 3.2.0.0
 #ifndef _STDEX_STRUCTURE_HUFFMAN_H_
 #define _STDEX_STRUCTURE_HUFFMAN_H_ 1
 
@@ -65,20 +65,20 @@ public:
 	};
 
 private:
-	template <typename _Tp,typename=void>
+	template <typename _Up,typename=void>
 	struct is_hashable : std::false_type {};
-	template <typename _Tp>
-	struct is_hashable<_Tp,std::void_t<decltype(std::hash<_Tp>{}(std::declval<_Tp>()))>> : std::true_type {};
+	template <typename _Up>
+	struct is_hashable<_Up,std::void_t<decltype(std::hash<_Up>{}(std::declval<_Up>()))>> : std::true_type {};
 
-	template <typename _Tp,typename=void>
+	template <typename _Up,typename=void>
 	struct is_freq_like : std::false_type {};
-	template <typename _Tp>
-	struct is_freq_like<_Tp,std::void_t<decltype(std::declval<_Tp>()+std::declval<_Tp>()),decltype(std::declval<_Tp&>()+=std::declval<_Tp>())>> : std::true_type {};
+	template <typename _Up>
+	struct is_freq_like<_Up,std::void_t<decltype(std::declval<_Up>()+std::declval<_Up>()),decltype(std::declval<_Up&>()+=std::declval<_Up>())>> : std::true_type {};
 
-	template <typename _Tp,typename=void>
+	template <typename _Up,typename=void>
 	struct is_string_like : std::false_type {};
-	template <typename _Tp>
-	struct is_string_like<_Tp,std::void_t<typename _Tp::value_type,decltype(std::declval<_Tp>().push_back(std::declval<typename _Tp::value_type>())),decltype(std::declval<_Tp>().size()),decltype(std::declval<_Tp>().empty()),decltype(std::declval<_Tp>().begin()),decltype(std::declval<_Tp>().end()),decltype(std::declval<_Tp>().insert(std::declval<_Tp>().end(),std::declval<_Tp>().begin(),std::declval<_Tp>().end()))>> : std::true_type {};
+	template <typename _Up>
+	struct is_string_like<_Up,std::void_t<typename _Up::value_type,decltype(std::declval<_Up>().push_back(std::declval<typename _Up::value_type>())),decltype(std::declval<_Up>().size()),decltype(std::declval<_Up>().empty()),decltype(std::declval<_Up>().begin()),decltype(std::declval<_Up>().end()),decltype(std::declval<_Up>().insert(std::declval<_Up>().end(),std::declval<_Up>().begin(),std::declval<_Up>().end()))>> : std::true_type {};
 
 	template <typename _Func,typename=void>
 	struct is_leaf_visitor : std::false_type {};
