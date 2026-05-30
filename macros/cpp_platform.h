@@ -1,5 +1,5 @@
-//Last Modified At 2026/04/21
-//@Version 1.0.0.0
+//Last Modified At 2026/05/30
+//@Version 1.0.1.0
 #ifndef _STDEX_WINDOWS_PLATFORM
 #if defined(_WIN32)
 #define _STDEX_WINDOWS_PLATFORM 1
@@ -15,14 +15,14 @@
 #endif
 #endif
 #ifndef _STDEX_WINDOWS32_PLATFORM
-#if _STDEX_WINDOWS_PLATFORM && _STDEX_WINDOWS64_PLATFORM
+#if _STDEX_WINDOWS_PLATFORM && !_STDEX_WINDOWS64_PLATFORM
 #define _STDEX_WINDOWS32_PLATFORM 0
 #else
 #define _STDEX_WINDOWS32_PLATFORM 1
 #endif
 #endif
 #ifndef _STDEX_LINUX_PLATFORM
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 #define _STDEX_LINUX_PLATFORM 1
 #else
 #define _STDEX_LINUX_PLATFORM 0

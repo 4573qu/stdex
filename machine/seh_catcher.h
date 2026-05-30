@@ -1,13 +1,15 @@
-//Last Modified At 2026/04/25
-//@Version 2.0.0.1
+//Last Modified At 2026/05/29
+//@Version 2.1.0.1
 #ifndef _STDEX_MACHINE_SEHCATCHER_H_
 #define _STDEX_MACHINE_SEHCATCHER_H_ 1
 
 #include <chrono>
 #include <csetjmp>
+#include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <fstream>
 #include <functional>
@@ -15,6 +17,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../bitwise/flags.h"//At Least 1.1
@@ -31,7 +34,7 @@
 #endif
 #endif
 #ifndef _STDEX_LINUX_PLATFORM
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 #define _STDEX_LINUX_PLATFORM 1
 #else
 #define _STDEX_LINUX_PLATFORM 0
@@ -90,16 +93,27 @@
 	#include <execinfo.h>
 	#include <mach/mach.h>
 	#include <mach-o/dyld.h>
+	#include <mach-o/loader.h>
+	#include <setjmp.h>
 	#include <signal.h>
+	#include <sys/types.h>
 	#include <sys/utsname.h>
 	#include <ucontext.h>
 	#include <unistd.h>
 #elif _STDEX_ANDROID_PLATFORM
 	#include <android/log.h>
 	#include <dlfcn.h>
-	#include <execinfo.h>
+	#include <elf.h>
+	#if __has_include(<execinfo.h>)
+		#include <execinfo.h>
+	#endif
+	#include <fcntl.h>
+	#include <link.h>
+	#include <setjmp.h>
 	#include <signal.h>
+	#include <sys/prctl.h>
 	#include <sys/resource.h>
+	#include <sys/types.h>
 	#include <sys/utsname.h>
 	#include <ucontext.h>
 	#include <unistd.h>
@@ -109,8 +123,11 @@
 	#include <execinfo.h>
 	#include <fcntl.h>
 	#include <link.h>
+	#include <setjmp.h>
 	#include <signal.h>
+	#include <sys/prctl.h>
 	#include <sys/resource.h>
+	#include <sys/types.h>
 	#include <sys/utsname.h>
 	#include <ucontext.h>
 	#include <unistd.h>
@@ -131,6 +148,7 @@ enum seh_feature {
 	SF_MODULES=1<<6,
 	SF_SKIP=1<<7,
 	SF_CLEANUP=1<<8,
+	SF_ASYNC_SAFE=1<<9,
 	SF_ALL=~0u,
 };
 
@@ -231,26 +249,33 @@ private:
 	handler_t user_handler_;
 	recovery_t recovery_handler_;
 	cleanup_t cleanup_handler_;
-	jmp_buf recovery_point_;
-	bool recovery_point_valid_=false;
 
-	#if _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
-		struct sigaction prev_actions_[6];
-		void* alt_stack_mem_=nullptr;
-	#endif
+	exception_infos last_exception_;
+	volatile sig_atomic_t last_exception_valid_=0;
 
 	#if _STDEX_WINDOWS_PLATFORM
 		static EXCEPTION_POINTERS* current_exception_;
 	#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
+		struct sigaction prev_actions_[6];
+		void* alt_stack_mem_=nullptr;
 		static void* current_ucontext_;
+		static volatile sig_atomic_t last_signal_;
+		static siginfo_t last_siginfo_;
+		static ucontext_t last_ucontext_storage_;
 	#endif
 
 	static std::string make_timestamp() {
 		const auto now=std::chrono::system_clock::now();
 		const std::time_t t=std::chrono::system_clock::to_time_t(now);
-		std::string s=std::ctime(&t);
-		if (!s.empty() && s.back()=='\n') s.pop_back();
-		return s;
+				struct tm tmbuf;
+		#if _STDEX_WINDOWS_PLATFORM
+				localtime_s(&tmbuf,&t);
+		#else
+				localtime_r(&t,&tmbuf);
+		#endif
+				char buf[32];
+				std::size_t n=std::strftime(buf,sizeof(buf),"%Y-%m-%d %H:%M:%S",&tmbuf);
+				return std::string(buf,n);
 	}
 	bool default_handler(exception_infos& info,bool* windows_recovery=nullptr) {
 		bool should_recover=false;
@@ -261,7 +286,15 @@ private:
 				info.thread_id=static_cast<uint32_t>(GetCurrentThreadId());
 			#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
 				info.process_id=static_cast<uint32_t>(getpid());
-				info.thread_id=static_cast<uint32_t>(gettid());
+				#if _STDEX_APPLE_PLATFORM
+					uint64_t tid=0;
+					pthread_threadid_np(nullptr,&tid);
+					info.thread_id=static_cast<uint32_t>(tid);
+				#elif _STDEX_ANDROID_PLATFORM
+					info.thread_id=static_cast<uint32_t>(gettid());
+				#elif _STDEX_LINUX_PLATFORM
+					info.thread_id=static_cast<uint32_t>(syscall(SYS_gettid));
+				#endif
 			#endif
 		}
 		if (info.stack_trace.empty() && features_.contains(SF_TRACE)) collect_stack_trace(info);
@@ -269,25 +302,38 @@ private:
 		if (features_.contains(SF_OUTPUT)) {
 			std::cerr<<"[seh_catcher] Crash detected:\n"<<info.to_string()<<"\n";
 			#if _STDEX_ANDROID_PLATFORM
-				__android_log_print(ANDROID_LOG_FATAL,"seh_catcher","%s",info.to_string().c_str());
+				#ifdef _STDEX_SEH_USE_DYNAMIC_LOG
+					using android_log_print_fn=int(*)(int,const char*,const char*,...);
+					static android_log_print_fn s_log_print=[]()->android_log_print_fn {
+						void* h=dlopen("liblog.so",RTLD_NOW|RTLD_LOCAL);
+						if (!h) return nullptr;
+						return reinterpret_cast<android_log_print_fn>(dlsym(h,"__android_log_print"));
+					}();
+					if (s_log_print) s_log_print(ANDROID_LOG_FATAL,"seh_catcher","%s",info.to_string().c_str());
+				#else
+					__android_log_print(ANDROID_LOG_FATAL,"seh_catcher","%s",info.to_string().c_str());
+				#endif
 			#endif
 		}
 		if (features_.contains(SF_LOGGING)) {
 			std::ofstream log(log_path_,std::ios::app);
 			if (log) log<<"Crash at "<<info.timestamp<<"\n"<<info.to_string()<<"\n"<<"========================================\n";
 		}
-		if (features_.contains(SF_DUMP)) write_dump(info);
+		if (features_.contains(SF_DUMP)) {
+			bool dumped=write_dump(info);
+			if (!dumped && features_.contains(SF_OUTPUT)) std::cerr<<"[seh_catcher] dump file not written; see error_detail for reason\n";
+		}
 		if (features_.contains(SF_CLEANUP)) {
 			if (cleanup_handler_) cleanup_handler_(info);
 		} else if (features_.contains(SF_RECOVERY)) {
-			if (recovery_point_valid_) {
+			if (recovery_point_valid) {
 				bool do_recover=true;
 				if (recovery_handler_) do_recover=recovery_handler_(info);
 				if (do_recover) {
 					if (windows_recovery) *windows_recovery=true;
 					should_recover=true;
 					#if _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
-						longjmp(recovery_point_,1);
+						siglongjmp(recovery_point,1);
 					#endif
 				}
 			}
@@ -461,7 +507,22 @@ private:
 				module_info mi={};
 				const char* name=_dyld_get_image_name(i);
 				mi.name=name?name:"";
-				mi.base_address=static_cast<uintptr_t>(_dyld_get_image_slide(i));
+				const struct mach_header* hdr=_dyld_get_image_header(i);
+				intptr_t slide=_dyld_get_image_vmaddr_slide(i);
+				mi.base_address=reinterpret_cast<uintptr_t>(hdr);
+				if (hdr) {
+					uintptr_t total=0;
+					const bool is64=(hdr->magic==MH_MAGIC_64 || hdr->magic==MH_CIGAM_64);
+					const uint8_t* p=reinterpret_cast<const uint8_t*>(hdr)+(is64?sizeof(mach_header_64):sizeof(mach_header));
+					for (uint32_t j=0;j<hdr->ncmds;j++) {
+						const struct load_command* lc=reinterpret_cast<const load_command*>(p);
+						if (lc->cmd==LC_SEGMENT_64) total+=reinterpret_cast<const segment_command_64*>(lc)->vmsize;
+						else if (lc->cmd==LC_SEGMENT) total+=reinterpret_cast<const segment_command*>(lc)->vmsize;
+						p+=lc->cmdsize;
+					}
+					mi.size=total;
+				}
+				(void)slide;
 				info.modules.push_back(std::move(mi));
 			}
 		}
@@ -471,19 +532,22 @@ private:
 		struct dl_iterate_arg {
 			std::vector<module_info>* modules;
 		};
-		static int dl_iterate_cb(struct dl_phdr_info* info,std::size_t /*size*/,void* data) {
+		static int dl_iterate_cb(::dl_phdr_info* info,std::size_t /*size*/,void* data) {
 			auto* arg=reinterpret_cast<dl_iterate_arg*>(data);
 			module_info mi={};
 			mi.name=info->dlpi_name?info->dlpi_name:"";
 			mi.base_address=static_cast<uintptr_t>(info->dlpi_addr);
 			uintptr_t max_va=0;
+			uintptr_t min_va=UINTPTR_MAX;
 			for (int i=0;i<info->dlpi_phnum;i++) {
-				if (info->dlpi_phdr[i].p_type==PT_LOAD) {
-					uintptr_t end=static_cast<uintptr_t>(info->dlpi_phdr[i].p_vaddr+info->dlpi_phdr[i].p_memsz);
-					if (end>max_va) max_va=end;
-				}
+				const auto& ph=info->dlpi_phdr[i];
+				if (ph.p_type!=PT_LOAD) continue;
+				uintptr_t s=static_cast<uintptr_t>(ph.p_vaddr);
+				uintptr_t e=s+static_cast<uintptr_t>(ph.p_memsz);
+				if (s<min_va) min_va=s;
+				if (e>max_va) max_va=e;
 			}
-			mi.size=max_va;
+			mi.size=(max_va>min_va)?(max_va-min_va):0;
 			arg->modules->push_back(std::move(mi));
 			return 0;
 		}
@@ -493,22 +557,77 @@ private:
 		}
 	#endif
 
-	void write_dump(exception_infos& info) {
+	bool write_dump(exception_infos& info) {
 		#if _STDEX_WINDOWS_PLATFORM
-			if (!current_exception_) return;
-			HANDLE file=CreateFileA(dump_path_.c_str(),GENERIC_WRITE,0,nullptr, CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
-			if (file==INVALID_HANDLE_VALUE) return;
+			if (!current_exception_) {
+				info.error_detail+="\n[write_dump] no active exception";
+				return false;
+			}
+			HANDLE file=CreateFileA(dump_path_.c_str(),GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
+			if (file==INVALID_HANDLE_VALUE) {
+				info.error_detail+="\n[write_dump] CreateFileA failed, GLE=";
+				info.error_detail+=std::to_string(GetLastError());
+				return false;
+			}
 			MINIDUMP_EXCEPTION_INFORMATION mei={};
 			mei.ThreadId=GetCurrentThreadId();
 			mei.ExceptionPointers=current_exception_;
 			mei.ClientPointers=FALSE;
-			MiniDumpWriteDump(GetCurrentProcess(),GetCurrentProcessId(),file,static_cast<MINIDUMP_TYPE>(MiniDumpWithFullMemoryInfo|MiniDumpWithHandleData|MiniDumpWithUnloadedModules|MiniDumpWithThreadInfo),&mei,nullptr,nullptr);
+			BOOL ok=MiniDumpWriteDump(GetCurrentProcess(),GetCurrentProcessId(),file,static_cast<MINIDUMP_TYPE>(MiniDumpWithFullMemoryInfo|MiniDumpWithHandleData|MiniDumpWithUnloadedModules|MiniDumpWithThreadInfo),&mei,nullptr,nullptr);
 			CloseHandle(file);
+			if (!ok) {
+				info.error_detail+="\n[write_dump] MiniDumpWriteDump failed, GLE=";
+				info.error_detail+=std::to_string(GetLastError());
+				return false;
+			}
+			return true;
 		#elif _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
 			struct rlimit rl={RLIM_INFINITY,RLIM_INFINITY};
-			setrlimit(RLIMIT_CORE,&rl);
+			if (setrlimit(RLIMIT_CORE, &rl)!=0) {
+				info.error_detail+="\n[write_dump] setrlimit(RLIMIT_CORE) failed: errno=";
+				info.error_detail+=std::to_string(errno);
+				return false;
+			}
+			if (prctl(PR_SET_DUMPABLE,1,0,0,0)!=0) {
+				info.error_detail+="\n[write_dump] prctl(PR_SET_DUMPABLE) failed: errno=";
+				info.error_detail+=std::to_string(errno);
+			}
+			if (!dump_path_.empty()) {
+				int fd=::open("/proc/sys/kernel/core_pattern",O_WRONLY);
+				if (fd>=0) {
+					ssize_t w=::write(fd, dump_path_.c_str(),dump_path_.size());
+					::close(fd);
+					if (w<0 || static_cast<std::size_t>(w)!=dump_path_.size()) {
+						info.error_detail+="\n[write_dump] writing core_pattern failed: errno=";
+						info.error_detail+=std::to_string(errno);
+						info.error_detail+=" (core will be written per existing core_pattern)";
+						return false;
+					}
+					return true;
+				} else {
+					info.error_detail+="\n[write_dump] cannot write /proc/sys/kernel/core_pattern (errno=";
+					info.error_detail+=std::to_string(errno);
+					info.error_detail+="); CAP_SYS_ADMIN required. ";
+					info.error_detail+="Core dump will be written to system default location.";
+					return false;
+				}
+			}
+			return true;
+		#elif _STDEX_APPLE_PLATFORM
+			info.error_detail+="\n[write_dump] custom dump path not supported on Apple platforms. ";
+			info.error_detail+="Crash reports are written by the OS to ";
+			#if _STDEX_IOS_PLATFORM
+				info.error_detail+="the device's crash log (retrieve via Xcode Organizer or sysdiagnose).";
+			#else
+				info.error_detail+="~/Library/Logs/DiagnosticReports/ .";
+			#endif
+			(void)dump_path_;
+			return false;
 		#else
+			info.error_detail+="\n[write_dump] not supported on this platform";
+			(void)dump_path_;
 			(void)info;
+			return false;
 		#endif
 	}
 
@@ -520,10 +639,18 @@ private:
 			if (!current_ucontext_) return false;
 			ucontext_t* uc=static_cast<ucontext_t*>(current_ucontext_);
 			#if defined(__x86_64__)
-				uc->uc_mcontext->__ss.__rip+=2;
+				#if _STDEX_APPLE_PLATFORM
+					uc->uc_mcontext->__ss.__rip+=2;
+				#else
+					uc->uc_mcontext.gregs[REG_RIP]+=2;
+				#endif
 				return true;
 			#elif defined(__i386__)
-				uc->uc_mcontext->__ss.__eip+=2;
+				#if _STDEX_APPLE_PLATFORM
+					uc->uc_mcontext->__ss.__eip+=2;
+				#else
+					uc->uc_mcontext.gregs[REG_EIP]+=2;
+				#endif
 				return true;
 			#elif defined(__aarch64__)
 				#if _STDEX_APPLE_PLATFORM
@@ -716,22 +843,118 @@ private:
 	#endif
 
 	#if _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
-		static void* current_ucontext_;
-
 		static void signal_handler(int sig,siginfo_t* si,void* ucontext) {
 			auto& self=instance();
-			current_ucontext_=ucontext;
+			if (self.features_.contains(SF_ASYNC_SAFE)) {
+				last_signal_=sig;
+				if (si) std::memcpy(&last_siginfo_,si,sizeof(siginfo_t));
+				if (ucontext) {
+					std::memcpy(&last_ucontext_storage_,ucontext,sizeof(ucontext_t));
+					current_ucontext_=&last_ucontext_storage_;
+				} else current_ucontext_=nullptr;
+				if (self.features_.contains(SF_RECOVERY) && self.recovery_point_valid) {
+					self.recovery_point_valid=0;
+					siglongjmp(self.recovery_point,1);
+				}
+				/*{
+					static const char prefix[]="[seh_catcher] fatal signal ";
+					(void)!write(STDERR_FILENO,prefix,sizeof(prefix)-1);
+					char buf[16];
+					int n=0;
+					int s=sig;
+					if (s==0) buf[n++]='0';
+					else {
+						char tmp[16];
+						int k=0;
+						while (s>0) {
+							tmp[k++]=char('0'+(s%10));
+							s/=10;
+						}
+						while (k>0) buf[n++]=tmp[--k];
+					}
+					buf[n++]='\n';
+					(void)!write(STDERR_FILENO,buf,n);
+				}*/
+				int idx=-1;
+				switch (sig) {
+					case SIGSEGV: {
+						idx=0;
+						break;
+					}
+					case SIGBUS: {
+						idx=1;
+						break;
+					}
+					case SIGFPE: {
+						idx=2;
+						break;
+					}
+					case SIGILL: {
+						idx=3;
+						break;
+					}
+					case SIGABRT: {
+						idx=4;
+						break;
+					}
+					case SIGTRAP: {
+						idx=5;
+						break;
+					}
+				}
+				if (idx>=0) sigaction(sig,&self.prev_actions_[idx],nullptr);
+				/*else {
+					struct sigaction dfl={};
+					dfl.sa_handler=SIG_DFL;
+					sigemptyset(&dfl.sa_mask);
+					sigaction(sig,&dfl,nullptr);
+				}
+				sigset_t unblock;
+				sigemptyset(&unblock);
+				sigaddset(&unblock,sig);
+				sigprocmask(SIG_UNBLOCK,&unblock,nullptr);*/
+				raise(sig);
+				_Exit(EXIT_FAILURE);
+			}
 			exception_infos ex_info=collect_posix_info(sig,si,ucontext);
 			ex_info.timestamp=make_timestamp();
 			ex_info.process_id=static_cast<uint32_t>(getpid());
-			ex_info.thread_id=static_cast<uint32_t>(gettid());
+			#if _STDEX_APPLE_PLATFORM
+				uint64_t tid=0;
+				pthread_threadid_np(nullptr,&tid);
+				ex_info.thread_id=static_cast<uint32_t>(tid);
+			#elif _STDEX_ANDROID_PLATFORM
+				ex_info.thread_id=static_cast<uint32_t>(gettid());
+			#elif _STDEX_LINUX_PLATFORM
+				ex_info.thread_id=static_cast<uint32_t>(syscall(SYS_gettid));
+			#endif
 			if (self.features_.contains(SF_TRACE)) self.collect_stack_trace(ex_info);
-			if (self.features_.contains(SF_MODULES)) self.collect_modules(ex_info)
+			if (self.features_.contains(SF_MODULES)) self.collect_modules(ex_info);
 			bool should_default=true;
 			if (self.user_handler_) should_default=self.user_handler_(ex_info);
 			if (should_default) self.default_handler(ex_info);
 			current_ucontext_=nullptr;
 			_Exit(EXIT_FAILURE);
+		}
+
+		exception_infos build_info_from_last_signal() {
+			exception_infos info;
+			if (last_signal_==0) return info;
+			info=collect_posix_info(last_signal_,&last_siginfo_,&last_ucontext_storage_);
+			info.timestamp=make_timestamp();
+			info.process_id=static_cast<uint32_t>(getpid());
+			#if _STDEX_APPLE_PLATFORM
+				uint64_t tid=0;
+				pthread_threadid_np(nullptr,&tid);
+				info.thread_id=static_cast<uint32_t>(tid);
+			#elif _STDEX_ANDROID_PLATFORM
+				info.thread_id=static_cast<uint32_t>(gettid());
+			#elif _STDEX_LINUX_PLATFORM
+				info.thread_id=static_cast<uint32_t>(syscall(SYS_gettid));
+			#endif
+			if (features_.contains(SF_TRACE)) collect_stack_trace(info);
+			if (features_.contains(SF_MODULES)) collect_modules(info);
+			return info;
 		}
 
 		static exception_infos collect_posix_info(int sig,siginfo_t* si,void* ucontext) {
@@ -825,7 +1048,18 @@ private:
 						{"R14",static_cast<uintptr_t>(mctx.gregs[REG_R14])},
 						{"R15",static_cast<uintptr_t>(mctx.gregs[REG_R15])},
 						{"EFLAGS",static_cast<uintptr_t>(mctx.gregs[REG_EFL])},
-						{"CS",static_cast<uintptr_t>(mctx.gregs[REG_CSGSFS])}
+						{"CSGSFS",static_cast<uintptr_t>(mctx.gregs[REG_CSGSFS])},
+						{"CS",static_cast<uintptr_t>(mctx.gregs[REG_CSGSFS]&0xFFFF)},
+						{"GS",static_cast<uintptr_t>((mctx.gregs[REG_CSGSFS]>>16)&0xFFFF)},
+						{"FS",static_cast<uintptr_t>((mctx.gregs[REG_CSGSFS]>>32)&0xFFFF)},
+						{"TRAPNO",static_cast<uintptr_t>(mctx.gregs[REG_TRAPNO])},
+						{"ERR",static_cast<uintptr_t>(mctx.gregs[REG_ERR])},
+						#ifdef REG_CR2
+							{"CR2",static_cast<uintptr_t>(mctx.gregs[REG_CR2])},
+						#endif
+						#ifdef REG_OLDMASK
+							{"OLDMASK",static_cast<uintptr_t>(mctx.gregs[REG_OLDMASK])}
+						#endif
 					};
 				#elif defined(__i386__)
 					info.registers={
@@ -838,7 +1072,16 @@ private:
 						{"EBP",static_cast<uintptr_t>(mctx.gregs[REG_EBP])},
 						{"ESP",static_cast<uintptr_t>(mctx.gregs[REG_ESP])},
 						{"EIP",static_cast<uintptr_t>(mctx.gregs[REG_EIP])},
-						{"EFLAGS",static_cast<uintptr_t>(mctx.gregs[REG_EFL])}
+						{"EFLAGS",static_cast<uintptr_t>(mctx.gregs[REG_EFL])},
+						{"TRAPNO",static_cast<uintptr_t>(mctx.gregs[REG_TRAPNO])},
+						{"ERR",static_cast<uintptr_t>(mctx.gregs[REG_ERR])},
+						{"CS",static_cast<uintptr_t>(mctx.gregs[REG_CS])},
+						{"SS",static_cast<uintptr_t>(mctx.gregs[REG_SS])},
+						{"DS",static_cast<uintptr_t>(mctx.gregs[REG_DS])},
+						{"ES",static_cast<uintptr_t>(mctx.gregs[REG_ES])},
+						{"FS",static_cast<uintptr_t>(mctx.gregs[REG_FS])},
+						{"GS",static_cast<uintptr_t>(mctx.gregs[REG_GS])},
+						{"UESP",static_cast<uintptr_t>(mctx.gregs[REG_UESP])}
 					};
 				#elif defined(__aarch64__)
 					info.registers={
@@ -1054,6 +1297,12 @@ private:
 
 public:
 	std::size_t stack_length=64;
+	#if _STDEX_WINDOWS_PLATFORM
+		jmp_buf recovery_point;
+	#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
+		sigjmp_buf recovery_point;
+	#endif
+	volatile sig_atomic_t recovery_point_valid=0;
 
 	void configure(stdex::bitwise::flags<seh_feature> features,const std::string& log_path="crash.log",const std::string& dump_path="crash.dmp") {
 		features_=features;
@@ -1076,19 +1325,39 @@ public:
 		cleanup_handler_=std::move(handler);
 	}
 
+	[[deprecated("Calling set_recovery_point() with no argument is undefined behavior under the C standard (the setjmp frame is destroyed on function return). Use set_recovery_point(callable) instead.")]]
 	bool set_recovery_point() {
-		recovery_point_valid_=false;
-		int ret=setjmp(recovery_point_);
-		if (ret==0) {
-			recovery_point_valid_=true;
-			return false;
-		} else {
-			recovery_point_valid_=false;
+		recovery_point_valid=0;
+				return false;
+	}
+	template <typename _Func>
+	bool set_recovery_point(_Func&& func) {
+		recovery_point_valid=0;
+		#if _STDEX_WINDOWS_PLATFORM
+			if (setjmp(recovery_point)==0) {
+				recovery_point_valid=1;
+				std::forward<_Func>(func)();
+				recovery_point_valid=0;
+				return false;
+			}
+			recovery_point_valid=0;
 			return true;
-		}
+		#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
+			if (sigsetjmp(recovery_point,1)==0) {
+				recovery_point_valid=1;
+				std::forward<_Func>(func)();
+				recovery_point_valid=0;
+				return false;
+			}
+			recovery_point_valid=0;
+			return true;
+		#else
+			std::forward<_Func>(func)();
+			return false;
+		#endif
 	}
 	void clear_recovery_point() {
-		recovery_point_valid_=false;
+		recovery_point_valid=0;
 	}
 
 	bool init() {
@@ -1098,7 +1367,7 @@ public:
 		#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
 			struct sigaction sa={};
 			sa.sa_sigaction=signal_handler;
-			sa.sa_flags=SA_SIGINFO|SA_ONSTACK|SA_NODEFER;
+			sa.sa_flags=SA_SIGINFO|SA_ONSTACK;
 			sigemptyset(&sa.sa_mask);
 			alt_stack_mem_=malloc(SIGSTKSZ*4);
 			if (!alt_stack_mem_) return false;
@@ -1113,14 +1382,65 @@ public:
 			}
 			bool ok=true;
 			ok&=!sigaction(SIGSEGV,&sa,&prev_actions_[0]);
-			ok&=!sigaction(SIGBUS, &sa,&prev_actions_[1]);
-			ok&=!sigaction(SIGFPE, &sa,&prev_actions_[2]);
-			ok&=!sigaction(SIGILL, &sa,&prev_actions_[3]);
+			ok&=!sigaction(SIGBUS,&sa,&prev_actions_[1]);
+			ok&=!sigaction(SIGFPE,&sa,&prev_actions_[2]);
+			ok&=!sigaction(SIGILL,&sa,&prev_actions_[3]);
 			ok&=!sigaction(SIGABRT,&sa,&prev_actions_[4]);
 			ok&=!sigaction(SIGTRAP,&sa,&prev_actions_[5]);
 			return ok;
 		#else
 			return false;
+		#endif
+	}
+
+	~exception_handler() {
+		#if _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
+			static const int sigs[6]={SIGSEGV,SIGBUS,SIGFPE,SIGILL,SIGABRT,SIGTRAP };
+			for (int i=0;i<6;i++) sigaction(sigs[i],&prev_actions_[i],nullptr);
+			if (alt_stack_mem_) {
+				stack_t ss={};
+				ss.ss_flags=SS_DISABLE;
+				sigaltstack(&ss,nullptr);
+				free(alt_stack_mem_);
+				alt_stack_mem_=nullptr;
+				}
+		#elif _STDEX_WINDOWS_PLATFORM
+			if (prev_filter_) {
+				SetUnhandledExceptionFilter(prev_filter_);
+				prev_filter_=nullptr;
+			}
+		#endif
+	}
+
+	exception_infos get_last_exception() {
+		#if _STDEX_WINDOWS_PLATFORM
+			if (!last_exception_valid_) return exception_infos{};
+			return last_exception_;
+		#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
+			if (!last_exception_valid_ || last_signal_==0) return exception_infos{};
+			exception_infos info=collect_posix_info(last_signal_,&last_siginfo_,&last_ucontext_storage_);
+			info.timestamp=make_timestamp();
+			info.process_id=static_cast<uint32_t>(getpid());
+			#if _STDEX_APPLE_PLATFORM
+				uint64_t tid=0;
+				pthread_threadid_np(nullptr,&tid);
+				info.thread_id=static_cast<uint32_t>(tid);
+			#elif _STDEX_ANDROID_PLATFORM
+				info.thread_id=static_cast<uint32_t>(gettid());
+			#elif _STDEX_LINUX_PLATFORM
+				info.thread_id=static_cast<uint32_t>(syscall(SYS_gettid));
+			#endif
+			if (features_.contains(SF_TRACE)) collect_stack_trace(info);
+			if (features_.contains(SF_MODULES)) collect_modules(info);
+			return info;
+		#else
+			return exception_infos{};
+		#endif
+	}
+	void clear_last_exception() noexcept {
+		last_exception_valid_=0;
+		#if _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
+			last_signal_=0;
 		#endif
 	}
 };
@@ -1129,10 +1449,21 @@ public:
 	inline EXCEPTION_POINTERS* exception_handler::current_exception_=nullptr;
 #elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
 	inline void* exception_handler::current_ucontext_=nullptr;
+	inline volatile sig_atomic_t exception_handler::last_signal_=0;
+	inline siginfo_t exception_handler::last_siginfo_={};
+	inline ucontext_t exception_handler::last_ucontext_storage_={};
 #endif
 
 }
 
 }
+
+#if _STDEX_WINDOWS_PLATFORM
+	#define STDEX_SEH_SET_RECOVERY_POINT() (stdex::machine::exception_handler::instance().recovery_point_valid=0,setjmp(stdex::machine::exception_handler::instance().recovery_point)==0?(stdex::machine::exception_handler::instance().recovery_point_valid=1,false):(stdex::machine::exception_handler::instance().recovery_point_valid=0,true))
+#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
+	#define STDEX_SEH_SET_RECOVERY_POINT() (stdex::machine::exception_handler::instance().recovery_point_valid=0,sigsetjmp(stdex::machine::exception_handler::instance().recovery_point,1)==0?(stdex::machine::exception_handler::instance().recovery_point_valid=1,false):(stdex::machine::exception_handler::instance().recovery_point_valid=0,true))
+#else
+	#define STDEX_SEH_SET_RECOVERY_POINT() (false)
+#endif
 
 #endif
