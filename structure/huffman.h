@@ -356,7 +356,8 @@ public:
 		return lengths;
 	}
 
-	static std::vector<std::size_t> get_fast_lengths(std::size_t n,std::size_t max_depth) {
+	static std::vector<std::size_t> get_fast_lengths(const std::vector<_Freq>& frequencies,std::size_t max_depth) {
+		std::size_t n=frequencies.size();
 		if (n==0) return {};
 		if (n==1) return {1};
 		if (max_depth==0) throw std::invalid_argument("Max_depth cannot be negative than 1");
@@ -388,7 +389,7 @@ public:
 			return cmp(frequencies[lhs],frequencies[rhs]);
 		});
 		std::vector<std::size_t> result(n);
-		for (std::size_t i=0;i<n;i++) result[order[i]]=lengths_sorted[i];
+		for (std::size_t i=0;i<n;i++) result[order[i]]=length_sorted[i];
 		return result;
 	}
 
