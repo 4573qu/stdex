@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/29
-//@Version 2.1.0.1
+//Last Modified At 2026/06/01
+//@Version 2.2.0.0
 #ifndef _STDEX_MACHINE_SEHCATCHER_H_
 #define _STDEX_MACHINE_SEHCATCHER_H_ 1
 
@@ -21,6 +21,39 @@
 #include <vector>
 
 #include "../bitwise/flags.h"//At Least 1.1
+
+#if __has_include("../macros/cpp_abi.h")
+#include "../macros/cpp_abi.h"//At Least 1.0
+#endif
+
+#ifndef _STDEX_ABI_ARM64
+#if defined(__aarch64__)
+#define _STDEX_ABI_ARM64 1
+#else
+#define _STDEX_ABI_ARM64 0
+#endif
+#endif
+#ifndef _STDEX_ABI_ARMEABI
+#if defined(__arm__)
+#define _STDEX_ABI_ARMEABI 1
+#else
+#define _STDEX_ABI_ARMEABI 0
+#endif
+#endif
+#ifndef _STDEX_ABI_X86_64
+#if defined(__x86_64__)
+#define _STDEX_ABI_X86_64 1
+#else
+#define _STDEX_ABI_X86_64 0
+#endif
+#endif
+#ifndef _STDEX_ABI_X86
+#if defined(__i386__)
+#define _STDEX_ABI_X86 1
+#else
+#define _STDEX_ABI_X86 0
+#endif
+#endif
 
 #if __has_include("../macros/cpp_platform.h")
 #include "../macros/cpp_platform.h"//At Least 1.0
@@ -262,6 +295,10 @@ private:
 		static volatile sig_atomic_t last_signal_;
 		static siginfo_t last_siginfo_;
 		static ucontext_t last_ucontext_storage_;
+
+		static void* captured_pcs_[64];
+		static volatile sig_atomic_t captured_pc_count_;
+		static int probe_pipe_[2];
 	#endif
 
 	static std::string make_timestamp() {
@@ -451,6 +488,53 @@ private:
 				info.stack_trace.push_back(std::move(sf));
 			}
 		}
+
+		static bool seh_addr_readable(const void* p,std::size_t n) {
+			if (probe_pipe_[1]<0) return false;
+			ssize_t r=write(probe_pipe_[1],p,n);
+			if (r<0) return false;
+			char buf[64];
+			while (r>0) {
+				ssize_t k=read(probe_pipe_[0],buf,sizeof(buf));
+				if (k<=0) break;
+				r-=k;
+			}
+			return true;
+		}
+		static std::size_t seh_fp_walk(uintptr_t pc,uintptr_t lr,uintptr_t fp,void** out,std::size_t max) {
+			std::size_t n=0;
+			if (pc && n<max) out[n++]=reinterpret_cast<void*>(pc);
+			if (lr && lr!=pc && n<max) out[n++]=reinterpret_cast<void*>(lr);
+			uintptr_t cur=fp; int guard=0;
+			while (cur && n<max && guard++<256) {
+				if (cur & (sizeof(uintptr_t)-1)) break;
+				if (!seh_addr_readable(reinterpret_cast<const void*>(cur),2*sizeof(uintptr_t))) break;
+				uintptr_t next=*reinterpret_cast<uintptr_t*>(cur);
+				uintptr_t ret =*reinterpret_cast<uintptr_t*>(cur+sizeof(uintptr_t));
+				if (!ret) break;
+				if (ret!=lr) out[n++]=reinterpret_cast<void*>(ret);
+				if (next<=cur) break;
+				cur=next;
+			}
+			return n;
+		}
+		static std::size_t capture_backtrace_from_ucontext(void* ucontext,void** out,std::size_t max) {
+			if (!ucontext) return 0;
+			ucontext_t* uc=static_cast<ucontext_t*>(ucontext);
+			#if _STDEX_ABI_ARM64
+				return seh_fp_walk(uc->uc_mcontext.pc,uc->uc_mcontext.regs[30],uc->uc_mcontext.regs[29],out,max);
+			#elif _STDEX_ABI_X86_64
+				return seh_fp_walk(static_cast<uintptr_t>(uc->uc_mcontext.gregs[REG_RIP]),0,static_cast<uintptr_t>(uc->uc_mcontext.gregs[REG_RBP]),out,max);
+			#elif _STDEX_ABI_X86
+				return seh_fp_walk(static_cast<uintptr_t>(uc->uc_mcontext.gregs[REG_EIP]),0,static_cast<uintptr_t>(uc->uc_mcontext.gregs[REG_EBP]),out,max);
+			#elif _STDEX_ABI_ARMEABI
+				return seh_fp_walk(uc->uc_mcontext.arm_pc,uc->uc_mcontext.arm_lr,uc->uc_mcontext.arm_fp,out,max);
+			#else
+				(void)out;
+				(void)max;
+				return 0;
+			#endif
+		}
 	#endif
 
 	void collect_modules(exception_infos& info) {
@@ -638,28 +722,28 @@ private:
 		#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
 			if (!current_ucontext_) return false;
 			ucontext_t* uc=static_cast<ucontext_t*>(current_ucontext_);
-			#if defined(__x86_64__)
+			#if _STDEX_ABI_X86_64
 				#if _STDEX_APPLE_PLATFORM
 					uc->uc_mcontext->__ss.__rip+=2;
 				#else
 					uc->uc_mcontext.gregs[REG_RIP]+=2;
 				#endif
 				return true;
-			#elif defined(__i386__)
+			#elif _STDEX_ABI_X86
 				#if _STDEX_APPLE_PLATFORM
 					uc->uc_mcontext->__ss.__eip+=2;
 				#else
 					uc->uc_mcontext.gregs[REG_EIP]+=2;
 				#endif
 				return true;
-			#elif defined(__aarch64__)
+			#elif _STDEX_ABI_ARM64
 				#if _STDEX_APPLE_PLATFORM
 					uc->uc_mcontext->__ss.__pc+=4;
 				#else
 					uc->uc_mcontext.pc+=4;
 				#endif
 				return true;
-			#elif defined(__arm__)
+			#elif _STDEX_ABI_ARMEABI
 				#if _STDEX_APPLE_PLATFORM
 					uc->uc_mcontext->__ss.__pc+=4;
 				#else
@@ -851,7 +935,14 @@ private:
 				if (ucontext) {
 					std::memcpy(&last_ucontext_storage_,ucontext,sizeof(ucontext_t));
 					current_ucontext_=&last_ucontext_storage_;
-				} else current_ucontext_=nullptr;
+					#if _STDEX_ANDROID_PLATFORM
+						captured_pc_count_=static_cast<sig_atomic_t>(capture_backtrace_from_ucontext(&last_ucontext_storage_,captured_pcs_,64));
+					#endif
+				} else {
+					current_ucontext_=nullptr;
+					captured_pc_count_=0;
+				}
+				self.last_exception_valid_=1;
 				if (self.features_.contains(SF_RECOVERY) && self.recovery_point_valid) {
 					self.recovery_point_valid=0;
 					siglongjmp(self.recovery_point,1);
@@ -983,7 +1074,7 @@ private:
 			#endif
 			#if _STDEX_APPLE_PLATFORM
 				ucontext_t* uc=static_cast<ucontext_t*>(ucontext);
-				#if defined(__x86_64__)
+				#if _STDEX_ABI_X86_64
 					auto& r=uc->uc_mcontext->__ss;
 					info.registers={
 						{"RAX",r.__rax},{"RBX",r.__rbx},{"RCX",r.__rcx},{"RDX",r.__rdx},
@@ -993,7 +1084,7 @@ private:
 						{"R12",r.__r12},{"R13",r.__r13},{"R14",r.__r14},{"R15",r.__r15},
 						{"RFLAGS",r.__rflags},{"CS",r.__cs},{"FS",r.__fs},{"GS",r.__gs}
 					};
-				#elif defined(__i386__)
+				#elif _STDEX_ABI_X86
 					auto& r=uc->uc_mcontext->__ss;
 					info.registers={
 						{"EAX",r.__eax},{"EBX",r.__ebx},{"ECX",r.__ecx},{"EDX",r.__edx},
@@ -1002,7 +1093,7 @@ private:
 						{"CS",r.__cs},{"DS",r.__ds},{"ES",r.__es},
 						{"FS",r.__fs},{"GS",r.__gs},{"SS",r.__ss}
 					};
-				#elif defined(__aarch64__)
+				#elif _STDEX_ABI_ARM64
 					auto& r=uc->uc_mcontext->__ss;
 					info.registers={
 						{"X0", r.__x[0]}, {"X1", r.__x[1]}, {"X2", r.__x[2]}, {"X3", r.__x[3]},
@@ -1015,7 +1106,7 @@ private:
 						{"X28",r.__x[28]},{"FP", r.__fp},   {"LR", r.__lr},   {"SP", r.__sp},
 						{"PC", r.__pc},   {"CPSR",r.__cpsr}
 					};
-				#elif defined(__arm__)
+				#elif _STDEX_ABI_ARMEABI
 					auto& r=uc->uc_mcontext->__ss;
 					info.registers={
 						{"R0",r.__r[0]},{"R1",r.__r[1]},{"R2",r.__r[2]},{"R3",r.__r[3]},
@@ -1028,7 +1119,7 @@ private:
 			#elif _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
 				ucontext_t* uc=static_cast<ucontext_t*>(ucontext);
 				mcontext_t& mctx=uc->uc_mcontext;
-				#if defined(__x86_64__)
+				#if _STDEX_ABI_X86_64
 					info.registers={
 						{"RAX",static_cast<uintptr_t>(mctx.gregs[REG_RAX])},
 						{"RBX",static_cast<uintptr_t>(mctx.gregs[REG_RBX])},
@@ -1061,7 +1152,7 @@ private:
 							{"OLDMASK",static_cast<uintptr_t>(mctx.gregs[REG_OLDMASK])}
 						#endif
 					};
-				#elif defined(__i386__)
+				#elif _STDEX_ABI_X86
 					info.registers={
 						{"EAX",static_cast<uintptr_t>(mctx.gregs[REG_EAX])},
 						{"EBX",static_cast<uintptr_t>(mctx.gregs[REG_EBX])},
@@ -1083,7 +1174,7 @@ private:
 						{"GS",static_cast<uintptr_t>(mctx.gregs[REG_GS])},
 						{"UESP",static_cast<uintptr_t>(mctx.gregs[REG_UESP])}
 					};
-				#elif defined(__aarch64__)
+				#elif _STDEX_ABI_ARM64
 					info.registers={
 						{"X0", static_cast<uintptr_t>(mctx.regs[0])},
 						{"X1", static_cast<uintptr_t>(mctx.regs[1])},
@@ -1120,7 +1211,7 @@ private:
 						{"PC", static_cast<uintptr_t>(mctx.pc)},
 						{"PSTATE",static_cast<uintptr_t>(mctx.pstate)}
 					};
-				#elif defined(__arm__)
+				#elif _STDEX_ABI_ARMEABI
 					info.registers={
 						{"R0", static_cast<uintptr_t>(mctx.arm_r0)},
 						{"R1", static_cast<uintptr_t>(mctx.arm_r1)},
@@ -1365,6 +1456,14 @@ public:
 			prev_filter_=SetUnhandledExceptionFilter(seh_filter);
 			return true;
 		#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
+			#if _STDEX_ANDROID_PLATFORM
+				if (pipe(probe_pipe_)==0) {
+					fcntl(probe_pipe_[0],F_SETFL,O_NONBLOCK);
+					fcntl(probe_pipe_[1],F_SETFL,O_NONBLOCK);
+					fcntl(probe_pipe_[0],F_SETFD,FD_CLOEXEC);
+					fcntl(probe_pipe_[1],F_SETFD,FD_CLOEXEC);
+				} else probe_pipe_[0]=probe_pipe_[1]=-1;
+			#endif
 			struct sigaction sa={};
 			sa.sa_sigaction=signal_handler;
 			sa.sa_flags=SA_SIGINFO|SA_ONSTACK;
@@ -1443,6 +1542,15 @@ public:
 			last_signal_=0;
 		#endif
 	}
+
+	#if _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
+		std::size_t get_captured_pcs(void** out,std::size_t max) const {
+			std::size_t n=static_cast<std::size_t>(captured_pc_count_);
+			if (n>max) n=max;
+			for (std::size_t i=0;i<n;i++) out[i]=captured_pcs_[i];
+			return n;
+		}
+	#endif
 };
 
 #if _STDEX_WINDOWS_PLATFORM
@@ -1452,6 +1560,9 @@ public:
 	inline volatile sig_atomic_t exception_handler::last_signal_=0;
 	inline siginfo_t exception_handler::last_siginfo_={};
 	inline ucontext_t exception_handler::last_ucontext_storage_={};
+	inline void* exception_handler::captured_pcs_[64]={};
+	inline volatile sig_atomic_t exception_handler::captured_pc_count_=0;
+	inline int exception_handler::probe_pipe_[2]={-1,-1};
 #endif
 
 }
