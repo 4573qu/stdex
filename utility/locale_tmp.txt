@@ -1,0 +1,717 @@
+// locale.h
+// @Version 1.0.0.0
+// Part of stdex library
+// Placed in stdex::utility namespace
+// Requires C++17 or later
+
+#ifndef _STDEX_UTILITY_LOCALE_H_
+#define _STDEX_UTILITY_LOCALE_H_ 1
+
+#include <string>
+#include <string_view>
+#include <vector>
+#include <optional>
+#include <algorithm>
+#include <stdexcept>
+#include <functional>
+#include <cctype>
+#include <ostream>
+
+namespace stdex {
+namespace utility {
+
+// ─── locale_tag ───────────────────────────────────────────────────────────────
+// BCP 47 (RFC 5646) 语言标签的结构化表示与解析
+// 支持: language[-script][-region][-variant*][-extension*][-privateuse]
+// 不依赖ICU，纯算法实现
+
+class locale_tag {
+private:
+	std::string language_;   // 语言子标签，如 "zh", "en"（小写规范化）
+	std::string script_;     // 文字子标签，如 "Hans", "Latn"（首字母大写）
+	std::string region_;     // 地区子标签，如 "CN", "US"（大写规范化）
+	std::vector<std::string> variants_;    // 变体子标签（小写）
+	std::vector<std::pair<char, std::vector<std::string>>> extensions_; // 扩展 singleton→subtags
+	std::string privateuse_; // 私有子标签 x-...
+	bool valid_=false;
+
+	// ── 内部解析工具 ──────────────────────────────────────────────────────────
+
+	static bool is_alpha(char c) noexcept {
+		return (c>='a' && c<='z') || (c>='A' && c<='Z');
+	}
+	static bool is_digit(char c) noexcept {
+		return c>='0' && c<='9';
+	}
+	static bool is_alnum(char c) noexcept {
+		return is_alpha(c) || is_digit(c);
+	}
+
+	static char to_lower(char c) noexcept {
+		return (c>='A' && c<='Z') ? static_cast<char>(c+32) : c;
+	}
+	static char to_upper(char c) noexcept {
+		return (c>='a' && c<='z') ? static_cast<char>(c-32) : c;
+	}
+
+	static std::string normalize_lower(std::string_view sv) {
+		std::string r(sv);
+		for (char& c : r) c=to_lower(c);
+		return r;
+	}
+
+	static std::string normalize_upper(std::string_view sv) {
+		std::string r(sv);
+		for (char& c : r) c=to_upper(c);
+		return r;
+	}
+
+	// 首字母大写，其余小写（用于script规范化）
+	static std::string normalize_title(std::string_view sv) {
+		std::string r(sv);
+		for (size_t i=0; i<r.size(); ++i) {
+			r[i]=(i==0) ? to_upper(r[i]) : to_lower(r[i]);
+		}
+		return r;
+	}
+
+	// 按'-'分割
+	static std::vector<std::string> split(std::string_view sv) {
+		std::vector<std::string> parts;
+		size_t start=0;
+		for (size_t i=0; i<=sv.size(); ++i) {
+			if (i==sv.size() || sv[i]=='-') {
+				if (i>start) parts.emplace_back(sv.data()+start, i-start);
+				start=i+1;
+			}
+		}
+		return parts;
+	}
+
+	// 解析实现（按BCP 47 RFC 5646规则）
+	bool parse_impl(std::string_view sv) {
+		if (sv.empty()) return false;
+
+		auto parts=split(sv);
+		if (parts.empty()) return false;
+
+		size_t i=0;
+
+		// 1. language: 2-8 alpha, 或 "und"
+		// 特殊：私有 "x"
+		if (parts[0].size()==1 && to_lower(parts[0][0])=='x') {
+			// 私有子标签 x-...
+			privateuse_="x";
+			for (size_t j=1; j<parts.size(); ++j) {
+				privateuse_+='-';
+				privateuse_+=normalize_lower(parts[j]);
+			}
+			language_="";
+			valid_=true;
+			return true;
+		}
+
+		// 普通language: 2-8 alpha
+		const auto& lang=parts[0];
+		if (lang.size()<2 || lang.size()>8) return false;
+		for (char c : lang) { if (!is_alpha(c)) return false; }
+		language_=normalize_lower(lang);
+		i=1;
+
+		// 2. 可选extlang (3 alpha, 最多3个)：简化处理，不作为独立字段
+		// （extlang在现代BCP 47中已基本被取代，直接跳过）
+		size_t extlang_count=0;
+		while (i<parts.size() && parts[i].size()==3
+			&& extlang_count<3
+			&& [&]{ for (char c : parts[i]) if (!is_alpha(c)) return false; return true; }())
+		{
+			// extlang：合并入language（简化处理，不单独存储）
+			++i;
+			++extlang_count;
+			// 实际应用中extlang可忽略（zh-yue等已废弃，直接用yue）
+		}
+
+		// 3. 可选script: 4 alpha
+		if (i<parts.size() && parts[i].size()==4) {
+			bool all_alpha=true;
+			for (char c : parts[i]) { if (!is_alpha(c)) { all_alpha=false; break; } }
+			if (all_alpha) {
+				script_=normalize_title(parts[i]);
+				++i;
+			}
+		}
+
+		// 4. 可选region: 2 alpha 或 3 digit
+		if (i<parts.size()) {
+			const auto& r=parts[i];
+			bool is_region_alpha=(r.size()==2 && is_alpha(r[0]) && is_alpha(r[1]));
+			bool is_region_digit=(r.size()==3 && is_digit(r[0]) && is_digit(r[1]) && is_digit(r[2]));
+			if (is_region_alpha) {
+				region_=normalize_upper(r);
+				++i;
+			} else if (is_region_digit) {
+				region_=std::string(r);
+				++i;
+			}
+		}
+
+		// 5. 可选variants: 5-8 alnum 或 (digit + 3 alnum)
+		while (i<parts.size()) {
+			const auto& v=parts[i];
+			bool is_variant=false;
+			if (v.size()>=5 && v.size()<=8) {
+				is_variant=true;
+				for (char c : v) { if (!is_alnum(c)) { is_variant=false; break; } }
+			} else if (v.size()==4 && is_digit(v[0])) {
+				is_variant=true;
+				for (size_t k=1; k<4; ++k) { if (!is_alnum(v[k])) { is_variant=false; break; } }
+			}
+			if (!is_variant) break;
+			variants_.push_back(normalize_lower(v));
+			++i;
+		}
+
+		// 6. 扩展: singleton (1 alnum, 非'x') + 1+ subtags
+		while (i<parts.size() && parts[i].size()==1) {
+			char singleton=to_lower(parts[i][0]);
+			if (singleton=='x') break; // 私有子标签
+			if (!is_alnum(singleton)) break;
+			++i;
+			std::vector<std::string> ext_subtags;
+			while (i<parts.size() && parts[i].size()>=2 && parts[i].size()<=8) {
+				ext_subtags.push_back(normalize_lower(parts[i]));
+				++i;
+			}
+			if (!ext_subtags.empty()) {
+				extensions_.push_back({singleton, std::move(ext_subtags)});
+			}
+		}
+
+		// 7. 私有子标签: x-...
+		if (i<parts.size() && parts[i].size()==1 && to_lower(parts[i][0])=='x') {
+			privateuse_="x";
+			++i;
+			while (i<parts.size()) {
+				privateuse_+='-';
+				privateuse_+=normalize_lower(parts[i]);
+				++i;
+			}
+		}
+
+		valid_=true;
+		return true;
+	}
+
+	// 私有构造（用于parent/parse内部）
+	locale_tag()=default;
+
+public:
+	// ── 构造 ──────────────────────────────────────────────────────────────────
+
+	// 从BCP 47字符串构造，解析失败则valid_=false
+	explicit locale_tag(std::string_view bcp47) {
+		parse_impl(bcp47);
+	}
+
+	// 静态工厂：解析失败返回nullopt
+	static std::optional<locale_tag> parse(std::string_view bcp47) {
+		locale_tag tag;
+		if (!tag.parse_impl(bcp47)) return std::nullopt;
+		return tag;
+	}
+
+	// 构造 "und"（undetermined，根）
+	static locale_tag undetermined() {
+		locale_tag tag;
+		tag.language_="und";
+		tag.valid_=true;
+		return tag;
+	}
+
+	// 构造已知子标签（直接赋值，不经过字符串解析）
+	static locale_tag from_parts(
+		std::string language,
+		std::string script={},
+		std::string region={},
+		std::vector<std::string> variants={})
+	{
+		locale_tag tag;
+		tag.language_=std::move(language);
+		tag.script_=std::move(script);
+		tag.region_=std::move(region);
+		tag.variants_=std::move(variants);
+		tag.valid_=true;
+		return tag;
+	}
+
+	locale_tag(const locale_tag&)=default;
+	locale_tag& operator=(const locale_tag&)=default;
+	locale_tag(locale_tag&&) noexcept=default;
+	locale_tag& operator=(locale_tag&&) noexcept=default;
+	~locale_tag()=default;
+
+	// ── 有效性 ────────────────────────────────────────────────────────────────
+
+	bool valid() const noexcept { return valid_; }
+	explicit operator bool() const noexcept { return valid_; }
+
+	// ── 属性访问 ──────────────────────────────────────────────────────────────
+
+	std::string_view language() const noexcept { return language_; }
+	std::string_view script() const noexcept { return script_; }
+	std::string_view region() const noexcept { return region_; }
+
+	bool has_script() const noexcept { return !script_.empty(); }
+	bool has_region() const noexcept { return !region_.empty(); }
+	bool has_variants() const noexcept { return !variants_.empty(); }
+	bool has_extensions() const noexcept { return !extensions_.empty(); }
+	bool has_privateuse() const noexcept { return !privateuse_.empty(); }
+
+	const std::vector<std::string>& variants() const noexcept { return variants_; }
+
+	// 获取指定singleton的扩展子标签
+	std::optional<std::vector<std::string>> extension(char singleton) const {
+		singleton=to_lower(singleton);
+		for (const auto& [s, tags] : extensions_) {
+			if (s==singleton) return tags;
+		}
+		return std::nullopt;
+	}
+
+	const std::vector<std::pair<char, std::vector<std::string>>>& extensions() const noexcept {
+		return extensions_;
+	}
+
+	std::string_view privateuse() const noexcept { return privateuse_; }
+
+	// 是否是undetermined根
+	bool is_und() const noexcept {
+		return language_=="und" && script_.empty() && region_.empty()
+			&& variants_.empty() && extensions_.empty();
+	}
+
+	// 是否是私有子标签
+	bool is_private() const noexcept {
+		return language_.empty() && !privateuse_.empty();
+	}
+
+	// ── 序列化 ────────────────────────────────────────────────────────────────
+
+	std::string str() const {
+		if (!valid_) return {};
+		if (is_private()) return privateuse_;
+
+		std::string result=language_;
+		if (!script_.empty()) { result+='-'; result+=script_; }
+		if (!region_.empty()) { result+='-'; result+=region_; }
+		for (const auto& v : variants_) { result+='-'; result+=v; }
+		for (const auto& [s, tags] : extensions_) {
+			result+='-';
+			result+=s;
+			for (const auto& t : tags) { result+='-'; result+=t; }
+		}
+		if (!privateuse_.empty()) { result+='-'; result+=privateuse_; }
+		return result;
+	}
+
+	// ── 继承链 ────────────────────────────────────────────────────────────────
+
+	// 按BCP 47规则剥离最后一个subtag，返回父locale
+	// 顺序：variant → region → script → language("und")
+	std::optional<locale_tag> parent() const {
+		if (!valid_) return std::nullopt;
+		if (is_und()) return std::nullopt; // 根无父
+
+		locale_tag p(*this);
+
+		// 1. 剥离私有子标签中最后一段
+		if (!p.privateuse_.empty()) {
+			// 找最后一个'-'
+			auto pos=p.privateuse_.rfind('-');
+			if (pos!=std::string::npos && p.privateuse_.substr(0, pos)!="x") {
+				p.privateuse_=p.privateuse_.substr(0, pos);
+				return p;
+			} else {
+				p.privateuse_="";
+				return p;
+			}
+		}
+
+		// 2. 剥离最后一个扩展的最后一个subtag，若扩展空则移除整个扩展
+		if (!p.extensions_.empty()) {
+			auto& last_ext=p.extensions_.back();
+			if (last_ext.second.size()>1) {
+				last_ext.second.pop_back();
+			} else {
+				p.extensions_.pop_back();
+			}
+			return p;
+		}
+
+		// 3. 剥离最后一个variant
+		if (!p.variants_.empty()) {
+			p.variants_.pop_back();
+			return p;
+		}
+
+		// 4. 剥离region
+		if (!p.region_.empty()) {
+			p.region_="";
+			return p;
+		}
+
+		// 5. 剥离script
+		if (!p.script_.empty()) {
+			p.script_="";
+			return p;
+		}
+
+		// 6. language → und
+		if (p.language_!="und") {
+			p.language_="und";
+			return p;
+		}
+
+		return std::nullopt;
+	}
+
+	// 返回从直接父到und的完整继承链（不含自身）
+	std::vector<locale_tag> ancestors() const {
+		std::vector<locale_tag> result;
+		auto current=parent();
+		while (current) {
+			result.push_back(*current);
+			current=current->parent();
+		}
+		return result;
+	}
+
+	// 返回包含自身的完整继承链（自身到und）
+	std::vector<locale_tag> inheritance_chain() const {
+		std::vector<locale_tag> result;
+		result.push_back(*this);
+		auto chain=ancestors();
+		for (auto& a : chain) result.push_back(std::move(a));
+		return result;
+	}
+
+	// ── 匹配与比较 ────────────────────────────────────────────────────────────
+
+	// 精确相等（规范化后比较）
+	bool operator==(const locale_tag& other) const noexcept {
+		return language_==other.language_
+			&& script_==other.script_
+			&& region_==other.region_
+			&& variants_==other.variants_;
+		// 扩展和私有子标签不参与基本相等比较
+	}
+
+	bool operator!=(const locale_tag& other) const noexcept {
+		return !(*this==other);
+	}
+
+	bool operator<(const locale_tag& other) const noexcept {
+		return str()<other.str();
+	}
+
+#ifdef __cpp_lib_three_way_comparison
+	auto operator<=>(const locale_tag& other) const noexcept {
+		return str()<=>other.str();
+	}
+#endif
+
+	// 宽松匹配：this是other的前缀祖先（this匹配other或other的某个祖先）
+	// 例：locale_tag("zh").matches(locale_tag("zh-Hans-CN")) == true
+	bool matches(const locale_tag& more_specific) const {
+		if (*this==more_specific) return true;
+		auto chain=more_specific.ancestors();
+		for (const auto& a : chain) {
+			if (*this==a) return true;
+		}
+		return false;
+	}
+
+	// 在继承链上的距离（this是other的第几代祖先，-1表示无关）
+	int distance(const locale_tag& descendant) const {
+		if (*this==descendant) return 0;
+		auto chain=descendant.ancestors();
+		for (size_t i=0; i<chain.size(); ++i) {
+			if (*this==chain[i]) return static_cast<int>(i)+1;
+		}
+		return -1;
+	}
+
+	// 是否完全包含（所有字段均匹配，包含扩展）
+	bool equals_full(const locale_tag& other) const noexcept {
+		return language_==other.language_
+			&& script_==other.script_
+			&& region_==other.region_
+			&& variants_==other.variants_
+			&& extensions_==other.extensions_
+			&& privateuse_==other.privateuse_;
+	}
+
+	// ── 规范化与变换 ──────────────────────────────────────────────────────────
+
+	// 去除variants/extensions/privateuse，只保留language-script-region
+	locale_tag base() const {
+		locale_tag b;
+		b.language_=language_;
+		b.script_=script_;
+		b.region_=region_;
+		b.valid_=valid_;
+		return b;
+	}
+
+	// 去除region，保留language-script
+	locale_tag without_region() const {
+		locale_tag b(*this);
+		b.region_="";
+		return b;
+	}
+
+	// 去除script，保留language-region
+	locale_tag without_script() const {
+		locale_tag b(*this);
+		b.script_="";
+		return b;
+	}
+
+	// 添加region（覆盖现有）
+	locale_tag with_region(std::string_view region) const {
+		locale_tag b(*this);
+		b.region_=normalize_upper(region);
+		return b;
+	}
+
+	// 添加script（覆盖现有）
+	locale_tag with_script(std::string_view script) const {
+		locale_tag b(*this);
+		b.script_=normalize_title(script);
+		return b;
+	}
+
+	// ── 流输出 ────────────────────────────────────────────────────────────────
+
+	friend std::ostream& operator<<(std::ostream& os, const locale_tag& tag) {
+		return os << tag.str();
+	}
+};
+
+// ─── locale_negotiator ────────────────────────────────────────────────────────
+
+enum class negotiation_strategy {
+	lookup,   // RFC 4647 §3.4: 依次剥离subtag，找第一个匹配
+	filtering // RFC 4647 §3.3: 返回所有匹配
+};
+
+class locale_negotiator {
+private:
+	std::vector<locale_tag> available_;
+	negotiation_strategy strategy_=negotiation_strategy::lookup;
+
+	// lookup算法核心：对单个请求tag，在available_中找最佳匹配
+	std::optional<locale_tag> lookup_single(const locale_tag& requested) const {
+		auto chain=requested.inheritance_chain();
+		for (const auto& candidate : chain) {
+			for (const auto& avail : available_) {
+				if (avail==candidate) return avail;
+			}
+		}
+		return std::nullopt;
+	}
+
+	// filtering算法核心：返回所有与requested相容的available locale
+	std::vector<locale_tag> filter_single(const locale_tag& requested) const {
+		std::vector<locale_tag> result;
+		for (const auto& avail : available_) {
+			// available locale的继承链中包含requested，则avail是requested的后代（或相等）
+			if (requested.matches(avail) || avail==requested) {
+				result.push_back(avail);
+			}
+		}
+		return result;
+	}
+
+public:
+	locale_negotiator()=default;
+
+	explicit locale_negotiator(std::vector<locale_tag> available)
+		: available_(std::move(available)) {}
+
+	locale_negotiator(
+		std::initializer_list<locale_tag> available)
+	{
+		for (const auto& t : available) available_.push_back(t);
+	}
+
+	locale_negotiator(const locale_negotiator&)=default;
+	locale_negotiator& operator=(const locale_negotiator&)=default;
+	locale_negotiator(locale_negotiator&&) noexcept=default;
+	locale_negotiator& operator=(locale_negotiator&&) noexcept=default;
+	~locale_negotiator()=default;
+
+	// ── 可用语言管理 ─────────────────────────────────────────────────────────
+
+	void add_available(const locale_tag& tag) {
+		available_.push_back(tag);
+	}
+
+	void add_available(locale_tag&& tag) {
+		available_.push_back(std::move(tag));
+	}
+
+	void add_available(std::initializer_list<locale_tag> tags) {
+		for (const auto& t : tags) available_.push_back(t);
+	}
+
+	template<typename _InputIt>
+	void add_available(_InputIt first, _InputIt last) {
+		for (auto it=first; it!=last; ++it) available_.push_back(*it);
+	}
+
+	void remove_available(const locale_tag& tag) {
+		available_.erase(
+			std::remove_if(available_.begin(), available_.end(),
+				[&tag](const locale_tag& t){ return t==tag; }),
+			available_.end());
+	}
+
+	void clear_available() {
+		available_.clear();
+	}
+
+	const std::vector<locale_tag>& available() const noexcept {
+		return available_;
+	}
+
+	bool is_available(const locale_tag& tag) const {
+		return std::any_of(available_.begin(), available_.end(),
+			[&tag](const locale_tag& t){ return t==tag; });
+	}
+
+	size_t available_count() const noexcept { return available_.size(); }
+	bool empty() const noexcept { return available_.empty(); }
+
+	// ── 策略 ─────────────────────────────────────────────────────────────────
+
+	void set_strategy(negotiation_strategy s) noexcept { strategy_=s; }
+	negotiation_strategy strategy() const noexcept { return strategy_; }
+
+	// ── 协商 ─────────────────────────────────────────────────────────────────
+
+	// 单一请求协商：返回最佳匹配
+	std::optional<locale_tag> negotiate(const locale_tag& requested) const {
+		return lookup_single(requested);
+	}
+
+	// 优先级列表协商（对应HTTP Accept-Language）：
+	// 依次对每个请求tag执行lookup，返回第一个成功的结果
+	std::optional<locale_tag> negotiate(
+		const std::vector<locale_tag>& requested_list) const
+	{
+		for (const auto& req : requested_list) {
+			auto result=lookup_single(req);
+			if (result) return result;
+		}
+		return std::nullopt;
+	}
+
+	std::optional<locale_tag> negotiate(
+		std::initializer_list<locale_tag> requested_list) const
+	{
+		for (const auto& req : requested_list) {
+			auto result=lookup_single(req);
+			if (result) return result;
+		}
+		return std::nullopt;
+	}
+
+	// 返回所有匹配（按available_顺序）
+	std::vector<locale_tag> negotiate_all(const locale_tag& requested) const {
+		if (strategy_==negotiation_strategy::filtering) {
+			return filter_single(requested);
+		}
+		// lookup模式下：对继承链上每个candidate，收集所有精确匹配的available
+		std::vector<locale_tag> result;
+		auto chain=requested.inheritance_chain();
+		for (const auto& candidate : chain) {
+			for (const auto& avail : available_) {
+				if (avail==candidate) {
+					result.push_back(avail);
+				}
+			}
+		}
+		return result;
+	}
+
+	std::vector<locale_tag> negotiate_all(
+		const std::vector<locale_tag>& requested_list) const
+	{
+		std::vector<locale_tag> result;
+		for (const auto& req : requested_list) {
+			auto partial=negotiate_all(req);
+			for (auto& t : partial) {
+				// 去重
+				bool dup=std::any_of(result.begin(), result.end(),
+					[&t](const locale_tag& r){ return r==t; });
+				if (!dup) result.push_back(std::move(t));
+			}
+		}
+		return result;
+	}
+
+	// 带fallback的协商：找不到时返回fallback
+	locale_tag negotiate_or(
+		const locale_tag& requested,
+		const locale_tag& fallback) const
+	{
+		auto result=negotiate(requested);
+		return result ? *result : fallback;
+	}
+
+	locale_tag negotiate_or(
+		const std::vector<locale_tag>& requested_list,
+		const locale_tag& fallback) const
+	{
+		auto result=negotiate(requested_list);
+		return result ? *result : fallback;
+	}
+
+	// 排序可用列表：按与requested的匹配度排序（最接近的在前）
+	std::vector<locale_tag> rank_available(const locale_tag& requested) const {
+		std::vector<std::pair<int, locale_tag>> scored;
+		scored.reserve(available_.size());
+		for (const auto& avail : available_) {
+			int dist=avail.distance(requested);
+			if (dist<0) {
+				// avail不是requested的祖先，检查反向
+				dist=requested.distance(avail);
+				if (dist>=0) dist+=1000; // 降权
+				else dist=99999; // 无关
+			}
+			scored.push_back({dist, avail});
+		}
+		std::stable_sort(scored.begin(), scored.end(),
+			[](const auto& a, const auto& b){ return a.first<b.first; });
+		std::vector<locale_tag> result;
+		result.reserve(scored.size());
+		for (auto& [d, t] : scored) result.push_back(std::move(t));
+		return result;
+	}
+};
+
+} // namespace utility
+} // namespace stdex
+
+// ─── std::hash 特化 ───────────────────────────────────────────────────────────
+namespace std {
+template<>
+struct hash<stdex::utility::locale_tag> {
+	size_t operator()(const stdex::utility::locale_tag& tag) const noexcept {
+		return std::hash<std::string>{}(tag.str());
+	}
+};
+} // namespace std
+
+#endif // _STDEX_UTILITY_LOCALE_H_

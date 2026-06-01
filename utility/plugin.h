@@ -1,5 +1,5 @@
-//Last Modified At 2025/11/26
-//@Version 1.0.0.0
+//Last Modified At 2026/06/01
+//@Version 1.0.2.0
 #ifndef _STDEX_UTILITY_PLUGIN_H_
 #define _STDEX_UTILITY_PLUGIN_H_ 1
 
@@ -18,7 +18,63 @@
 #include <vector>
 
 #include "version.h"//At Least 1.0
+
+#if __has_include("../macros/cpp_platform.h")
 #include "../macros/cpp_platform.h"//At Least 1.0
+#endif
+
+#ifndef _STDEX_WINDOWS_PLATFORM
+#if defined(_WIN32)
+#define _STDEX_WINDOWS_PLATFORM 1
+#else
+#define _STDEX_WINDOWS_PLATFORM 0
+#endif
+#endif
+#ifndef _STDEX_LINUX_PLATFORM
+#if defined(__linux__)
+#define _STDEX_LINUX_PLATFORM 1
+#else
+#define _STDEX_LINUX_PLATFORM 0
+#endif
+#endif
+#ifndef _STDEX_ANDROID_PLATFORM
+#if defined(__ANDROID__)
+#define _STDEX_ANDROID_PLATFORM 1
+#else
+#define _STDEX_ANDROID_PLATFORM 0
+#endif
+#endif
+#ifndef _STDEX_APPLE_PLATFORM
+#if defined(__APPLE__)
+#define _STDEX_APPLE_PLATFORM 1
+#else
+#define _STDEX_APPLE_PLATFORM 0
+#endif
+#endif
+#ifndef _STDEX_IOS_PLATFORM
+#if _STDEX_APPLE_PLATFORM
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#define _STDEX_IOS_PLATFORM 1
+#else
+#define _STDEX_IOS_PLATFORM 0
+#endif
+#else
+#define _STDEX_IOS_PLATFORM 0
+#endif
+#endif
+#ifndef _STDEX_MACOS_PLATFORM
+#if _STDEX_APPLE_PLATFORM
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
+#define _STDEX_MACOS_PLATFORM 1
+#else
+#define _STDEX_MACOS_PLATFORM 0
+#endif
+#else
+#define _STDEX_MACOS_PLATFORM 0
+#endif
+#endif
 
 #if _STDEX_IOS_PLATFORM
 #define _STDEX_PLUGIN_DYNAMIC_ENABLED 0
@@ -39,20 +95,6 @@ namespace stdex {
 namespace utility {
 
 namespace plugin {
-
-class plugin_error : public std::runtime_error {
-public:
-	explicit plugin_error(const std::string& what_arg) : std::runtime_error(what_arg) { }
-};
-
-struct plugin_info {
-	std::string id_;
-	std::string name_;
-	version ver_;
-	std::string author_;
-	std::string description_;
-	std::vector<std::string> required_plugins_;
-};
 
 class plugin_context;
 
@@ -164,12 +206,12 @@ public:
 		unload();
 #if _STDEX_WINDOWS_PLATFORM
 		handle_=reinterpret_cast<void*>(::LoadLibraryA(path.c_str()));
-		if (!handle_) throw plugin_error("Failed to load module: "+path);
+		if (!handle_) throw runtime_error("Failed to load module: "+path);
 #else
 		handle_=::dlopen(path.c_str(),RTLD_NOW);
 		if (!handle_) {
 			const char* err=::dlerror();
-			throw plugin_error(std::string("Failed to load module: ")+path+" : "+(err?err:""));
+			throw runtime_error(std::string("Failed to load module: ")+path+" : "+(err?err:""));
 		}
 #endif
 	}
@@ -186,11 +228,11 @@ public:
 	_Func get_symbol(const std::string& name) {
 #if _STDEX_WINDOWS_PLATFORM
 		auto sym=::GetProcAddress(reinterpret_cast<HMODULE>(handle_),name.c_str());
-		if (!sym) throw plugin_error("Symbol not found: "+name);
+		if (!sym) throw runtime_error("Symbol not found: "+name);
 		return reinterpret_cast<_Func>(sym);
 #else
 		auto sym=::dlsym(handle_,name.c_str());
-		if (!sym) throw plugin_error("Symbol not found: "+name);
+		if (!sym) throw runtime_error("Symbol not found: "+name);
 		return reinterpret_cast<_Func>(sym);
 #endif
 	}
@@ -231,14 +273,14 @@ public:
 	plugin_instance(std::string path,std::string create_symbol=default_create_symbol_name,std::string destroy_symbol=default_destroy_symbol_name) : kind_(KD_DYNAMIC) , lib_(std::move(path)) , create_symbol_name_(std::move(create_symbol)) , destroy_symbol_name_(std::move(destroy_symbol)) {
 		load_symbols();
 		plugin_ptr_=create_();
-		if (!plugin_ptr_) throw plugin_error("create_plugin returned null for dynamic module");
+		if (!plugin_ptr_) throw runtime_error("Create_plugin returned null for dynamic module");
 	}
 #endif
 	explicit plugin_instance(static_factory factory) : kind_(KD_STATIC) , static_factory_(std::move(factory)) {
-		if (!static_factory_) throw plugin_error("static plugin factory is null");
+		if (!static_factory_) throw runtime_error("Static plugin factory is null");
 		static_storage_=static_factory_();
 		plugin_ptr_=static_storage_.get();
-		if (!plugin_ptr_) throw plugin_error("static plugin factory returned null");
+		if (!plugin_ptr_) throw runtime_error("Static plugin factory returned null");
 	}
 	~plugin_instance() {
 #if _STDEX_PLUGIN_DYNAMIC_ENABLED
@@ -298,9 +340,9 @@ class plugin_manager {
 	std::string add_instance(plugin_instance inst) {
 		plugin& p=inst.get();
 		const plugin_info& info=p.info();
-		if (plugins_.count(info.id_)!=0) throw plugin_error("Plugin with id already loaded: "+info.id_);
+		if (plugins_.count(info.id_)!=0) throw runtime_error("Plugin with id already loaded: "+info.id_);
 		for (const auto& it:info.required_plugins_) {
-			if (plugins_.count(it)==0) throw plugin_error("Missing required plugin: "+it+" for plugin "+info.id_);
+			if (plugins_.count(it)==0) throw runtime_error("Missing required plugin: "+it+" for plugin "+info.id_);
 		}
 		auto id=info.id_;
 		plugins_.emplace(id,std::move(inst));
