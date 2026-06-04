@@ -1,10 +1,9 @@
-//Last Modified At 2026/01/08
-//@Version 1.0.0.0
+//Last Modified At 2026/06/02
+//@Version 1.1.0.0
 #ifndef _STDEX_VISION_EASING_H_
 #define _STDEX_VISION_EASING_H_ 1
 
-#include <cmath>
-#include <stdexcept>
+#include <type_traits>
 
 #include "../math/geometry/primitives.h"//At Least 1.0
 
@@ -57,35 +56,37 @@ enum easing_inflection {
 	EI_UNKNOWN,
 };
 
-template <typename _Tp>
+template <typename _Tp=double>
 class easing {
+	static_assert(!std::is_integral<_Tp>::value,"_Tp cannot be an integral type for get(value) use _Tp as the type of parameter.");
+
 public:
-	easing_type type_;
+	easing_type type;
 	union {
 		struct {
-			_Tp base_;
-			_Tp exponent_;
-		} exp_;
+			_Tp base;
+			_Tp exponent;
+		} exp;
 		struct {
-			_Tp amplitude_;
-			_Tp period_;
-			_Tp damping_;
-		} elastic_;
+			_Tp amplitude;
+			_Tp period;
+			_Tp damping;
+		} elastic;
 		struct {
-			_Tp scale_;
-			_Tp offset_;
-		} back_;
+			_Tp scale;
+			_Tp offset;
+		} back;
 		struct {
-			_Tp value_;
-		} constant_;
+			_Tp value;
+		} constant;
 		struct {
-			_Tp base_;
-		} logarithm_;
+			_Tp base;
+		} logarithm;
 		struct {
-			math::curve<_Tp,2>* beizer_;
-			_Tp precision_;
-		} custom_;
-	} parameter_;
+			math::curve<_Tp,2>* beizer;
+			_Tp precision;
+		} custom;
+	} parameter;
 
 private:
 	_Tp progress(_Tp time);
