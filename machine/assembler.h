@@ -1,5 +1,5 @@
-//Last Modified At 2025/10/30
-//@Version 1.0.0.0
+//Last Modified At 2026/06/11
+//@Version 1.1.0.0
 #ifndef _STDEX_MACHINE_ASSEMBLER_H_
 #define _STDEX_MACHINE_ASSEMBLER_H_ 1
 
@@ -12,9 +12,9 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../syntax/parser.h"//At Least 3.4
 #include "general.h"//At Least 1.0.0.1
 #include "intel.h"//At Least 1.0.0.0
-#include "../syntax/parser.h"//At Least 3.1
 
 namespace stdex {
 
@@ -24,9 +24,9 @@ namespace assembler {
 
 class assembler {
 public:
-	machine_bits machine_bits_;
-	machine_bits program_bits_;
-	bool is_little_endian_;
+	machine_bits mach_bits;
+	machine_bits prog_bits;
+	bool is_le;
 };
 
 class intel_assembler : public assembler {
@@ -36,8 +36,8 @@ class intel_assembler : public assembler {
 	using CT=intel::code_type;
 	static inline std::vector<CT> digits_={CT::CT_ADD,CT::CT_OR,CT::CT_ADC,CT::CT_SBB,CT::CT_AND,CT::CT_SUB,CT::CT_XOR,CT::CT_CMP};
 public:
-	std::vector<BYTE> bytes_;
-	std::vector<intel::instruction> instructions_;
+	std::vector<BYTE> bytes;
+	std::vector<intel::instruction> instructions;
 	enum cpu_type {
 		CT_MACHINE_X86_16,
 		CT_MACHINE_X86_32_16,
@@ -45,10 +45,10 @@ public:
 		CT_MACHINE_X86_64,
 	};
 	cpu_type get_cpu_type() const {
-		switch (machine_bits_) {
+		switch (mach_bits) {
 			case MB_16: return CT_MACHINE_X86_16;
-			case MB_64: return (program_bits_==MB_16)?CT_MACHINE_X86_32_16:CT_MACHINE_X86_64;
-			default: return (program_bits_==MB_16)?CT_MACHINE_X86_32_16:CT_MACHINE_X86_32;
+			case MB_64: return (prog_bits==MB_16)?CT_MACHINE_X86_32_16:CT_MACHINE_X86_64;
+			default: return (prog_bits==MB_16)?CT_MACHINE_X86_32_16:CT_MACHINE_X86_32;
 		}
 		return CT_MACHINE_X86_32;
 	}
@@ -84,15 +84,15 @@ private:
 		}
 		std::vector<BYTE>& get_bytes() {
 			if (!assembler_) throw std::runtime_error("Assembler is invalid while getting bytes");
-			return assembler_->bytes_;
+			return assembler_->bytes;
 		}
 		void new_instruction(intel::code_type code) {
 			if (!assembler_) return;
-			assembler_->instructions_.emplace_back();
-			instruction_=&assembler_->instructions_.back();
+			assembler_->instructions.emplace_back();
+			instruction_=&assembler_->instructions.back();
 			instruction_->code_=code;
 			instruction_->offset_=current_id_-current_length_-1-has_66_prefix_-has_67_prefix_;
-			instruction_->bits_=assembler_->program_bits_;
+			instruction_->bits_=assembler_->prog_bits;
 		}
 		void try_set_id(intptr_t& id,int length,std::string message) {
 			if (id<0) id=current_id_+id+1;
@@ -473,16 +473,16 @@ private:
 				if (assembler_) {
 					if (old_instruction!=instruction_) {
 						bool erase=false;
-						/*for (auto it=assembler_->instructions_.begin();it!=assembler_->instructions_.end();) {
+						/*for (auto it=assembler_->instructions.begin();it!=assembler_->instructions.end();) {
 							if (old_instruction==&*it) {
 								erase=true;
 								it++;
-							} else if (erase) it=assembler_->instructions_.erase(it);
+							} else if (erase) it=assembler_->instructions.erase(it);
 							else it++;
 						}*/
-						assembler_->instructions_.pop_back();
+						assembler_->instructions.pop_back();
 					}
-					intptr_t final_index=assembler_->bytes_.size();
+					intptr_t final_index=assembler_->bytes.size();
 					intptr_t current_index=current_id_-1-reduction_num-has_66_prefix_-has_67_prefix_;
 					for (intptr_t i=current_index;i<final_index;i++) {
 						new_instruction(CT::CT_ERROR);
@@ -503,7 +503,7 @@ private:
 			if (word==TT::TT_EOF) {
 				if (assembler_) {
 					uintptr_t start=std::max((intptr_t)0,(intptr_t)(id-1-code_amount_));
-					for (intptr_t i=0;i<(intptr_t)(assembler_->bytes_.size()-id+1+code_amount_);i++) {
+					for (intptr_t i=0;i<(intptr_t)(assembler_->bytes.size()-id+1+code_amount_);i++) {
 						new_instruction(CT::CT_ERROR);
 						if (check_instruction(false)) instruction_->offset_=i+start;
 					}
@@ -853,8 +853,8 @@ private:
 		static std::once_flag parser_flag;
 		std::call_once(parser_flag,[&](){
 			code_parser_.generate_parser();
-			code_parser_.listeners_.push_back(&listener_);
-			listener_.enabled_=true;
+			code_parser_.listeners.push_back(&listener_);
+			listener_.enabled=true;
 		});
 		return code_parser_;
 	}
@@ -893,14 +893,14 @@ private:
 				LT::LT_BOUND62_SENTENCE,
 				LT::LT_ARPL63_SENTENCE,
 			};
-			for (std::vector<syntax::parser_unit<TT,LT>>::iterator it=code_parser64_.units_.begin();it!=code_parser64_.units_.end();) {
-				if (std::find(units32ignored.begin(),units32ignored.end(),it->id_)!=units32ignored.end()) it=code_parser64_.units_.erase(it);
+			for (std::vector<syntax::parser_unit<TT,LT>>::iterator it=code_parser64_.units.begin();it!=code_parser64_.units.end();) {
+				if (std::find(units32ignored.begin(),units32ignored.end(),it->id)!=units32ignored.end()) it=code_parser64_.units.erase(it);
 				else it++;
 			}
-			code_parser64_.units_.insert(code_parser64_.units_.end(),units64.begin(),units64.end());
+			code_parser64_.units.insert(code_parser64_.units.end(),units64.begin(),units64.end());
 			code_parser64_.generate_parser();
-			code_parser64_.listeners_.push_back(&listener_);
-			listener_.enabled_=true;
+			code_parser64_.listeners.push_back(&listener_);
+			listener_.enabled=true;
 		});
 		return code_parser64_;
 	};
@@ -908,9 +908,9 @@ private:
 public:
 	void initialize(machine_bits bits,machine_bits program_bits) {
 		assert(program_bits<=bits && "program bits cannot be greater than machine bits.");
-		machine_bits_=bits;
-		program_bits_=program_bits;
-		switch (machine_bits_) {
+		mach_bits=bits;
+		prog_bits=program_bits;
+		switch (mach_bits) {
 			case MB_32: {
 				get_parser();
 				break;
@@ -924,20 +924,20 @@ public:
 	std::vector<intel::instruction> parse() {
 		//while catch error
 		std::vector<syntax::parser<TT,LT>::parse_node> lines;
-		for (auto& it:bytes_) lines.push_back(syntax::parser<TT,LT>::parse_node({(TT)it,{}}));
+		for (auto& it:bytes) lines.push_back(syntax::parser<TT,LT>::parse_node({(TT)it,{}}));
 		lines.push_back(syntax::parser<TT,LT>::parse_node({TT::TT_EOF,{}}));
-		switch (machine_bits_) {
+		switch (mach_bits) {
 			case MB_32: {
-				instructions_.clear();
+				instructions.clear();
 				listener_.reset(this);
 				get_parser().parse_with_listener(lines);
-				return instructions_;
+				return instructions;
 			}
 			case MB_64: {
-				instructions_.clear();
+				instructions.clear();
 				listener_.reset(this);
 				get_parser64().parse_with_listener(lines);
-				return instructions_;
+				return instructions;
 			}
 		}
 		return {};
