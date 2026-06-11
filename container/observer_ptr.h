@@ -1,14 +1,14 @@
-//Last Modified At 2025/10/11
-//@Version 1.0.0.0
-#ifndef _STDEX_MEMORY_OBSERVER_PTR_H_
-#define _STDEX_MEMORY_OBSERVER_PTR_H_ 1
+//Last Modified At 2026/06/10
+//@Version 2.0.0.0
+#ifndef _STDEX_CONTAINER_OBSERVER_PTR_H_
+#define _STDEX_CONTAINER_OBSERVER_PTR_H_ 1
 
 #include <memory>
 #include <type_traits>
 
 namespace stdex {
 
-namespace memory {
+namespace container {
 
 template <typename _Tp>
 class observer_ptr {
