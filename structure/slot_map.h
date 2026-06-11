@@ -1,5 +1,5 @@
-//Last Modified At 2026/03/16
-//@Version 1.1.0.0
+//Last Modified At 2026/06/06
+//@Version 1.2.0.0
 #ifndef _STDEX_STRUCTURE_SLOT_MAP_H_
 #define _STDEX_STRUCTURE_SLOT_MAP_H_ 1
 
@@ -34,7 +34,6 @@ inline constexpr int slot_map_key_mask=-65536;
 inline constexpr int slot_map_key_shift=16;
 inline constexpr int slot_map_max_size=65536;
 inline constexpr int slot_map_key_first=1;
-
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
 template <typename _Tp>
@@ -75,6 +74,8 @@ class slot_map;
 template <typename _Tp,typename _IDTp,int _IndexMask,int _KeyMask,int _KeyShift,int _MaxSize,int _KeyFirst>
 class slot_map<_Tp,_IDTp,_IndexMask,_KeyMask,_KeyShift,_MaxSize,_KeyFirst,typename std::enable_if<is_handle_id_type<_IDTp>::value>::type> {
 #endif
+	static_assert(_KeyFirst>=1,"_KeyFirst cannot be negative than 1.");
+
 public:
 	using value_type=_Tp;
 	using id_type=_IDTp;
@@ -238,6 +239,9 @@ public:
 	pointer emplace(Args&&... args) {
 		if (!block_) throw std::logic_error("Container is not initialized");
 		if (full()) throw std::length_error("Container is full");
+		const size_type saved_free_list_head=free_list_head_;
+		const size_type saved_max_used_count=max_used_count_;
+		const size_type saved_next_key=next_key_;
 		size_type next=max_used_count_;
 		if (free_list_head_==max_used_count_) free_list_head_=++max_used_count_;
 		else {
@@ -245,11 +249,21 @@ public:
 			free_list_head_=static_cast<size_type>(block_[free_list_head_].id);
 		}
 		slot_type& slot=block_[next];
+		const _IDTp saved_id = slot.id;   
 		slot.id=static_cast<_IDTp>((next_key_<<_KeyShift)|next);
 		slot.constructed=false;
 		next_key_++;
-		if (next_key_==_MaxSize) next_key_=_KeyFirst;
-		std::construct_at(slot.ptr(),std::forward<Args>(args)...);
+		if (next_key_>(static_cast<unsigned int>(_KeyMask)>>_KeyShift)) next_key_=_KeyFirst;
+		 try {
+			std::construct_at(slot.ptr(),std::forward<Args>(args)...);
+		} catch (...) {
+			slot.id=saved_id;
+			slot.constructed=false;
+			free_list_head_=saved_free_list_head;
+			max_used_count_=saved_max_used_count;
+			next_key_=saved_next_key;
+			throw;
+		}
 		slot.constructed=true;
 		size_++;
 		return slot.ptr();
@@ -356,7 +370,11 @@ public:
 	id_type& id_ref_of(pointer item) {
 		const size_type index=index_of_ptr(item);
 #ifndef _STDEX_IGNORE_STRUCTURE_SLOT_MAP_ID_WARNINGS
-		if (index==static_cast<size_type>(-1)) return static_cast<id_type>(0);
+		static _IDTp null_id; 
+		if (index==static_cast<size_type>(-1)) {
+			null_id=static_cast<_IDTp>(0);
+			return null_id;
+		}
 #else
 		if (index==static_cast<size_type>(-1)) throw std::invalid_argument("Invalid pointer");
 #endif
@@ -369,7 +387,11 @@ public:
 	const id_type& id_ref_of(const_pointer item) const {
 		const size_type index=index_of_ptr(item);
 #ifndef _STDEX_IGNORE_STRUCTURE_SLOT_MAP_ID_WARNINGS
-		if (index==static_cast<size_type>(-1)) return static_cast<id_type>(0);
+		static const _IDTp null_id; 
+		if (index==static_cast<size_type>(-1)) {
+			null_id=static_cast<_IDTp>(0);
+			return null_id;
+		}
 #else
 		if (index==static_cast<size_type>(-1)) throw std::invalid_argument("Invalid pointer");
 #endif
