@@ -1,5 +1,5 @@
-//Last Modified At 2025/09/28
-//@Version 1.1.0.0
+//Last Modified At 2026/06/11
+//@Version 1.2.0.0
 #ifndef _STDEX_SYNTAX_LR_PARSER_H_
 #define _STDEX_SYNTAX_LR_PARSER_H_ 1
 
@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "parser.h"//At Least 3.2.2
+#include "parser.h"//At Least 3.4
 
 namespace stdex {
 	
@@ -24,8 +24,8 @@ class lalr_parser : public parser<_Tp,_SentenceEnum> {
 	using unit_type=typename base::unit_type;
 	using lr_node=typename base::lr_node;
 	struct lalr_item {
-		uintptr_t index_;
-		std::unordered_set<_Tp> lookaheads_;
+		uintptr_t index;
+		std::unordered_set<_Tp> lookaheads;
 	};
 	std::unordered_map<lr_node*,std::vector<lalr_item>> lalr_items_;
 public:
@@ -34,62 +34,62 @@ private:
 	std::unordered_set<_Tp> compute_first(const std::vector<_Tp>& sequence) {
 		std::unordered_set<_Tp> result;
 		for (auto& it:sequence) {
-			for (auto& jt:base::first_set_[it]) {
-				if (jt!=base::epsilon_) result.insert(jt);
+			for (auto& jt:base::first_set[it]) {
+				if (jt!=base::epsilon) result.insert(jt);
 			}
-			if (base::first_set_[it].find(base::epsilon_)==base::first_set_[it].end()) return result;
+			if (base::first_set[it].find(base::epsilon)==base::first_set[it].end()) return result;
 		}
-		result.insert(base::epsilon_);
+		result.insert(base::epsilon);
 		return result;
 	}
 	void propagate(lr_node* start) {
-		for (auto& it:base::lr_node_list_) {
-			for (uintptr_t i=0;i<it->unit_list_.size();i++) {
+		for (auto& it:base::lr_node_list) {
+			for (uintptr_t i=0;i<it->unit_list.size();i++) {
 				lalr_item temp{i,{}};
 				lalr_items_[it].push_back(temp);
 			}
 		}
 		std::queue<std::pair<lr_node*,int>> q;
-		for (int i=0;i<start->unit_list_.size();i++) {
-			if (start->unit_list_[i].left_op_==base::start_ && start->unit_list_[i].dot_==0) {
-				lalr_items_[start][i].lookaheads_.insert(base::eof_);
+		for (int i=0;i<start->unit_list.size();i++) {
+			if (start->unit_list[i].left_op==base::start && start->unit_list[i].dot==0) {
+				lalr_items_[start][i].lookaheads.insert(base::eof);
 				q.push(std::make_pair(start,i));
 			}
 		}
 		while (q.size()) {
 			auto current=q.front();
 			q.pop();
-			unit_type& item=current.first->unit_list_[current.second];
-			auto& lookaheads=lalr_items_[current.first][current.second].lookaheads_;
-			if (item.dot_<item.right_ops_.size()) {
-				_Tp ptr=item.right_ops_[item.dot_];
+			unit_type& item=current.first->unit_list[current.second];
+			auto& lookaheads=lalr_items_[current.first][current.second].lookaheads;
+			if (item.dot<item.right_ops.size()) {
+				_Tp ptr=item.right_ops[item.dot];
 				std::vector<_Tp> beta;
-				beta.insert(beta.end(),item.right_ops_.begin()+item.dot_+1,item.right_ops_.end());
-				if (base::ptrs_[ptr]) {
+				beta.insert(beta.end(),item.right_ops.begin()+item.dot+1,item.right_ops.end());
+				if (base::ptrs[ptr]) {
 					auto firsts=compute_first(beta);
-					if (firsts.find(base::epsilon_)!=firsts.end()) firsts.insert(lookaheads.begin(),lookaheads.end());
-					for (int i=0;i<current.first->unit_list_.size();i++) {
-						if (current.first->unit_list_[i].left_op_==ptr && current.first->unit_list_[i].dot_==0) {
-							if (firsts.find(base::epsilon_)!=firsts.end()) q.push(std::make_pair(current.first,i));
+					if (firsts.find(base::epsilon)!=firsts.end()) firsts.insert(lookaheads.begin(),lookaheads.end());
+					for (int i=0;i<current.first->unit_list.size();i++) {
+						if (current.first->unit_list[i].left_op==ptr && current.first->unit_list[i].dot==0) {
+							if (firsts.find(base::epsilon)!=firsts.end()) q.push(std::make_pair(current.first,i));
 							else {
-								uintptr_t size=lalr_items_[current.first][i].lookaheads_.size();
-								lalr_items_[current.first][i].lookaheads_.insert(firsts.begin(),firsts.end());
-								if (lalr_items_[current.first][i].lookaheads_.size()>size) q.push(std::make_pair(current.first,i));
+								uintptr_t size=lalr_items_[current.first][i].lookaheads.size();
+								lalr_items_[current.first][i].lookaheads.insert(firsts.begin(),firsts.end());
+								if (lalr_items_[current.first][i].lookaheads.size()>size) q.push(std::make_pair(current.first,i));
 							}
 						}
 					}
 				}
-				if (current.first->edges_.count(ptr) && current.first->edges_[ptr]) {
+				if (current.first->edges.count(ptr) && current.first->edges[ptr]) {
 					unit_type temp;
-					temp.left_op_=item.left_op_;
-					temp.right_ops_=item.right_ops_;
-					temp.dot_=item.dot_+1;
-					for (int i=0;i<current.first->edges_[ptr]->unit_list_.size();i++) {
-						if (current.first->edges_[ptr]->unit_list_[i]==temp) {
+					temp.left_op=item.left_op;
+					temp.right_ops=item.right_ops;
+					temp.dot=item.dot+1;
+					for (int i=0;i<current.first->edges[ptr]->unit_list.size();i++) {
+						if (current.first->edges[ptr]->unit_list[i]==temp) {
 							//auto next_firsts=compute_first(beta);
-							uintptr_t size=lalr_items_[current.first->edges_[ptr]][i].lookaheads_.size();
-							lalr_items_[current.first->edges_[ptr]][i].lookaheads_.insert(lookaheads.begin(),lookaheads.end());
-							if (lalr_items_[current.first->edges_[ptr]][i].lookaheads_.size()>size) q.push(std::make_pair(current.first->edges_[ptr],i));
+							uintptr_t size=lalr_items_[current.first->edges[ptr]][i].lookaheads.size();
+							lalr_items_[current.first->edges[ptr]][i].lookaheads.insert(lookaheads.begin(),lookaheads.end());
+							if (lalr_items_[current.first->edges[ptr]][i].lookaheads.size()>size) q.push(std::make_pair(current.first->edges[ptr],i));
 						}
 					}
 				}
@@ -97,53 +97,53 @@ private:
 		}
 	}
 	void construct_table() override {
-		auto it=base::units_by_lhs_.find(base::start_);
+		auto it=base::units_by_lhs_.find(base::start);
 		std::vector<unit_type*> start_units;
-		if (it!=base::units_by_lhs_.end()) {
+		if (it!=base::units_by_lhs.end()) {
 			for (auto& jt:it->second) {
-				if (jt->right_ops_.size() && jt->right_ops_[jt->right_ops_.size()-1]==base::eof_) start_units.push_back(const_cast<unit_type*>(jt));
+				if (jt->right_ops.size() && jt->right_ops[jt->right_ops.size()-1]==base::eof) start_units.push_back(const_cast<unit_type*>(jt));
 			}
 		}
-		for (auto& it:base::lr_node_list_) {
-			for (auto jt:it->edges_) {
-				base::lr_sheet_[std::make_pair(jt.first,it->id_)].next_.lr_ptr_=new std::shared_ptr<lr_node>(std::make_shared<lr_node>(*jt.second));
-				if (!base::ptrs_[jt.first]) base::lr_sheet_[std::make_pair(jt.first,it->id_)].type_=ST_SHIFT;
+		for (auto& it:base::lr_node_list) {
+			for (auto jt:it->edges) {
+				base::lr_sheet[std::make_pair(jt.first,it->id)].next.lr_ptr=new std::shared_ptr<lr_node>(std::make_shared<lr_node>(*jt.second));
+				if (!base::ptrs[jt.first]) base::lr_sheet[std::make_pair(jt.first,it->id)].type=ST_SHIFT;
 			}
 		}
-		for (auto& it:base::lr_node_list_) {
+		for (auto& it:base::lr_node_list) {
 			uintptr_t i=0;
 			for (auto& jt:lalr_items_[it]) {
-				if (it->unit_list_[jt.index_].dot_==it->unit_list_[jt.index_].right_ops_.size()) {
+				if (it->unit_list[jt.index].dot==it->unit_list[jt.index].right_ops.size()) {
 					unit_type temp_unit;
-					temp_unit.left_op_=it->unit_list_[jt.index_].left_op_;
-					temp_unit.right_ops_=it->unit_list_[jt.index_].right_ops_;
-					temp_unit.dot_=-1;
-					temp_unit.id_=it->unit_list_[jt.index_].id_;
-					for (auto kt:base::ptrs_) {
+					temp_unit.left_op=it->unit_list[jt.index].left_op;
+					temp_unit.right_ops=it->unit_list[jt.index].right_ops;
+					temp_unit.dot=-1;
+					temp_unit.id=it->unit_list[jt.index].id;
+					for (auto kt:base::ptrs) {
 						_Tp current_ptr=kt.first;
-						if (jt.lookaheads_.find(current_ptr)!=jt.lookaheads_.end()) {
-							if (base::lr_sheet_[std::make_pair(current_ptr,it->id_)].next_.lr_ptr_ && base::lr_sheet_[std::make_pair(current_ptr,it->id_)].type_!=ST_ERROR) {
-								if (base::ptrs_[current_ptr]) throw std::logic_error("Conflict GOTO and REDUCTION at production "+std::to_string(i)+"("+it->unit_list_[jt.index_].to_string()+") with GT("+std::to_string(it->id_)+","+std::to_string(current_ptr)+")");
+						if (jt.lookaheads.find(current_ptr)!=jt.lookaheads.end()) {
+							if (base::lr_sheet[std::make_pair(current_ptr,it->id)].next.lr_ptr && base::lr_sheet[std::make_pair(current_ptr,it->id)].type!=ST_ERROR) {
+								if (base::ptrs[current_ptr]) throw std::logic_error("Conflict GOTO and REDUCTION at production "+std::to_string(i)+"("+it->unit_list[jt.index].to_string()+") with GT("+std::to_string(it->id)+","+std::to_string(current_ptr)+")");
 								else {
-									if (base::lr_sheet_[std::make_pair(current_ptr,it->id_)].type_==ST_SHIFT) throw std::logic_error("Conflict SHIFT and REDUCTION at production "+std::to_string(i)+"("+it->unit_list_[jt.index_].to_string()+") with SHIFT("+std::to_string(it->id_)+","+std::to_string(current_ptr)+")");
-									else throw std::logic_error("Conflict REDUCTION and REDUCTION at production "+std::to_string(i)+"("+it->unit_list_[jt.index_].to_string()+") with REDUCTION("+std::to_string(it->id_)+","+std::to_string(current_ptr)+")");
+									if (base::lr_sheet[std::make_pair(current_ptr,it->id)].type==ST_SHIFT) throw std::logic_error("Conflict SHIFT and REDUCTION at production "+std::to_string(i)+"("+it->unit_list[jt.index].to_string()+") with SHIFT("+std::to_string(it->id)+","+std::to_string(current_ptr)+")");
+									else throw std::logic_error("Conflict REDUCTION and REDUCTION at production "+std::to_string(i)+"("+it->unit_list[jt.index].to_string()+") with REDUCTION("+std::to_string(it->id)+","+std::to_string(current_ptr)+")");
 								}
 							}
-							base::lr_sheet_[std::make_pair(current_ptr,it->id_)].type_=ST_REDUCTION;
+							base::lr_sheet[std::make_pair(current_ptr,it->id)].type=ST_REDUCTION;
 						}
-						if (!base::lr_sheet_[std::make_pair(current_ptr,it->id_)].next_.unit_ptr_) base::lr_sheet_[std::make_pair(current_ptr,it->id_)].next_.unit_ptr_=new std::shared_ptr<unit_type>(std::make_shared<unit_type>(temp_unit));
+						if (!base::lr_sheet[std::make_pair(current_ptr,it->id)].next.unit_ptr) base::lr_sheet[std::make_pair(current_ptr,it->id)].next.unit_ptr=new std::shared_ptr<unit_type>(std::make_shared<unit_type>(temp_unit));
 					}
 				}
 				i++;
 			}
-			if (it->unit_list_.size()==1 && it->unit_list_[0].right_ops_.size() && it->unit_list_[0].right_ops_[it->unit_list_[0].right_ops_.size()-1]==base::eof_) {
-				unit_type temp_unit=unit_list_[0];
-				temp_unit->dot_=-1;
+			if (it->unit_list.size()==1 && it->unit_list[0].right_ops.size() && it->unit_list[0].right_ops[it->unit_list[0].right_ops.size()-1]==base::eof) {
+				unit_type temp_unit=unit_list[0];
+				temp_unit->dot=-1;
 				for (auto& jt:start_units) {
 					if (*jt==temp_unit) {
-						for (auto& kt:lr_node_list_) {
-							for (auto& lt:kt->edges_) {
-								if (lt.second->id_==it->id_) lr_sheet_[std::make_pair(eof_,kt->id_)].type_=ST_ACCEPT;
+						for (auto& kt:lr_node_list) {
+							for (auto& lt:kt->edges) {
+								if (lt.second->id==it->id) lr_sheet[std::make_pair(base::eof,kt->id)].type=ST_ACCEPT;
 							}
 						}
 					}
@@ -154,18 +154,17 @@ private:
 
 public:
 	void generate_parser(bool auto_ptr=true) override {
-		base::ptrs_.clear();
 		uintptr_t node_amount=0;
 		if (auto_ptr) {
-			base::ptrs_.clear();
-			for (auto it:base::units_) {
-				base::ptrs_[it.left_op_]|=true;
-				for (auto jt:it.right_ops_) base::ptrs_[jt]|=false;
+			base::ptrs.clear();
+			for (auto it:base::units) {
+				base::ptrs[it.left_op]|=true;
+				for (auto jt:it.right_ops) base::ptrs[jt]|=false;
 			}
 		}
 		base::generate_initialize();
-		auto it=base::units_by_lhs_.find(base::start_);
-		if (it==base::units_by_lhs_.end()) return;
+		auto it=base::units_by_lhs.find(base::start);
+		if (it==base::units_by_lhs.end()) return;
 		std::vector<unit_type> start_units;
 		for (auto jt:it->second) start_units.push_back(*jt);
 		auto I0=base::generate_lr_node(start_units,node_amount);
@@ -173,45 +172,45 @@ public:
 		lalr_items_.clear();
 		propagate(I0);
 #ifdef _STDEX_OUTPUT_PARSER
-		auto lr_sort=[](lr_node* lhs,lr_node* rhs) {
-			return lhs->id_<rhs->id_;
+		auto lr_sort=[](lr_node* lhs,lr_node* rhs){
+			return lhs->id<rhs->id;
 		};
 		std::set<lr_node*,decltype(lr_sort)> lr_output(lr_sort);
-		for (auto& it:base::lr_node_list_) lr_output.insert(it);
+		for (auto& it:base::lr_node_list) lr_output.insert(it);
 		for (auto& it:lr_output) {
-			_STDEX_OUTPUT_PARSER<<it->id_<<":"<<std::endl;
+			_STDEX_OUTPUT_PARSER<<it->id<<":"<<std::endl;
 			_STDEX_OUTPUT_PARSER<<"  units:"<<std::endl;
-			for (int i=0;i<it->unit_list_.size();i++) {
-				_STDEX_OUTPUT_PARSER<<"    "<<it->unit_list_[i].left_op_<<"->";
-				for (int j=0;j<it->unit_list_[i].right_ops_.size();j++) {
-					if (j==it->unit_list_[i].dot_) _STDEX_OUTPUT_PARSER<<"· ";
-					_STDEX_OUTPUT_PARSER<<it->unit_list_[i].right_ops_[j]<<" ";
+			for (int i=0;i<it->unit_list.size();i++) {
+				_STDEX_OUTPUT_PARSER<<"    "<<it->unit_list[i].left_op<<"->";
+				for (int j=0;j<it->unit_list[i].right_ops.size();j++) {
+					if (j==it->unit_list[i].dot) _STDEX_OUTPUT_PARSER<<"· ";
+					_STDEX_OUTPUT_PARSER<<it->unit_list[i].right_ops[j]<<" ";
 				}
-				if (it->unit_list_[i].dot_==it->unit_list_[i].right_ops_.size()) _STDEX_OUTPUT_PARSER<<"· ";
+				if (it->unit_list[i].dot==it->unit_list[i].right_ops.size()) _STDEX_OUTPUT_PARSER<<"· ";
 				_STDEX_OUTPUT_PARSER<<"{";
 				std::string temp_lookahead="";
-				for (auto jt:lalr_items_[it][i].lookaheads_) temp_lookahead+=std::to_string((int)jt)+",";
+				for (auto jt:lalr_items_[it][i].lookaheads) temp_lookahead+=std::to_string((int)jt)+",";
 				if (temp_lookahead.size()) temp_lookahead.pop_back();
 				_STDEX_OUTPUT_PARSER<<temp_lookahead<<"}"<<std::endl;
 			}
 			_STDEX_OUTPUT_PARSER<<"  edges:"<<std::endl;
-			for (auto jt:it->edges_) _STDEX_OUTPUT_PARSER<<"    "<<jt.first<<"->"<<jt.second->id_<<std::endl;
+			for (auto jt:it->edges) _STDEX_OUTPUT_PARSER<<"    "<<jt.first<<"->"<<jt.second->id<<std::endl;
 			_STDEX_OUTPUT_PARSER<<std::endl;
 		}
 #endif
 		construct_table();
 #ifdef _STDEX_OUTPUT_PARSER
 		_STDEX_OUTPUT_PARSER<<"\n";
-		for (auto& it:base::lr_sheet_) {
+		for (auto& it:base::lr_sheet) {
 			std::vector<std::string> get_type={"e","r","s","a"};
 			intptr_t id=-1;
-			if (it.second.type_==ST_SHIFT || (it.second.type_==ST_ERROR && it.second.next_.lr_ptr_)) id=(*it.second.next_.lr_ptr_)->id_;
+			if (it.second.type==ST_SHIFT || (it.second.type==ST_ERROR && it.second.next.lr_ptr)) id=(*it.second.next.lr_ptr)->id;
 			else if (it.second.type_==ST_REDUCTION) {
-				for (uintptr_t i=0;i<base::units_.size();i++) {
-					if (base::units_[i]==**it.second.next_.unit_ptr_) id=i;
+				for (uintptr_t i=0;i<base::units.size();i++) {
+					if (base::units[i]==**it.second.next.unit_ptr) id=i;
 				}
 			}
-			_STDEX_OUTPUT_PARSER<<it.first.second<<"-"<<it.first.first<<"->"<<get_type[(int)it.second.type_]<<id<<std::endl;
+			_STDEX_OUTPUT_PARSER<<it.first.second<<"-"<<it.first.first<<"->"<<get_type[(int)it.second.type]<<id<<std::endl;
 		}
 #endif
 	}
@@ -223,14 +222,14 @@ class lr_parser : public parser<_Tp,_SentenceEnum> {
 	using unit_type=typename base::unit_type;
 	using lr_node=typename base::lr_node;
 	struct lrk_node : lr_node {
-		std::map<unit_type*,std::set<std::vector<Tp>> lookaheads_;
+		std::map<unit_type*,std::set<std::vector<Tp>> lookaheads;
 		lrk_node(uintptr_t id) : lr_node(id) {
-			table_=&lrk_items_;
+			table=&lrk_items;
 		}
 		bool operator ==(const lrk_node& other) {
 			if (*static_cast<lr_node*>(this)!=*static_cast<lr_node*>(const_cast<lrk_node*>(&other))) return false;
 			for (int i=0;i<unit_list_.size();i++) {
-				if (lookaheads_[&unit_list_[i]]!=other.lookaheads_[&other.unit_list_[i]]) return false;
+				if (lookaheads[&unit_list[i]]!=other.lookaheads[&other.unit_list[i]]) return false;
 			}
 			return true;
 		}
@@ -243,17 +242,17 @@ private:
 		std::unordered_set<unit_type*> temp_set;
 		if (!prev_node) {
 			for (auto& it:starts) {
-				curr_node->unit_list_.push_back(units_[i]);
-				if (units_[i].left_op_==base::start_) curr_node->lookaheads_[&curr_node->unit_list_[curr_node->unit_list_.size()-1]].insert({base::eof_});
-				curr_node->unit_list_[curr_node->unit_list_.size()-1].dot_=0;
-				temp_set.insert(&curr_node->unit_list_[curr_node->unit_list_.size()-1]);
+				curr_node->unit_list.push_back(units[i]);
+				if (units_[i].left_op==base::start) curr_node->lookaheads[&curr_node->unit_list[curr_node->unit_list.size()-1]].insert({base::eof});
+				curr_node->unit_list[curr_node->unit_list.size()-1].dot=0;
+				temp_set.insert(&curr_node->unit_list[curr_node->unit_list.size()-1]);
 			}
 		} else {
 			for (auto& it:starts) {
-				curr_node->unit_list_.push_back(prev_node->unit_list_[i]);
-				curr_node->lookaheads_[&curr_node->unit_list_[curr_node->unit_list_.size()-1]]=prev_node->lookaheads_[&prev_node->unit_list_[i]];
-				curr_node->unit_list_[curr_node->unit_list_.size()-1].dot_++;
-				temp_set.insert(&curr_node->unit_list_[curr_node->unit_list_.size()-1]);
+				curr_node->unit_list.push_back(prev_node->unit_list[i]);
+				curr_node->lookaheads[&curr_node->unit_list[curr_node->unit_list.size()-1]]=prev_node->lookaheads[&prev_node->unit_list[i]];
+				curr_node->unit_list[curr_node->unit_list.size()-1].dot++;
+				temp_set.insert(&curr_node->unit_list[curr_node->unit_list.size()-1]);
 			}
 		}
 
