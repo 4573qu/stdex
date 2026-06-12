@@ -294,7 +294,7 @@ protected:
 		}
 		std::unordered_map<_Tp,std::vector<unit_type>> temp_map;
 		for (auto& it:curr_node->unit_list) {
-			if (it.dot_<it.right_ops.size()) temp_map[it.right_ops[it.dot]].push_back(it);
+			if (it.dot<it.right_ops.size()) temp_map[it.right_ops[it.dot]].push_back(it);
 		}
 		for (auto& it:temp_map) curr_node->edges[it.first]=generate_lr_node(it.second,node_amount);
 		return curr_node;
@@ -426,16 +426,16 @@ protected:
 		//cout<<"\nEND FOLLOW\n";
 	}
 	virtual void construct_table() {
-		auto it=units_by_lhs.find(start_);
+		auto it=units_by_lhs.find(start);
 		std::vector<unit_type*> start_units;
 		if (it!=units_by_lhs.end()) {
 			for (auto& jt:it->second) {
-				if (jt->right_ops.size() && jt->right_ops[jt->right_ops.size()-1]==eof_) start_units.push_back(const_cast<unit_type*>(jt));
+				if (jt->right_ops.size() && jt->right_ops[jt->right_ops.size()-1]==eof) start_units.push_back(const_cast<unit_type*>(jt));
 			}
 		}
-		for (auto& it:lr_node_list_) {
+		for (auto& it:lr_node_list) {
 			for (auto jt:it->edges) {
-				lr_sheet[std::make_pair(jt.first,it->id_)].next.lr_ptr=new std::shared_ptr<lr_node>(std::make_shared<lr_node>(*jt.second));
+				lr_sheet[std::make_pair(jt.first,it->id)].next.lr_ptr=new std::shared_ptr<lr_node>(std::make_shared<lr_node>(*jt.second));
 				if (!ptrs[jt.first]) lr_sheet[std::make_pair(jt.first,it->id)].type=ST_SHIFT;
 			}
 		}
@@ -466,8 +466,8 @@ protected:
 				i++;
 			}
 			if (it->unit_list.size()==1 && it->unit_list[0].right_ops.size() && it->unit_list[0].right_ops[it->unit_list[0].right_ops.size()-1]==eof) {
-				unit_type temp_unit=unit_list[0];
-				temp_unit->dot=-1;
+				unit_type temp_unit=it->unit_list[0];
+				temp_unit.dot=-1;
 				for (auto& jt:start_units) {
 					if (*jt==temp_unit) {
 						for (auto& kt:lr_node_list) {
@@ -581,7 +581,7 @@ private:
 public:
 	bool parse_with_listener(std::vector<parse_node>& nodes) {
 		std::vector<parser_listener<_Tp,_SentenceEnum>*> listeners;
-		for (auto it:listeners) {
+		for (auto it:this->listeners) {
 			if (it->enabled) listeners.push_back(it);
 		}
 		std::vector<uintptr_t> parse_stack;
