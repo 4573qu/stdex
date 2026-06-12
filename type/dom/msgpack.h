@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "../../strcuture/binary_dom.h"//At Least 1.0
+#include "../../structure/binary_dom.h"//At Least 1.0
 
 namespace stdex {
 
@@ -277,14 +277,6 @@ private:
 _STDEX_DOM_TPL_DEFAULT_DECLARATION
 using msgpack_t=basic_msgpack::msgpack<_Int,_Float,_Boolean,_String,_Array,_Object,_Allocator>;
 using msgpack=msgpack_t<>;
-
-inline namespace literals {
-
-inline msgpack_t<> operator ""_msgpack(const uint8_t* v,std::size_t n) {
-	return msgpack_t<>::parse(v,n);
-}
-
-}
 
 }
 

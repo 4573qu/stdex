@@ -233,14 +233,6 @@ _STDEX_DOM_TPL_DEFAULT_DECLARATION
 using bson_t=basic_bson::bson<_Int,_Float,_Boolean,_String,_Array,_Object,_Allocator>;
 using bson=bson_t<>;
 
-inline namespace literals {
-
-inline bson_t<> operator ""_bson(const uint8_t* v,std::size_t n) {
-	return bson_t<>::parse(v,n);
-}
-
-}
-
 }
 
 }

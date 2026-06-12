@@ -261,14 +261,6 @@ _STDEX_DOM_TPL_DEFAULT_DECLARATION
 using cbor_t=basic_cbor::cbor<_Int,_Float,_Boolean,_String,_Array,_Object,_Allocator>;
 using cbor=cbor_t<>;
 
-inline namespace literals {
-
-inline cbor_t<> operator ""_cbor(const uint8_t* v,std::size_t n) {
-	return cbor_t<>::parse(v,n);
-}
-
-}
-
 }
 
 }
