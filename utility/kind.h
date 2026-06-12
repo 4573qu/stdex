@@ -25,7 +25,7 @@ struct kind {
 
 	value_type value;
 
-	constexpr kind(value_type value) : value(value) { }
+	constexpr kind(value_type value) noexcept : value(value) { }
 	constexpr operator value_type() const noexcept { return value; }
 
 	constexpr bool operator ==(const kind& other) const { return value==other.value; }
@@ -57,7 +57,7 @@ struct kind {
 	static constexpr value_type begin_value=static_cast<value_type>(0);
 };
 
-template <typename _Derived,typename _Base,typename _Tp=_Base::value_type>
+template <typename _Derived,typename _Base,typename _Tp=typename _Base::value_type>
 struct kind_derived : _Base {
 	using self_type=_Derived;
 	using base_type=_Base;
