@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/29
-//@Version 1.2.1.0
+//Last Modified At 2026/06/27
+//@Version 1.2.1.1
 #ifndef _STDEX_META_REFLECT_H_
 #define _STDEX_META_REFLECT_H_ 1
 
@@ -658,11 +658,11 @@ struct constructor_descriptor {
 		if constexpr (std::is_constructible<_Tp,_Args...>::value) {
 			return std::any(_Tp(std::any_cast<remove_cvref_t<_Args>>(args[_Index])...));
 		} else {
-			throw std::runtime_error("type is not constructible with given signature");
+			throw std::runtime_error("_Tp is not constructible with given signature");
 		}
 	}
 	static std::any invoke(const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return create_impl(args,std::index_sequence_for<_Args...>{});
 	}
 
@@ -1034,7 +1034,7 @@ struct member_method_descriptor<_Return(_Class::*)(_Args...),_Method,_Access,_At
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<_Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void*,const std::any*,std::size_t) {
@@ -1071,18 +1071,18 @@ struct const_method_descriptor<_Return(_Class::*)(_Args...) const,_Method,_Acces
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_static(const std::any*,std::size_t) {
 		throw std::runtime_error("method is not static");
 	}
 	method make_runtime() const noexcept {
-		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,true,false,attributes.data(),attributes.size()};
+		return method{name,&return_type_get,parameter_types.data(),parameter_types.size(),&invoke_mut,&invoke_const,&invoke_static,_Access,true,false,false,false,RQK_NONE,attributes.data(),attributes.size()};
 	}
 };
 
@@ -1110,15 +1110,15 @@ struct static_method_descriptor<_Return(*)(_Args...),_Method,_Access,_AttrCount>
 		}
 	}
 	static std::any invoke_mut(void*,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void*,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_static(const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(args,std::index_sequence_for<_Args...>{});
 	}
 	method make_runtime() const noexcept {
@@ -1147,7 +1147,7 @@ struct member_method_descriptor<_Return(_Class::*)(_Args...) noexcept,_Method,_A
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<_Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void*,const std::any*,std::size_t) {
@@ -1182,7 +1182,7 @@ struct member_method_descriptor<_Return(_Class::*)(_Args...) volatile,_Method,_A
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void*,const std::any*,std::size_t) {
@@ -1217,7 +1217,7 @@ struct member_method_descriptor<_Return(_Class::*)(_Args...) volatile noexcept,_
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void*,const std::any*,std::size_t) {
@@ -1252,7 +1252,7 @@ struct member_method_descriptor<_Return(_Class::*)(_Args...) &,_Method,_Access,_
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<_Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void*,const std::any*,std::size_t) {
@@ -1287,7 +1287,7 @@ struct member_method_descriptor<_Return(_Class::*)(_Args...) & noexcept,_Method,
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<_Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void*,const std::any*,std::size_t) {
@@ -1322,7 +1322,7 @@ struct member_method_descriptor<_Return(_Class::*)(_Args...) &&,_Method,_Access,
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<_Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void*,const std::any*,std::size_t) {
@@ -1357,7 +1357,7 @@ struct member_method_descriptor<_Return(_Class::*)(_Args...) && noexcept,_Method
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<_Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void*,const std::any*,std::size_t) {
@@ -1391,11 +1391,11 @@ struct const_method_descriptor<_Return(_Class::*)(_Args...) const noexcept,_Meth
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_static(const std::any*,std::size_t) {
@@ -1426,11 +1426,11 @@ struct const_method_descriptor<_Return(_Class::*)(_Args...) const volatile,_Meth
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_static(const std::any*,std::size_t) {
@@ -1461,11 +1461,11 @@ struct const_method_descriptor<_Return(_Class::*)(_Args...) const volatile noexc
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const volatile _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_static(const std::any*,std::size_t) {
@@ -1496,11 +1496,11 @@ struct const_method_descriptor<_Return(_Class::*)(_Args...) const &,_Method,_Acc
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_static(const std::any*,std::size_t) {
@@ -1531,11 +1531,11 @@ struct const_method_descriptor<_Return(_Class::*)(_Args...) const & noexcept,_Me
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_static(const std::any*,std::size_t) {
@@ -1566,11 +1566,11 @@ struct const_method_descriptor<_Return(_Class::*)(_Args...) const &&,_Method,_Ac
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_static(const std::any*,std::size_t) {
@@ -1601,11 +1601,11 @@ struct const_method_descriptor<_Return(_Class::*)(_Args...) const && noexcept,_M
 		}
 	}
 	static std::any invoke_mut(void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void* obj,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(static_cast<const _Class*>(obj),args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_static(const std::any*,std::size_t) {
@@ -1637,15 +1637,15 @@ struct static_method_descriptor<_Return(*)(_Args...) noexcept,_Method,_Access,_A
 		}
 	}
 	static std::any invoke_mut(void*,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_const(const void*,const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(args,std::index_sequence_for<_Args...>{});
 	}
 	static std::any invoke_static(const std::any* args,std::size_t count) {
-		if (count!=sizeof...(_Args)) throw std::runtime_error("argument count mismatch");
+		if (count!=sizeof...(_Args)) throw std::invalid_argument("Argument count mismatch");
 		return invoke_impl(args,std::index_sequence_for<_Args...>{});
 	}
 	method make_runtime() const noexcept {
