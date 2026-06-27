@@ -1,5 +1,5 @@
 //Last Modified At 2026/06/27
-//@Version 1.2.1.1
+//@Version 1.3.0.0
 #ifndef _STDEX_META_REFLECT_H_
 #define _STDEX_META_REFLECT_H_ 1
 
@@ -7,12 +7,14 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #if __has_include("../macros/cpp_compiler.h")
 #include "../macros/cpp_compiler.h"//At Least 1.0
@@ -564,10 +566,14 @@ struct member_field_descriptor {
 		return descriptor<value_type>::get();
 	}
 	static void* get_mut(void* obj) noexcept {
-		return &(static_cast<class_type*>(obj)->*_Member);
+		if constexpr (std::is_const<value_type>::value || _Const) {
+			(void)obj;return nullptr;
+		} else {
+			return const_cast<void*>(static_cast<const void*>(&(static_cast<class_type*>(obj)->*_Member)));
+		}
 	}
 	static const void* get_const(const void* obj) noexcept {
-		return &(static_cast<const class_type*>(obj)->*_Member);
+		return static_cast<const void*>(&(static_cast<const class_type*>(obj)->*_Member));
 	}
 	static bool set_from_any(void* obj,const std::any& value) noexcept {
 		if constexpr (std::is_const<value_type>::value || _Const) {
@@ -605,10 +611,14 @@ struct static_field_descriptor {
 		return descriptor<value_type>::get();
 	}
 	static void* get_mut(void*) noexcept {
-		return _Member;
+		if constexpr (std::is_const<value_type>::value || _Const) {
+			return nullptr;
+		} else {
+			return const_cast<void*>(static_cast<const void*>(_Member));
+		}
 	}
 	static const void* get_const(const void*) noexcept {
-		return _Member;
+		return static_cast<const void*>(_Member);
 	}
 	static bool set_from_any(void*,const std::any& value) noexcept {
 		if constexpr (std::is_const<value_type>::value || _Const) {
@@ -2584,6 +2594,134 @@ std::any construct_by_arity(std::size_t parameter_count,const std::initializer_l
 	return c->create(args.begin(),args.size());
 }
 
+namespace free {
+
+template <auto _Func,std::size_t _AttrCount>
+const method* function_view(std::string_view name,const std::array<attribute,_AttrCount>& attributes) {
+	static const auto desc=make_method<_Func>(name,attributes);
+	static const method view=desc.make_runtime();
+	return &view;
+}
+
+template <typename _Signature,_Signature _Func,std::size_t _AttrCount>
+const method* function_overload_view(std::string_view name,const std::array<attribute,_AttrCount>& attributes) {
+	static const auto desc=make_method_overload<_Signature,_Func>(name,attributes);
+	static const method view=desc.make_runtime();
+	return &view;
+}
+
+template <typename _Mem,_Mem* _Address,std::size_t _AttrCount>
+const field* variable_view(std::string_view name,const std::array<attribute,_AttrCount>& attributes) {
+	static const auto desc=make_static_field<void,_Mem,_Address,AK_PUBLIC,std::is_const<_Mem>::value,_AttrCount>(name,attributes);
+	static const field view=desc.make_runtime();
+	return &view;
+}
+
+class scope {
+	mutable std::mutex mutex_;
+	std::vector<const method*> functions_;
+	std::vector<const field*> variables_;
+
+	scope()=default;
+
+public:
+	static scope& instance() noexcept {
+		static scope value;
+		return value;
+	}
+
+	const method* add_function(const method* m) {
+		std::lock_guard<std::mutex> lock(mutex_);
+		functions_.push_back(m);
+		return m;
+	}
+	const field* add_variable(const field* f) {
+		std::lock_guard<std::mutex> lock(mutex_);
+		variables_.push_back(f);
+		return f;
+	}
+
+	const method* find_function(std::string_view name) const noexcept {
+		std::lock_guard<std::mutex> lock(mutex_);
+		for (const method* v:functions_) {
+			if (v->name()==name) return v;
+		}
+		return nullptr;
+	}
+	const method* find_function(std::string_view name,std::size_t parameter_count) const noexcept {
+		std::lock_guard<std::mutex> lock(mutex_);
+		for (const method* v:functions_) {
+			if (v->name()==name && v->parameter_count()==parameter_count) return v;
+		}
+		return nullptr;
+	}
+	const field* find_variable(std::string_view name) const noexcept {
+		std::lock_guard<std::mutex> lock(mutex_);
+		for (const field* v:variables_) {
+			if (v->name()==name) return v;
+		}
+		return nullptr;
+	}
+
+	template <typename _Func>
+	void for_each_function(_Func&& func) const {
+		std::lock_guard<std::mutex> lock(mutex_);
+		for (const method* v:functions_) func(*v);
+	}
+	template <typename _Func>
+	void for_each_variable(_Func&& func) const {
+		std::lock_guard<std::mutex> lock(mutex_);
+		for (const field* v:variables_) func(*v);
+	}
+};
+
+template <auto _Func,std::size_t _AttrCount=0>
+const method* register_function(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) {
+	return scope::instance().add_function(function_view<_Func,_AttrCount>(name,attributes));
+}
+
+template <typename _Signature,_Signature _Func,std::size_t _AttrCount=0>
+const method* register_function_overload(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) {
+	return scope::instance().add_function(function_overload_view<_Signature,_Func,_AttrCount>(name,attributes));
+}
+
+template <auto _Address,std::size_t _AttrCount=0>
+const field* register_variable(std::string_view name,const std::array<attribute,_AttrCount>& attributes=std::array<attribute,_AttrCount>{}) {
+	return scope::instance().add_variable(variable_view<std::remove_reference_t<decltype(*_Address)>,_Address,_AttrCount>(name,attributes));
+}
+
+inline const method* find_function(std::string_view name) noexcept {
+	return scope::instance().find_function(name);
+}
+
+inline const method* find_function(std::string_view name,std::size_t parameter_count) noexcept {
+	return scope::instance().find_function(name,parameter_count);
+}
+
+inline const field* find_variable(std::string_view name) noexcept {
+	return scope::instance().find_variable(name);
+}
+
+inline std::any invoke(std::string_view name,const std::any* args,std::size_t count) {
+	const method* m=scope::instance().find_function(name,count);
+	if (!m) m=scope::instance().find_function(name);
+	if (!m) throw std::runtime_error("Function not found");
+	return m->invoke(nullptr,args,count);
+}
+
+inline std::any get_variable(std::string_view name) {
+	const field* f=scope::instance().find_variable(name);
+	if (!f) throw std::runtime_error("Variable not found");
+	return f->get_any(nullptr);
+}
+
+inline bool set_variable(std::string_view name,const std::any& value) noexcept {
+	const field* f=scope::instance().find_variable(name);
+	return f?f->set(nullptr,value):false;
+}
+
+}
+
 #define _STDEX_DEFINE_FUNDAMENTAL_DESCRIPTOR_SINGLE(_type,name) \
 template <> \
 struct descriptor<_type> { \
@@ -2902,5 +3040,13 @@ public: \
 	} \
 }; \
 }}}
+
+#define _STDEX_REFLECT_FREE_FUNCTION(func) \
+static const stdex::meta::reflect::method* _stdex_free_fn_##func=stdex::meta::reflect::free::register_function<&func>(#func)
+#define _STDEX_REFLECT_FREE_FUNCTION_OVERLOAD(id,func,signature) \
+static const stdex::meta::reflect::method* _stdex_free_fn_##id=stdex::meta::reflect::free::register_function_overload<signature,static_cast<signature>(&func)>(#func)
+#define _STDEX_REFLECT_FREE_VARIABLE(var) \
+static const stdex::meta::reflect::field* _stdex_free_var_##var=stdex::meta::reflect::free::register_variable<&var>(#var)
+
 
 #endif
