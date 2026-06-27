@@ -1,5 +1,5 @@
-//Last Modified At 2026/06/06
-//@Version 1.2.0.0
+//Last Modified At 2026/06/27
+//@Version 1.2.1.0
 #ifndef _STDEX_STRUCTURE_SLOT_MAP_H_
 #define _STDEX_STRUCTURE_SLOT_MAP_H_ 1
 
@@ -23,6 +23,11 @@
 
 #if __cplusplus>=_STDEX_CPP20_VERSION
 	#include <concepts>
+#endif
+
+#ifndef _STDEX_SLOT_MAP_ALLOW_INCOMPLETE_TYPE
+#define _STDEX_SLOT_MAP_ALLOW_INCOMPLETE_TYPE 1
+#define _STDEX_SLOT_MAP_INNER_DEF
 #endif
 
 namespace stdex {
@@ -185,7 +190,11 @@ public:
 	explicit slot_map(size_type capacity) : slot_map() {
 		initialize(capacity);
 	}
-	~slot_map() noexcept (std::is_nothrow_destructible<_Tp>::value) {
+#if _STDEX_SLOT_MAP_ALLOW_INCOMPLETE_TYPE
+	~slot_map() noexcept {
+#else
+	~slot_map() noexcept(std::is_nothrow_destructible<_Tp>::value) {
+#endif
 		dispose();
 	}
 
@@ -227,7 +236,7 @@ public:
 		clear_member();
 		max_size_=capacity;
 	}
-	void dispose() noexcept (std::is_nothrow_destructible<_Tp>::value) {
+	void dispose() noexcept(std::is_nothrow_destructible<_Tp>::value) {
 		if (!block_) return;
 		clear();
 		::operator delete[](block_);
@@ -302,7 +311,7 @@ public:
 		size_--;
 	}
 
-	void clear() noexcept (std::is_nothrow_destructible<_Tp>::value) {
+	void clear() noexcept(std::is_nothrow_destructible<_Tp>::value) {
 		if (!block_) return;
 		for (size_type i=0;i<max_used_count_;i++) {
 			slot_type& slot=block_[i];
@@ -441,5 +450,10 @@ public:
 }
 
 }
+
+#ifdef _STDEX_SLOT_MAP_INNER_DEF
+#undef _STDEX_SLOT_MAP_ALLOW_INCOMPLETE_TYPE
+#undef _STDEX_SLOT_MAP_INNER_DEF
+#endif
 
 #endif
