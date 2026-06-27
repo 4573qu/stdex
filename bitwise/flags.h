@@ -1,5 +1,5 @@
-//Last Modified At 2026/02/13
-//@Version 2.0.3.0
+//Last Modified At 2026/06/28
+//@Version 2.1.0.0
 #ifndef _STDEX_BITWISE_FLAGS_H_
 #define _STDEX_BITWISE_FLAGS_H_ 1
 
@@ -99,7 +99,7 @@ public:
 		std::underlying_type_t<_Tp> e=_Tp(1);
 		while (temp) {
 			if (temp&1) func((_Tp)e);
-			temp>>=1;
+			temp=(temp+0u)>>1;
 			e<<=1;
 		}
 	}
