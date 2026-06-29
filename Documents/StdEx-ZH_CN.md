@@ -16,7 +16,7 @@ StdEx库是一个包含文件模式的C++扩展库，本库使用非外部链接
 
 - bitwise
 
-在**简写引入**中，您可以直接使用您需要引入的文件名，无需带有文件夹名和“.h”后缀，即可自动引入该文件对应的头文件。如使用**`#include <flags>`**，可以等效引入**`#include <bitwise/flags.h>`**。若要使用此功能，您需要将本库下include文件夹加入您使用的编译工具的“包含文件”条目中（在本情况下，若您的StdEx库目录为%StdEx%，则您的编译工具应该包含目录“%StdEx%/”和“%StdEx/include”）。部分文件因与标准库存在重名或命名特征不明显等原因，选择了不同名的简写，包括的文件如下：
+在**简写引入**中，您可以直接使用您需要引入的文件名，无需带有文件夹名和“.h”后缀，即可自动引入该文件对应的头文件。如使用**`#include <flags>`**，可以等效引入**`#include <bitwise/flags.h>`**。若要使用此功能，您需要将本库下include文件夹加入您使用的编译工具的“包含文件”条目中（在本情况下，若您的StdEx库目录为%StdEx%，则您的编译工具应该包含目录“%StdEx%/”和“%StdEx%/include”）。部分文件因与标准库存在重名或命名特征不明显等原因，选择了不同名的简写，包括的文件如下：
 
 - math_base→math/base.h
 
@@ -30,7 +30,7 @@ StdEx库是一个包含文件模式的C++扩展库，本库使用非外部链接
 
 - utility/plugin.h
 
-**通常**额外说明是给深度开发者展示的，如果您不是深度开发者，请无视该条目。
+**通常**“额外说明”是给深度开发者展示的，如果您不是深度开发者，请无视该条目。
 
 > [!WARNING]
 >
@@ -38,7 +38,91 @@ StdEx库是一个包含文件模式的C++扩展库，本库使用非外部链接
 
 被标记为`[[deprecated]]`的函数会在给出处明确使用“**不建议的**”字样标注，请注意。
 
-## bitwise/flags.h(Version 2.0.2.6)
+## bitwise/bit_field.h(Version 1.1.0.0)
+
+### 基本信息
+
+#### 概要
+
+bit_field.h旨在提供一个轻量级且内存布局确定的位域操作抽象，用于解决跨平台通信或硬件交互时对固定字节序和精确位控制的需求。
+
+使用bit_field.h提供的位域，可以快速将变量绑定到固定内存布局的特定位置上，实现不同平台或硬件上变量内存一致化的需求。
+
+#### 使用方法
+
+单文件使用模式：`#include <bitwise/bit_field.h>`
+
+项目使用模式：`#include <bitwise/bit_field.h>`
+
+#### 使用场景
+
+本库提供的位域常常用于需要固定内存布局的情况。
+
+以网络通信为例，若一个网络协议包头需要在不同字节序的平台上传输，使用本库可以快速方便地定义一个在任意平台上都无需转换即可访问的数据结构。
+
+以硬件寄存器映射为例，使用本库可以安全便捷地固定内存映射模式。
+
+#### 使用限制
+
+bit_field.h提供位域的本质是对固定内存的映射，所以在绑定具体变量到位域时，请确保被绑定的内存布局可用；同时，绑定的内存应当不超出该内存原始定义的长度。例如，当原始内存布局使用两个`uint32_t`的变量组成的8字节，因为其变量间内存布局是不确定的，`bit_field`将不允许将变量绑定到横跨两个变量的内存位置。
+
+同时，虽然`bit_field`的快捷绑定宏（`_STDEX_BIT_BIND`）会自动去除cv修饰符，但使用者应当清晰的理解，`bit_field`绑定到的原始内存在绝大多数情况下不应该是指针类型。
+
+### 数据结构
+
+#### `class bit_field<_Tp,_Offset,_Count>`
+
+##### 所属命名空间
+
+`stdex::bitwise`
+
+##### 功能简述
+
+本文件的核心类，提供了位域的完整支持。
+
+##### 额外说明
+
+###### 模板说明
+
+`_Tp`：绑定位域的底层类型。如您想将`uint32_t example`划分为第0\~5位、第6\~26位和第27\~31位三个位域，那这三个位域的`_Tp`模板则均为`uint32_t`。
+
+`_Offset`,`_Count`：绑定位域的内存偏移和长度。以上述划分为例，第二个位域的第6\~26位可描述为从第6位开始的21个位，则`_Offset`为6，`_Count`为21。
+
+###### 功能介绍
+
+将上述例子转换为代码，则应当创建`bit_field<uint32_t,0,6> example_bf1`、`bit_field<uint32_t,6,21> example_bf2`和`bit_field<uint32_t,27,5> example_bf3`。后续若须对example的第6~26位进行存取操作时，只需用`example_bf2`操作，即可完成目标。
+
+##### 成员说明
+
+本类没有公开成员。内部使用_Tp引用类型存储对内存的绑定。
+
+##### 成员函数
+
+| 方法                                             | 说明                                                   | 复杂度 |
+| :----------------------------------------------- | :----------------------------------------------------- | ------ |
+| `explicit bit_field(_Tp& storage) noexcept`      | 创建对特定变量的引用，位置和长度由模板参数决定         | $O(1)$ |
+| `bit_field(const bit_field& other) noexcept`     | 拷贝构造，将引用的变量设置为来源变量，不修改位置和长度 | $O(1)$ |
+| `bit_field& operator =(const bit_field&)=delete` | [禁用函数]拷贝复制                                     | $-$    |
+| `bit_field& operator =(_Tp value)`               | 内部调用set函数启用赋值功能                            | $O(1)$ |
+| `operator _Tp() const noexcept`                  | 内部调用get函数启用类型转换获取底层值功能              | $O(1)$ |
+| `void set(_Tp value) noexcept`                   | 对位域的值进行赋值                                     | $O(1)$ |
+| `_Tp get() const noexcept`                       | 获取位域的值                                           | $O(1)$ |
+
+##### 其他方法
+
+###### 增强宏
+
+`_STDEX_BIT_BIND(raw,offset,bits,name)`
+
+快速创建对raw的第offset\~第offset+bits-1位的位域，命名为name；类型自动推断并去除cv修饰符。
+
+`_STDEX_BIT_BIND_T(raw,offset,type,name)`
+
+快速创建对视为type类型的raw的第offset\~type类型末尾位的位域，命名为name。
+
+## bitwise/bit_iterator(Version 1.1.0.0)
+
+## bitwise/flags.h(Version 2.1.0.0)
 
 ### 基本信息
 
@@ -122,7 +206,7 @@ flags.h旨在提供一个类型安全的位掩码标志管理的标志集功能�
 | `flags(_Tp e) noexcept`                                      | 用单个标志初始化     | $O(1)$ |
 | `flags& operator =(_Tp e) noexcept`                          | 直接赋值             | $O(1)$ |
 | `virtual flags& operator <<=(_Tp e)`<br>`virtual flags operator <<(_Tp e)` | 添加标志             | $O(1)$ |
-| `flags& operator <<=(flags<_Tp> value) noexcept`<br/>`flags operator <<(flags<_Tp> value) noexcept` | 添加一组标志         | $O(n)$ |
+| `flags& operator <<=(flags<_Tp> value) noexcept`<br>`flags operator <<(flags<_Tp> value) noexcept` | 添加一组标志         | $O(n)$ |
 | `flags& operator >>=(_Tp e) noexcept` <br>`flags operator <<(_Tp e) noexcept` | 移除标志             | $O(1)$ |
 | `bool contains(_Tp e) const noexcept`                        | 检测标志是否存在     | $O(1)$ |
 | `operator typename std::underlying_type_t<_Tp>() const noexcept` | 获取底层整数值       | $O(1)$ |
@@ -495,34 +579,6 @@ int main() {
 本篇待补充
 
 ## math/geometry/trajectory.h
-
-本篇待补充
-
-## meta/database.h-(V1.0)
-
-### 简述
-
-本文件的主要功能是提供一个支持类SQL语句和自定义数据结构的数据库。
-
-单文件使用模式：#include <meta/database.h>
-
-项目使用模式：#include <meta/database.h>
-
-### 数据结构
-
-#### class database
-
-##### 功能简述
-
-## meta/dynamic_struct.h-(V1.21)
-
-### 简述
-
-本文件的主要功能是提供一个动态提供类型的数据结构。
-
-单文件使用模式：#include <meta/dynamic_struct.h>
-
-项目使用模式：#include <meta/dynamic_struct.h>
 
 本篇待补充
 
