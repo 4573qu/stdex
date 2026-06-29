@@ -1,11 +1,15 @@
-//Last Modified At 2025/09/16
-//@Version 1.0.0.2
+//Last Modified At 2026/06/29
+//@Version 1.1.0.0
 #ifndef _STDEX_MATH_SET_H_
 #define _STDEX_MATH_SET_H_ 1
+
 #include <algorithm>
+#include <climits>
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "foundations.h"//At Least 1.0.0.2
@@ -15,7 +19,7 @@ namespace stdex {
 namespace math {
 
 template <typename _Tp>
-std::vector<std::vector<_Tp>> cartesian_product(std::vector<std::vector<_Tp>>& input) {
+std::vector<std::vector<_Tp>> cartesian_product(const std::vector<std::vector<_Tp>>& input) {
 	std::vector<std::vector<_Tp>> result;
 	if (input.empty()) return result;    
 	for (auto& it:input) {
@@ -37,15 +41,15 @@ std::vector<std::vector<_Tp>> cartesian_product(std::vector<std::vector<_Tp>>& i
 }
 
 template <typename _Tp>
-std::vector<std::vector<_Tp>> power_set(std::vector<_Tp>& input) {
+std::vector<std::vector<_Tp>> power_set(const std::vector<_Tp>& input) {
 	std::vector<std::vector<_Tp>> result;
-	size_t n=input.size();
-	if (n>sizeof(size_t)*8) throw std::invalid_argument("The amount of elements must be less than or equal to "+std::to_string(sizeof(size_t)*8));
-	size_t total=1ULL<<n;
+	std::size_t n=input.size();
+	if (n>sizeof(std::size_t)*CHAR_BIT) throw std::invalid_argument("The amount of elements must be less than or equal to "+std::to_string(sizeof(std::size_t)*CHAR_BIT));
+	std::size_t total=1ULL<<n;
 	result.reserve(total);
-	for (size_t mask=0;mask<total;mask++) {
+	for (std::size_t mask=0;mask<total;mask++) {
 		std::vector<_Tp> subset;
-		for (int i=0;i<n;i++) {
+		for (std::size_t i=0;i<n;i++) {
 			if (mask&(1ULL<<i)) subset.push_back(input[i]);
 		}
 		result.push_back(std::move(subset));
@@ -54,13 +58,13 @@ std::vector<std::vector<_Tp>> power_set(std::vector<_Tp>& input) {
 }
 
 template <typename _Tp>
-std::vector<std::vector<_Tp>> combinations(std::vector<_Tp>& input,int k) {
+std::vector<std::vector<_Tp>> combinations(const std::vector<_Tp>& input,int k) {
 	std::vector<std::vector<_Tp>> result;
-	if (k<0 || static_cast<size_t>(k)>input.size()) return result;
+	if (k<0 || static_cast<std::size_t>(k)>input.size()) return result;
 	std::vector<_Tp> current;
 	current.reserve(k);
-	std::function<void(size_t)> combine;
-	combine=[&](size_t start) {
+	//std::function<void(std::size_t)> combine;
+	auto combine=[&](std::size_t start) {
 		if (current.size()==k) {
 			result.push_back(current);
 			return;
@@ -79,8 +83,8 @@ template <typename _Tp>
 std::vector<std::vector<_Tp>> permutations(std::vector<_Tp> input) {
 	std::vector<std::vector<_Tp>> result;
 	std::sort(input.begin(),input.end());
-	std::function<void(size_t)> permute;
-	permute=[&](size_t level) {
+	//std::function<void(std::size_t)> permute;
+	auto permute=[&](std::size_t level) {
 		if (level==input.size()) {
 			result.push_back(input);
 			return;
@@ -97,7 +101,7 @@ std::vector<std::vector<_Tp>> permutations(std::vector<_Tp> input) {
 }
 
 template <typename _Tp>
-std::vector<_Tp> multiset_intersection(std::vector<_Tp>& set1,std::vector<_Tp>& set2) {
+std::vector<_Tp> multiset_intersection(const std::vector<_Tp>& set1,const std::vector<_Tp>& set2) {
 	std::map<_Tp,int> counter;
 	for (auto& it:set1) counter[it]++;
 	std::vector<_Tp> result;
