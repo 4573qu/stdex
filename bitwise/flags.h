@@ -1,4 +1,4 @@
-//Last Modified At 2026/06/28
+//Last Modified At 2026/06/29
 //@Version 2.1.0.0
 #ifndef _STDEX_BITWISE_FLAGS_H_
 #define _STDEX_BITWISE_FLAGS_H_ 1
@@ -99,7 +99,7 @@ public:
 		std::underlying_type_t<_Tp> e=_Tp(1);
 		while (temp) {
 			if (temp&1) func((_Tp)e);
-			temp=(temp+0u)>>1;
+			temp=(temp+0ULL)>>1;
 			e<<=1;
 		}
 	}
@@ -476,14 +476,14 @@ public:
 
 #undef _STDEX_CONSTEXPR
 
-#define _STDEX_ENABLE_FLAGS_ENHANCED(EnumType) \
+#define _STDEX_ENABLE_FLAGS_ENHANCED(enum_type) \
 template<> \
-struct stdex::bitwise::flags<EnumType>::_flags_enhanced : std::true_type {}; \
-constexpr stdex::bitwise::flags<EnumType> operator <<(EnumType lhs,EnumType rhs) noexcept { \
-	return stdex::bitwise::flags<EnumType>(lhs)<<rhs; \
+struct stdex::bitwise::flags<enum_type>::_flags_enhanced : std::true_type {}; \
+constexpr stdex::bitwise::flags<enum_type> operator <<(enum_type lhs,enum_type rhs) noexcept { \
+	return stdex::bitwise::flags<enum_type>(lhs)<<rhs; \
 } \
-constexpr stdex::bitwise::flags<EnumType> operator >>(EnumType lhs,EnumType rhs) noexcept { \
-	return stdex::bitwise::flags<EnumType>(lhs)>>rhs; \
+constexpr stdex::bitwise::flags<enum_type> operator >>(enum_type lhs,enum_type rhs) noexcept { \
+	return stdex::bitwise::flags<enum_type>(lhs)>>rhs; \
 }
 
 #endif

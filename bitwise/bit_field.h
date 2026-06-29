@@ -1,5 +1,5 @@
-//Last Modified At 2026/01/28
-//@Version 1.0.1.0
+//Last Modified At 2026/06/29
+//@Version 1.1.0.0
 #ifndef _STDEX_BITWISE_BIT_FIELD_H_
 #define _STDEX_BITWISE_BIT_FIELD_H_ 1
 
@@ -18,25 +18,35 @@ class bit_field {
 	static_assert(_Count>0,"_Count must be positive.");
 	static_assert(_Offset+_Count<=sizeof(_Tp)*CHAR_BIT,"Bit_field out of range.");
 	_Tp& storage_;
-	static constexpr _Tp mask_=(_Tp(1)<<_Count)-1;
+	static constexpr _Tp mask_=[]() constexpr {
+		if constexpr (_Count==sizeof(_Tp)*CHAR_BIT) {
+			return static_cast<_Tp>(~_Tp(0));
+		} else {
+			return static_cast<_Tp>((_Tp(1)<<_Count)-1);
+		}
+	}();
 
 public:
 	explicit bit_field(_Tp& storage) noexcept : storage_(storage) { }
 	bit_field(const bit_field& other) noexcept : storage_(other.storage_) { }
 	bit_field& operator =(const bit_field&)=delete;
+
 	bit_field& operator =(_Tp value) noexcept {
 		set(value);
 		return *this;
 	}
+
 	operator _Tp() const noexcept {
 		return get();
 	}
-	_Tp get() const noexcept {
-		return (storage_>>_Offset)&mask_;
-	}
+	
 	void set(_Tp value) noexcept {
 		_Tp mask=mask_<<_Offset;
 		storage_=(storage_&~mask)|((value&mask_)<<_Offset);
+	}
+
+	_Tp get() const noexcept {
+		return (storage_>>_Offset)&mask_;
 	}
 };
 
@@ -46,6 +56,6 @@ public:
 
 #define _STDEX_BIT_BIND(raw,offset,bits,name) \
 stdex::bitwise::bit_field<std::remove_reference_t<decltype(raw)>,(offset),(bits)> name{raw}
-#define _STDEX_BIT_BIND_T(raw,offset,type,name) _STDEX_BIT_BIND(raw,offset,sizeof(type)*CHAR_BIT,name)
+#define _STDEX_BIT_BIND_T(raw,offset,type,name) _STDEX_BIT_BIND(raw,offset,sizeof(type)*CHAR_BIT-offset,name)
 
 #endif

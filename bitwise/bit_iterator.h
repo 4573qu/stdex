@@ -1,5 +1,5 @@
-//Last Modified At 2025/11/06
-//@Version 1.0.1.0
+//Last Modified At 2026/06/30
+//@Version 1.1.0.0
 #ifndef _STDEX_BITWISE_BIT_ITERATOR_H_
 #define _STDEX_BITWISE_BIT_ITERATOR_H_ 1
 
@@ -26,7 +26,7 @@ public:
 
 private:
 	_Tp* data_;
-	int index_;
+	difference_type index_;
 
 public:
 #define _STDEX_BIT_ITERATOR_SIZE (sizeof(_Tp)*CHAR_BIT)
@@ -70,7 +70,7 @@ public:
 		if (n<0) return *this-=(-n);
 		std::ptrdiff_t total_bits=index_+n;
 		data_+=total_bits/_STDEX_BIT_ITERATOR_SIZE;
-		index_+=total_bits%_STDEX_BIT_ITERATOR_SIZE;
+		index_=total_bits%_STDEX_BIT_ITERATOR_SIZE;
 		return *this;
 	}
 	bit_iterator& operator -=(std::ptrdiff_t n) noexcept {
