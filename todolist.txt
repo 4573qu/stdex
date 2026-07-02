@@ -9,11 +9,11 @@ cdcp_solver、mip_solver、minlp_solver等计划
 poly_any实现
 erase_ptr实现
 
+->crypto/
+brotli zstd实现，依靠现有hx，但等待Fable 5开放
+
 ->machine/
 intel_assembler补全
-
-->crypto/
-DEFLATE算法实现
 
 ->math/
 bigint重构，并附带bigfloat实现
@@ -27,14 +27,12 @@ database->更名、stdex化
 ->structure/
 nary_tree->stdex化
 b树实现
-N叉huffman实现与PackageMerge算法
 
 ->syntax/
 LALR_parser实现
 GLR/LL等parser实现
 
 ->type/
-notation的DOM容器实现与json/xml/yaml的子支持
 zipped算法与包装分离、bz2实现
 7z算法实现
 bitmap实现
@@ -44,3 +42,18 @@ bitmap实现
 
 ->vision/
 canvas系列实现
+
+
+[DOM PART]
+JSON [+JSON PATH] [COMPLETE]
+XML [+XML PATH] [COMPLETE]
+YAML [+REFERENCE] <--CURRENT-->
+TOML [UNCHECKED COMPLETE]
+HOCON [COMPLETE]
+PROTOBUF [WITH SCHEMA] [UNSTARTED]
+
+BSON [COMPLETE]
+CBOR [+TAG] [WAITING]
+MSGPACK [+EXT] [WAITING]
+BJDATA [UNSTARTED]
+UBJSON [UNSTARTED]
