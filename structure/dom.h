@@ -1,5 +1,5 @@
-//Last Modified At 2026/06/10
-//@Version 1.0.0.0
+//Last Modified At 2026/07/03
+//@Version 1.0.0.1
 #ifndef _STDEX_STRUCTURE_DOM_H_
 #define _STDEX_STRUCTURE_DOM_H_ 1
 
@@ -2631,11 +2631,11 @@ public:
 						success=equal_impl(result.at(ptr),get_value(string_t{"test"},string_t{"value"},false));
 					} catch (std::out_of_range&) {
 					}
-					if (!success) throw std::runtime_error("dom: unsuccessful patch test operation");
+					if (!success) throw std::runtime_error("Unsuccessful patch test operation");
 					break;
 				}
 				case PO_INVALID:
-				default: throw std::invalid_argument("dom: operation value is invalid");
+				default: throw std::invalid_argument("Operation value is invalid");
 			}
 		}
 	}

@@ -1,5 +1,5 @@
-//Last Modified At 2026/06/11
-//@Version 1.0.0.0
+//Last Modified At 2026/07/04
+//@Version 1.0.0.1
 #ifndef _STDEX_STRUCTURE_BINARY_DOM_H_
 #define _STDEX_STRUCTURE_BINARY_DOM_H_ 1
 
@@ -27,7 +27,7 @@ _STDEX_DERIVED_KIND(binary_data_type,dom_data_type,_STDEX_KIND_AUTO_START,
 _STDEX_DOM_TPL_DECLARATION
 class binary_dom : public _STDEX_DOM_DEF {
 public:
-	using base_t=STDEX_DOM_DEF;
+	using base_t=_STDEX_DOM_DEF;
 	using int_t=typename base_t::int_t;
 	using float_t=typename base_t::float_t;
 	using boolean_t=typename base_t::boolean_t;
