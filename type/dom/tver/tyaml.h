@@ -5,7 +5,6 @@
 
 #include <cerrno>
 #include <cmath>
-#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -21,9 +20,8 @@
 #include <utility>
 #include <vector>
 
-#include "../../structure/dom.h"//At Least 1.0
-#include "../../syntax/parser.h"//At Least 3.4
-#include "../../utility/kind.h"//At Least 1.4
+#include "../structure/dom.h"//At Least 1.0
+#include "../syntax/parser.h"//At Least 3.4
 
 namespace stdex {
 
@@ -31,13 +29,13 @@ namespace type {
 
 namespace basic_yaml {
 
-//以派生kind在树内表达yaml的图语义:YDT_ANCHOR为"命名节点"(包装目标),YDT_ALIAS为"引用边"(仅存锚点名)。
-//树+引用与图在可达语义上等价,消除了反序列化把同一锚定数据展开为多份拷贝的失真。
-_STDEX_DERIVED_KIND(yaml_data_type,structure::dom_data_type,_STDEX_KIND_AUTO_START,
-	_STDEX_KIND_VALUE_AUTO(YDT_ANCHOR)
-	_STDEX_KIND_VALUE_AUTO(YDT_ALIAS)
-)
+//yaml的数据模型(null/bool/int/float/string/sequence/mapping)与dom基础七型一一对应,
+//因此不派生kind、不携带载荷子类。具体情况具体分析:json/xml是文本记法故有SAX,
+//bson/cbor/msgpack是二进制记法故有binary_t;yaml属前者,提供SAX,不提供binary_t。
+//yaml独有内容:多文档流、%YAML/%TAG指令、锚点/别名、标签、块/流双风格、块标量。
 
+//块结构上下文(缩进)在词法层由缩进栈消解并合成结构终结符(BSEQ/BMAP的START与END、
+//DOC_START/DOC_END、缺省值EMPTY),从而文法保持上下文无关,可直接交给SLR(1)分析器。
 enum yaml_symbol : int {
 	YS_EPSILON,
 	YS_EOF,
@@ -116,13 +114,6 @@ enum yaml_scalar_style : int {
 	YSS_FOLDED,
 };
 
-//parse行为选项:preserve_references=true时锚点/别名以YDT_ANCHOR/YDT_ALIAS节点保真入树,
-//false时按展开语义将别名替换为锚定子树的拷贝;multiline_scalars控制多行plain/引用标量折叠。
-struct yaml_parse_options {
-	bool preserve_references=true;
-	bool multiline_scalars=true;
-};
-
 template <typename _String>
 struct basic_yaml_document_info {
 	_String version{};
@@ -163,6 +154,9 @@ struct yaml_sax {
 	virtual ~yaml_sax()=default;
 };
 
+//锚点/别名在建树侧消解:别名展开为锚定子树的拷贝(dom是树而非图,环状引用不可表示,
+//指向未完成祖先的别名将因查无锚点而报错);锚点作用域为单个文档。
+//标签的类型强制已在listener侧完成,建树侧忽略tag事件。
 template <typename _Yaml>
 class yaml_sax_dom_builder : public yaml_sax<_Yaml> {
 public:
@@ -175,7 +169,6 @@ public:
 private:
 	std::vector<_Yaml>& documents_;
 	document_info_t* info_=nullptr;
-	yaml_parse_options options_{};
 	std::vector<_Yaml*> ref_stack_;
 	string_t key_;
 	std::map<string_t,_Yaml> anchors_;
@@ -212,16 +205,13 @@ private:
 	}
 	void bind_anchors(std::size_t depth,_Yaml* node) {
 		while (!pending_anchors_.empty() && pending_anchors_.back().second==depth) {
-			if (options_.preserve_references) {
-				anchors_[pending_anchors_.back().first]=_Yaml();
-				*node=_Yaml(_Yaml::make_anchor(std::move(pending_anchors_.back().first),std::move(*node)));
-			} else anchors_[std::move(pending_anchors_.back().first)]=*node;
+			anchors_[std::move(pending_anchors_.back().first)]=*node;
 			pending_anchors_.pop_back();
 		}
 	}
 
 public:
-	explicit yaml_sax_dom_builder(std::vector<_Yaml>& documents,document_info_t* info=nullptr,const yaml_parse_options& options=yaml_parse_options()) : documents_(documents) , info_(info) , options_(options) { }
+	explicit yaml_sax_dom_builder(std::vector<_Yaml>& documents,document_info_t* info=nullptr) : documents_(documents) , info_(info) { }
 	bool start_document() override {
 		in_document_=true;
 		document_value_seen_=false;
@@ -311,13 +301,10 @@ public:
 		auto it=anchors_.find(name);
 		if (it==anchors_.end()) {
 			errored_=true;
-			error_message_="Unknown alias '"+std::string(name.begin(),name.end())+"'";
+			error_message_="unknown alias '"+std::string(name.begin(),name.end())+"'";
 			return false;
 		}
-		_Yaml* node=nullptr;
-		if (options_.preserve_references) node=handle_value(_Yaml(_Yaml::make_alias(std::move(name))));
-		else node=handle_value(_Yaml(it->second));
-		bind_anchors(ref_stack_.size(),node);
+		handle_value(_Yaml(it->second));
 		return true;
 	}
 	bool tag(string_t& text) override {
@@ -415,241 +402,6 @@ public:
 		return yaml(base_t::object(init_list));
 	}
 
-	bool support(structure::dom_data_type t) const noexcept override {
-		return base_t::support(t) || t==yaml_data_type(YDT_ANCHOR) || t==yaml_data_type(YDT_ALIAS);
-	}
-
-	static bool is_anchor(const base_t& node) noexcept {
-		return node.type()==yaml_data_type(YDT_ANCHOR);
-	}
-	bool is_anchor() const noexcept {
-		return is_anchor(*this);
-	}
-	static bool is_alias(const base_t& node) noexcept {
-		return node.type()==yaml_data_type(YDT_ALIAS);
-	}
-	bool is_alias() const noexcept {
-		return is_alias(*this);
-	}
-	static base_t make_anchor(string_t name,base_t target) {
-		base_t node;
-		node.data()=typename base_t::data_t(structure::dom_data_type(YDT_ANCHOR),create_value<anchor_value>(std::move(name),std::move(target)));
-		return node;
-	}
-	static base_t make_alias(string_t name) {
-		base_t node;
-		node.data()=typename base_t::data_t(structure::dom_data_type(YDT_ALIAS),create_value<alias_value>(std::move(name)));
-		return node;
-	}
-	static yaml anchor(string_t name,base_t target) {
-		return yaml(make_anchor(std::move(name),std::move(target)));
-	}
-	static yaml alias(string_t name) {
-		return yaml(make_alias(std::move(name)));
-	}
-	static string_t& anchor_name(const base_t& node) {
-		return anchor_payload(node)->name;
-	}
-	string_t& anchor_name() {
-		return anchor_name(*this);
-	}
-	const string_t& anchor_name() const {
-		return anchor_payload(*this)->name;
-	}
-	static base_t& anchor_target(const base_t& node) {
-		return anchor_payload(node)->target;
-	}
-	base_t& anchor_target() {
-		return anchor_target(*this);
-	}
-	const base_t& anchor_target() const {
-		return anchor_payload(*this)->target;
-	}
-	static string_t& alias_name(const base_t& node) {
-		return alias_payload(node)->name;
-	}
-	string_t& alias_name() {
-		return alias_name(*this);
-	}
-	const string_t& alias_name() const {
-		return alias_payload(*this)->name;
-	}
-	static void set_anchor(base_t& node,string_t name,base_t target) {
-		node.data()=typename base_t::data_t(structure::dom_data_type(YDT_ANCHOR),create_value<anchor_value>(std::move(name),std::move(target)));
-	}
-	void set_anchor(string_t name,base_t target) {
-		set_anchor(*this,std::move(name),std::move(target));
-	}
-	static void set_alias(base_t& node,string_t name) {
-		node.data()=typename base_t::data_t(structure::dom_data_type(YDT_ALIAS),create_value<alias_value>(std::move(name)));
-	}
-	void set_alias(string_t name) {
-		set_alias(*this,std::move(name));
-	}
-	//解引用:剥去YDT_ANCHOR包装并把YDT_ALIAS展开为锚定目标的深拷贝,得到纯树。
-	//未知锚点与环状引用抛invalid_argument(parse按文档序校验不会产出环,环仅可能来自手工构树)。
-	static void dereference(base_t& node) {
-		std::map<string_t,base_t> anchors;
-		collect_anchors(node,anchors);
-		std::vector<string_t> stack;
-		resolve_aliases(node,anchors,stack);
-	}
-	yaml& dereference() {
-		dereference(static_cast<base_t&>(*this));
-		return *this;
-	}
-	yaml dereferenced() const {
-		yaml result(*this);
-		result.dereference();
-		return result;
-	}
-
-protected:
-	template <typename _Vp,typename... _Args>
-	static _Vp* create_value(_Args&&... args) {
-		_Allocator<_Vp> alloc;
-		_Vp* result=std::allocator_traits<_Allocator<_Vp>>::allocate(alloc,1);
-		try {
-			std::allocator_traits<_Allocator<_Vp>>::construct(alloc,result,std::forward<_Args>(args)...);
-		} catch (...) {
-			std::allocator_traits<_Allocator<_Vp>>::deallocate(alloc,result,1);
-			throw;
-		}
-		return result;
-	}
-
-	struct anchor_value : base_t::value_t {
-		string_t name{};
-		base_t target{};
-
-		anchor_value()=default;
-		anchor_value(string_t anchor_name,base_t anchor_target) : name(std::move(anchor_name)) , target(std::move(anchor_target)) { }
-		~anchor_value() override=default;
-
-		anchor_value(const anchor_value& other) : base_t::value_t() , name(other.name) , target(other.target) { }
-
-		typename base_t::value_t* clone(structure::dom_data_type t) const override {
-			if (t==yaml_data_type(YDT_ANCHOR)) return create_value<anchor_value>(*this);
-			return base_t::value_t::clone(t);
-		}
-		void destroy(structure::dom_data_type t) override {
-			if (t==yaml_data_type(YDT_ANCHOR)) return;
-			base_t::value_t::destroy(t);
-		}
-		void destroy_self(structure::dom_data_type t) override {
-			this->destroy(t);
-			_Allocator<anchor_value> alloc;
-			std::allocator_traits<_Allocator<anchor_value>>::destroy(alloc,this);
-			std::allocator_traits<_Allocator<anchor_value>>::deallocate(alloc,this,1);
-		}
-	};
-	struct alias_value : base_t::value_t {
-		string_t name{};
-
-		alias_value()=default;
-		explicit alias_value(string_t alias_name) : name(std::move(alias_name)) { }
-		~alias_value() override=default;
-
-		alias_value(const alias_value& other) : base_t::value_t() , name(other.name) { }
-
-		typename base_t::value_t* clone(structure::dom_data_type t) const override {
-			if (t==yaml_data_type(YDT_ALIAS)) return create_value<alias_value>(*this);
-			return base_t::value_t::clone(t);
-		}
-		void destroy(structure::dom_data_type t) override {
-			if (t==yaml_data_type(YDT_ALIAS)) return;
-			base_t::value_t::destroy(t);
-		}
-		void destroy_self(structure::dom_data_type t) override {
-			this->destroy(t);
-			_Allocator<alias_value> alloc;
-			std::allocator_traits<_Allocator<alias_value>>::destroy(alloc,this);
-			std::allocator_traits<_Allocator<alias_value>>::deallocate(alloc,this,1);
-		}
-	};
-
-	static anchor_value* anchor_payload(const base_t& node) {
-		anchor_value* payload=node.data().value?dynamic_cast<anchor_value*>(node.data().value):nullptr;
-		if (node.type()!=yaml_data_type(YDT_ANCHOR) || !payload) throw std::invalid_argument("Node does not hold a yaml anchor payload");
-		return payload;
-	}
-	static alias_value* alias_payload(const base_t& node) {
-		alias_value* payload=node.data().value?dynamic_cast<alias_value*>(node.data().value):nullptr;
-		if (node.type()!=yaml_data_type(YDT_ALIAS) || !payload) throw std::invalid_argument("Node does not hold a yaml alias payload");
-		return payload;
-	}
-
-	static void collect_anchors(const base_t& node,std::map<string_t,base_t>& anchors) {
-		if (is_anchor(node)) {
-			const anchor_value* payload=anchor_payload(node);
-			anchors.emplace(payload->name,payload->target);
-			collect_anchors(payload->target,anchors);
-			return;
-		}
-		if (node.type()==structure::DDT_ARRAY || node.type()==structure::DDT_OBJECT) {
-			for (auto it=node.cbegin();it!=node.cend();it++) collect_anchors(*it,anchors);
-		}
-	}
-	static void resolve_aliases(base_t& node,std::map<string_t,base_t>& anchors,std::vector<string_t>& stack) {
-		if (is_anchor(node)) {
-			base_t target=std::move(anchor_target(node));
-			resolve_aliases(target,anchors,stack);
-			node=std::move(target);
-			return;
-		}
-		if (is_alias(node)) {
-			const string_t name=alias_name(node);
-			for (const auto& it:stack) {
-				if (it==name) throw std::invalid_argument("Cyclic alias '"+std::string(name.begin(),name.end())+"'");
-			}
-			auto found=anchors.find(name);
-			if (found==anchors.end()) throw std::invalid_argument("Unknown alias '"+std::string(name.begin(),name.end())+"'");
-			stack.push_back(name);
-			base_t copy=found->second;
-			resolve_aliases(copy,anchors,stack);
-			stack.pop_back();
-			node=std::move(copy);
-			return;
-		}
-		if (node.type()==structure::DDT_ARRAY) {
-			for (auto& it:*node.value().array) resolve_aliases(it,anchors,stack);
-			return;
-		}
-		if (node.type()==structure::DDT_OBJECT) {
-			for (auto& it:*node.value().object) resolve_aliases(it.second,anchors,stack);
-		}
-	}
-	static const base_t* find_anchor(const base_t& node,const string_t& name) {
-		if (is_anchor(node)) {
-			const anchor_value* payload=anchor_payload(node);
-			if (payload->name==name) return &payload->target;
-			return find_anchor(payload->target,name);
-		}
-		if (node.type()==structure::DDT_ARRAY || node.type()==structure::DDT_OBJECT) {
-			for (auto it=node.cbegin();it!=node.cend();it++) {
-				const base_t* result=find_anchor(*it,name);
-				if (result) return result;
-			}
-		}
-		return nullptr;
-	}
-
-	//记法转换协议·源侧降级:YDT_ANCHOR降级为其目标节点;YDT_ALIAS按锚点名在源根内解析为目标副本,
-	//查无锚点返回false交由转换策略处置。环状引用请先dereference(其带环检测)。
-	bool degrade_unsupported(const base_t& source,base_t& replacement) const override {
-		if (source.type()==yaml_data_type(YDT_ANCHOR)) {
-			replacement=anchor_target(source);
-			return true;
-		}
-		if (source.type()==yaml_data_type(YDT_ALIAS)) {
-			const base_t* target=find_anchor(*this,alias_name(source));
-			if (!target) return false;
-			replacement=*target;
-			return true;
-		}
-		return false;
-	}
-
 private:
 	struct yaml_token {
 		yaml_symbol symbol;
@@ -659,6 +411,7 @@ private:
 		int extra=0;
 	};
 
+	//YAML 1.2 Core Schema的标量判定(plain风格才参与类型解析;引用/块标量恒为字符串)。
 	static const std::regex& null_regex() {
 		static const std::regex result(R"(~|null|Null|NULL)",std::regex::optimize);
 		return result;
@@ -671,22 +424,11 @@ private:
 		static const std::regex result(R"(false|False|FALSE)",std::regex::optimize);
 		return result;
 	}
-	//严格判定(plain解析与dump互逆):十进制不允许前导零,浮点必须含小数点或指数,
-	//使"0001"这类文本保持字符串,消除反序列化+序列化的取值失真。
 	static const std::regex& integer_regex() {
-		static const std::regex result(R"([-+]?(?:0|[1-9][0-9]*)|0x[0-9A-Fa-f]+|0o[0-7]+)",std::regex::optimize);
-		return result;
-	}
-	static const std::regex& floating_regex() {
-		static const std::regex result(R"([-+]?(?:(?:0|[1-9][0-9]*)(?:\.[0-9]*(?:[eE][-+]?[0-9]+)?|[eE][-+]?[0-9]+)|\.[0-9]+(?:[eE][-+]?[0-9]+)?)|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))",std::regex::optimize);
-		return result;
-	}
-	//宽松判定(!!int/!!float显式标签用):允许前导零与纯整数形浮点。
-	static const std::regex& integer_lenient_regex() {
 		static const std::regex result(R"([-+]?[0-9]+|0x[0-9A-Fa-f]+|0o[0-7]+)",std::regex::optimize);
 		return result;
 	}
-	static const std::regex& floating_lenient_regex() {
+	static const std::regex& floating_regex() {
 		static const std::regex result(R"([-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))",std::regex::optimize);
 		return result;
 	}
@@ -704,8 +446,8 @@ private:
 		if (regex_match_text(text,false_regex())) return 0;
 		return -1;
 	}
-	static bool plain_integer(const string_t& text,int_t& out,bool lenient=false) {
-		if (!regex_match_text(text,lenient?integer_lenient_regex():integer_regex())) return false;
+	static bool plain_integer(const string_t& text,int_t& out) {
+		if (!regex_match_text(text,integer_regex())) return false;
 		const std::string buffer(text.begin(),text.end());
 		errno=0;
 		if (buffer.size()>2 && buffer[0]=='0' && (buffer[1]=='x' || buffer[1]=='o')) {
@@ -719,8 +461,8 @@ private:
 		out=static_cast<int_t>(value);
 		return true;
 	}
-	static bool plain_floating(const string_t& text,float_t& out,bool lenient=false) {
-		if (!regex_match_text(text,lenient?floating_lenient_regex():floating_regex())) return false;
+	static bool plain_floating(const string_t& text,float_t& out) {
+		if (!regex_match_text(text,floating_regex())) return false;
 		std::string buffer(text.begin(),text.end());
 		std::string body=buffer;
 		float_t sign=1;
@@ -739,7 +481,8 @@ private:
 		out=static_cast<float_t>(std::strtod(buffer.c_str(),nullptr));
 		return true;
 	}
-
+	//识别标准标签的类型强制:0无/未知,1 str,2 int,3 float,4 bool,5 null。
+	//"!"非特定标签按规范对标量解析为字符串;%TAG前缀展开不在识别范围(原文存info)。
 	static int tag_class(const string_t& tag) {
 		const std::string text(tag.begin(),tag.end());
 		if (text=="!") return 1;
@@ -777,30 +520,29 @@ private:
 		bool sequence;
 	};
 
+	//双层词法:行驱动的块上下文(缩进栈合成START/END/ENTRY/EMPTY/DOC_*)+字符驱动的流上下文。
+	//挂起值协议:COLON/ENTRY/ANCHOR/TAG之后置expect_node_;换行后更深缩进=值内容,
+	//否则先补发EMPTY(空值)再做退栈;"序列与所属映射同缩进"的零缩进序列由pending_in_map_放行。
 	struct tokenizer {
-		const char* base;
-		const char* first;
-		const char* last;
-		const char* line_start=nullptr;
-		const char* line_end=nullptr;
-		const char* next_position=nullptr;
-		std::vector<yaml_token>& tokens;
-		std::vector<block_frame> blocks{};
-		bool document_open=false;
-		bool directives_pending=false;
-		bool expect_node=false;
-		std::size_t pending_indent=0;
-		bool pending_in_map=false;
-		bool colon_on_line=false;
-		bool multiline=false;
-		bool plain_continuing=false;
-		std::ptrdiff_t plain_owner=-1;
-		std::size_t pending_breaks=0;
-		bool failed=false;
-		std::size_t error_position=0;
-		std::string error_message{};
+		const char* base_;
+		const char* first_;
+		const char* last_;
+		const char* line_start_=nullptr;
+		const char* line_end_=nullptr;
+		const char* next_position_=nullptr;
+		std::vector<yaml_token>& tokens_;
+		std::vector<block_frame> blocks_{};
+		bool document_open_=false;
+		bool directives_pending_=false;
+		bool expect_node_=false;
+		std::size_t pending_indent_=0;
+		bool pending_in_map_=false;
+		bool colon_on_line_=false;
+		bool failed_=false;
+		std::size_t error_position_=0;
+		std::string error_message_{};
 
-		tokenizer(std::string_view input,std::vector<yaml_token>& tokens) : base(input.data()) , first(input.data()) , last(input.data()+input.size()) , tokens(tokens) { }
+		tokenizer(std::string_view input,std::vector<yaml_token>& tokens) : base_(input.data()) , first_(input.data()) , last_(input.data()+input.size()) , tokens_(tokens) { }
 
 		static bool is_space(char c) noexcept {
 			return c==' ' || c=='\t';
@@ -812,19 +554,19 @@ private:
 			return c==',' || c=='[' || c==']' || c=='{' || c=='}';
 		}
 		std::size_t position(const char* p) const noexcept {
-			return static_cast<std::size_t>(p-base);
+			return static_cast<std::size_t>(p-base_);
 		}
 		bool fail(const char* p,std::string message) {
-			failed=true;
-			error_position=position(p);
-			error_message=std::move(message);
+			failed_=true;
+			error_position_=position(p);
+			error_message_=std::move(message);
 			return false;
 		}
 		void emit(yaml_symbol symbol,const char* p) {
 			yaml_token token;
 			token.symbol=symbol;
 			token.position=position(p);
-			tokens.push_back(std::move(token));
+			tokens_.push_back(std::move(token));
 		}
 		void emit_scalar(const char* p,string_t text,int style) {
 			yaml_token token;
@@ -832,157 +574,142 @@ private:
 			token.position=position(p);
 			token.text=std::move(text);
 			token.extra=style;
-			tokens.push_back(std::move(token));
-			expect_node=false;
+			tokens_.push_back(std::move(token));
+			expect_node_=false;
 		}
 		const char* after_line(const char* line_end) const noexcept {
-			if (line_end>=last) return last;
-			if (*line_end=='\r' && line_end+1<last && line_end[1]=='\n') return line_end+2;
+			if (line_end>=last_) return last_;
+			if (*line_end=='\r' && line_end+1<last_ && line_end[1]=='\n') return line_end+2;
 			return line_end+1;
 		}
 
 		bool run() {
-			if (last-first>=3 && static_cast<unsigned char>(first[0])==0xEF && static_cast<unsigned char>(first[1])==0xBB && static_cast<unsigned char>(first[2])==0xBF) first+=3;
-			while (first<last) {
+			if (last_-first_>=3 && static_cast<unsigned char>(first_[0])==0xEF && static_cast<unsigned char>(first_[1])==0xBB && static_cast<unsigned char>(first_[2])==0xBF) first_+=3;
+			while (first_<last_) {
 				if (!next_line()) return false;
 			}
-			if (expect_node) {
-				emit(YS_EMPTY,last);
-				expect_node=false;
+			if (expect_node_) {
+				emit(YS_EMPTY,last_);
+				expect_node_=false;
 			}
-			while (!blocks.empty()) {
-				emit(blocks.back().sequence?YS_BSEQ_END:YS_BMAP_END,last);
-				blocks.pop_back();
+			while (!blocks_.empty()) {
+				emit(blocks_.back().sequence?YS_BSEQ_END:YS_BMAP_END,last_);
+				blocks_.pop_back();
 			}
-			if (directives_pending) return fail(last,"Directives must be followed by '---'");
-			if (document_open) {
-				emit(YS_DOC_END,last);
-				document_open=false;
+			if (directives_pending_) return fail(last_,"directives must be followed by '---'");
+			if (document_open_) {
+				emit(YS_DOC_END,last_);
+				document_open_=false;
 			}
 			return true;
 		}
 
 		void close_document(const char* p) {
-			if (expect_node) {
+			if (expect_node_) {
 				emit(YS_EMPTY,p);
-				expect_node=false;
+				expect_node_=false;
 			}
-			while (!blocks.empty()) {
-				emit(blocks.back().sequence?YS_BSEQ_END:YS_BMAP_END,p);
-				blocks.pop_back();
+			while (!blocks_.empty()) {
+				emit(blocks_.back().sequence?YS_BSEQ_END:YS_BMAP_END,p);
+				blocks_.pop_back();
 			}
-			if (document_open) {
+			if (document_open_) {
 				emit(YS_DOC_END,p);
-				document_open=false;
+				document_open_=false;
 			}
-			pending_indent=0;
-			pending_in_map=false;
-			plain_continuing=false;
-			pending_breaks=0;
+			pending_indent_=0;
+			pending_in_map_=false;
 		}
 
 		bool next_line() {
-			line_start=first;
-			line_end=first;
-			while (line_end<last && !is_break(*line_end)) line_end++;
-			next_position=after_line(line_end);
-			const char* p=line_start;
+			line_start_=first_;
+			line_end_=first_;
+			while (line_end_<last_ && !is_break(*line_end_)) line_end_++;
+			next_position_=after_line(line_end_);
+			const char* p=line_start_;
 			std::size_t indent=0;
-			while (p<line_end && *p==' ') {
+			while (p<line_end_ && *p==' ') {
 				p++;
 				indent++;
 			}
 			const char* probe=p;
-			while (probe<line_end && is_space(*probe)) probe++;
-			if (probe==line_end || *probe=='#') {
-				if (plain_continuing) {
-					if (probe==line_end) pending_breaks++;
-					else {
-						plain_continuing=false;
-						pending_breaks=0;
-					}
-				}
-				first=next_position;
+			while (probe<line_end_ && is_space(*probe)) probe++;
+			if (probe==line_end_ || *probe=='#') {
+				first_=next_position_;
 				return true;
 			}
-			if (*p=='\t') return fail(p,"Tab characters are not allowed in indentation");
+			if (*p=='\t') return fail(p,"tab characters are not allowed in indentation");
 			if (*p=='%') {
-				if (indent!=0) return fail(p,"Directives must start at the beginning of a line");
-				if (document_open) return fail(p,"Directives are only allowed before '---'");
+				if (indent!=0) return fail(p,"directives must start at the beginning of a line");
+				if (document_open_) return fail(p,"directives are only allowed before '---'");
 				if (!scan_directive(p)) return false;
-				first=next_position;
+				first_=next_position_;
 				return true;
 			}
-			if (indent==0 && line_end-p>=3 && p[0]=='-' && p[1]=='-' && p[2]=='-' && (p+3==line_end || is_space(p[3]))) {
+			if (indent==0 && line_end_-p>=3 && p[0]=='-' && p[1]=='-' && p[2]=='-' && (p+3==line_end_ || is_space(p[3]))) {
 				close_document(p);
 				emit(YS_DOC_START,p);
-				document_open=true;
-				directives_pending=false;
-				colon_on_line=false;
+				document_open_=true;
+				directives_pending_=false;
+				colon_on_line_=false;
 				const char* q=p+3;
-				while (q<line_end && is_space(*q)) q++;
-				if (q<line_end && *q!='#') {
+				while (q<line_end_ && is_space(*q)) q++;
+				if (q<line_end_ && *q!='#') {
 					if (!scan_line(q)) return false;
 				}
-				first=next_position;
+				first_=next_position_;
 				return true;
 			}
-			if (indent==0 && line_end-p>=3 && p[0]=='.' && p[1]=='.' && p[2]=='.' && (p+3==line_end || is_space(p[3]))) {
-				if (!document_open) return fail(p,"Unexpected '...' outside a document");
+			if (indent==0 && line_end_-p>=3 && p[0]=='.' && p[1]=='.' && p[2]=='.' && (p+3==line_end_ || is_space(p[3]))) {
+				if (!document_open_) return fail(p,"unexpected '...' outside a document");
 				close_document(p);
 				const char* q=p+3;
-				while (q<line_end && is_space(*q)) q++;
-				if (q<line_end && *q!='#') return fail(q,"Unexpected content after '...'");
-				first=next_position;
+				while (q<line_end_ && is_space(*q)) q++;
+				if (q<line_end_ && *q!='#') return fail(q,"unexpected content after '...'");
+				first_=next_position_;
 				return true;
 			}
-			if (!document_open) {
-				if (directives_pending) return fail(p,"Directives must be followed by '---'");
+			if (!document_open_) {
+				if (directives_pending_) return fail(p,"directives must be followed by '---'");
 				emit(YS_DOC_START,p);
-				document_open=true;
+				document_open_=true;
 			}
-			if (plain_continuing) {
-				if (multiline && static_cast<std::ptrdiff_t>(indent)>plain_owner && try_fold_plain(p)) {
-					first=next_position;
-					return true;
-				}
-				plain_continuing=false;
-				pending_breaks=0;
-			}
-			colon_on_line=false;
-			const bool line_is_entry=(*p=='-' && (p+1==line_end || is_space(p[1])));
-			if (expect_node) {
-				if (indent>pending_indent) {
-				} else if (indent==pending_indent && line_is_entry && pending_in_map) {
+			colon_on_line_=false;
+			const bool line_is_entry=(*p=='-' && (p+1==line_end_ || is_space(p[1])));
+			if (expect_node_) {
+				if (indent>pending_indent_) {
+					//更深缩进:挂起值的内容,保持期望,不退栈。
+				} else if (indent==pending_indent_ && line_is_entry && pending_in_map_) {
+					//零缩进序列:块序列可与所属映射键同列充当其值。
 				} else {
 					emit(YS_EMPTY,p);
-					expect_node=false;
+					expect_node_=false;
 				}
 			}
-			if (!expect_node) {
-				while (!blocks.empty() && (blocks.back().indent>indent || (blocks.back().indent==indent && blocks.back().sequence && !line_is_entry))) {
-					emit(blocks.back().sequence?YS_BSEQ_END:YS_BMAP_END,p);
-					blocks.pop_back();
+			if (!expect_node_) {
+				while (!blocks_.empty() && (blocks_.back().indent>indent || (blocks_.back().indent==indent && blocks_.back().sequence && !line_is_entry))) {
+					emit(blocks_.back().sequence?YS_BSEQ_END:YS_BMAP_END,p);
+					blocks_.pop_back();
 				}
 			}
 			if (!scan_line(p)) return false;
-			first=next_position;
+			first_=next_position_;
 			return true;
 		}
 
 		bool scan_directive(const char* p) {
 			const char* q=p+1;
 			const char* name_first=q;
-			while (q<line_end && !is_space(*q)) q++;
-			if (q==name_first) return fail(p,"Empty directive name");
+			while (q<line_end_ && !is_space(*q)) q++;
+			if (q==name_first) return fail(p,"empty directive name");
 			yaml_token token;
 			token.symbol=YS_DIRECTIVE;
 			token.position=position(p);
 			token.text=string_t(name_first,q);
-			while (q<line_end && is_space(*q)) q++;
+			while (q<line_end_ && is_space(*q)) q++;
 			const char* value_first=q;
-			const char* value_last=line_end;
-			for (const char* r=value_first;r<line_end;r++) {
+			const char* value_last=line_end_;
+			for (const char* r=value_first;r<line_end_;r++) {
 				if (*r=='#' && (r==value_first || is_space(r[-1]))) {
 					value_last=r;
 					break;
@@ -990,15 +717,15 @@ private:
 			}
 			while (value_last>value_first && is_space(value_last[-1])) value_last--;
 			token.aux=string_t(value_first,value_last);
-			tokens.push_back(std::move(token));
-			directives_pending=true;
+			tokens_.push_back(std::move(token));
+			directives_pending_=true;
 			return true;
 		}
 
 		bool begin_mapping_pair(const char* key_position,std::size_t key_column,string_t key_text,int key_style,const char* colon_position) {
-			if (colon_on_line) return fail(colon_position,"Mapping values are not allowed in this context");
-			if (blocks.empty() || blocks.back().sequence || blocks.back().indent!=key_column) {
-				blocks.push_back(block_frame{key_column,false});
+			if (colon_on_line_) return fail(colon_position,"mapping values are not allowed in this context");
+			if (blocks_.empty() || blocks_.back().sequence || blocks_.back().indent!=key_column) {
+				blocks_.push_back(block_frame{key_column,false});
 				emit(YS_BMAP_START,key_position);
 			}
 			yaml_token token;
@@ -1006,56 +733,17 @@ private:
 			token.position=position(key_position);
 			token.text=std::move(key_text);
 			token.extra=key_style;
-			tokens.push_back(std::move(token));
+			tokens_.push_back(std::move(token));
 			emit(YS_COLON,colon_position);
-			colon_on_line=true;
-			expect_node=true;
-			pending_indent=key_column;
-			pending_in_map=true;
+			colon_on_line_=true;
+			expect_node_=true;
+			pending_indent_=key_column;
+			pending_in_map_=true;
 			return true;
-		}
-
-		//多行plain续行:更深缩进、无键冒号、不以指示符开头的裸文本行折叠进上一plain标量;
-		//折叠规则:单断行=空格,k个空行=k个换行;行内注释终结续行。
-		bool try_fold_plain(const char* p) {
-			if (tokens.empty() || tokens.back().symbol!=YS_SCALAR || tokens.back().extra!=YSS_PLAIN) return false;
-			static const char indicators[]="-?:,[]{}#&*!|>'\"%@`";
-			for (const char* it=indicators;*it;it++) {
-				if (*p==*it) return false;
-			}
-			const char* span_last=line_end;
-			for (const char* r=p;r<line_end;r++) {
-				if (*r=='#' && r>p && is_space(r[-1])) {
-					span_last=r;
-					break;
-				}
-			}
-			for (const char* r=p;r<span_last;r++) {
-				if (*r==':' && (r+1>=span_last || is_space(r[1]))) return false;
-			}
-			const char* text_last=span_last;
-			while (text_last>p && is_space(text_last[-1])) text_last--;
-			if (text_last==p) return false;
-			string_t& text=tokens.back().text;
-			if (pending_breaks==0) text.push_back(' ');
-			else {
-				for (std::size_t i=0;i<pending_breaks;i++) text.push_back('\n');
-			}
-			pending_breaks=0;
-			text.append(p,text_last);
-			if (span_last<line_end) plain_continuing=false;
-			return true;
-		}
-		void relocate_line(const char* p) {
-			line_start=p;
-			while (line_start>base && !is_break(line_start[-1])) line_start--;
-			line_end=p;
-			while (line_end<last && !is_break(*line_end)) line_end++;
-			next_position=after_line(line_end);
 		}
 
 		bool read_hex_digits(const char* r,int count,unsigned long& cp) const {
-			if (r+count>line_end) return false;
+			if (r+count>line_end_) return false;
 			cp=0;
 			for (int i=0;i<count;i++) {
 				const char c=r[i];
@@ -1070,12 +758,11 @@ private:
 
 		bool scan_quoted(const char*& p,string_t& out) {
 			const char quote=*p;
-			const char* bound=multiline?last:line_end;
 			const char* q=p+1;
 			if (quote=='\'') {
-				while (q<bound) {
+				while (q<line_end_) {
 					if (*q=='\'') {
-						if (q+1<bound && q[1]=='\'') {
+						if (q+1<line_end_ && q[1]=='\'') {
 							out.push_back('\'');
 							q+=2;
 							continue;
@@ -1083,23 +770,15 @@ private:
 						p=q+1;
 						return true;
 					}
-					if (is_break(*q)) {
-						fold_quoted_break(q,bound,out);
-						continue;
-					}
 					out.push_back(*q++);
 				}
-				return fail(p,multiline?"Unterminated single-quoted scalar":"Unterminated single-quoted scalar (multi-line quoted scalars require multiline_scalars)");
+				return fail(p,"unterminated single-quoted scalar (multi-line quoted scalars are not supported)");
 			}
-			while (q<bound) {
+			while (q<line_end_) {
 				const char c=*q;
 				if (c=='"') {
 					p=q+1;
 					return true;
-				}
-				if (is_break(c)) {
-					fold_quoted_break(q,bound,out);
-					continue;
 				}
 				if (c!='\\') {
 					out.push_back(c);
@@ -1107,14 +786,7 @@ private:
 					continue;
 				}
 				q++;
-				if (q==bound) return fail(q,"Unterminated escape sequence");
-				if (is_break(*q)) {
-					if (!multiline) return fail(q,"Unterminated escape sequence");
-					if (*q=='\r' && q+1<bound && q[1]=='\n') q++;
-					q++;
-					while (q<bound && is_space(*q)) q++;
-					continue;
-				}
+				if (q==line_end_) return fail(q,"unterminated escape sequence");
 				unsigned long cp=0;
 				switch (*q) {
 					case '0': out.push_back(static_cast<typename string_t::value_type>('\0'));break;
@@ -1136,87 +808,61 @@ private:
 					case 'L': append_codepoint(out,0x2028);break;
 					case 'P': append_codepoint(out,0x2029);break;
 					case 'x': {
-						if (!read_hex_digits(q+1,2,cp)) return fail(q,"Invalid hexadecimal escape");
+						if (!read_hex_digits(q+1,2,cp)) return fail(q,"invalid hexadecimal escape");
 						append_codepoint(out,cp);
 						q+=2;
 						break;
 					}
 					case 'u': {
-						if (!read_hex_digits(q+1,4,cp)) return fail(q,"Invalid hexadecimal escape");
+						if (!read_hex_digits(q+1,4,cp)) return fail(q,"invalid hexadecimal escape");
 						append_codepoint(out,cp);
 						q+=4;
 						break;
 					}
 					case 'U': {
-						if (!read_hex_digits(q+1,8,cp)) return fail(q,"Invalid hexadecimal escape");
+						if (!read_hex_digits(q+1,8,cp)) return fail(q,"invalid hexadecimal escape");
 						append_codepoint(out,cp);
 						q+=8;
 						break;
 					}
-					default: return fail(q,"Invalid escape sequence in double-quoted scalar");
+					default: return fail(q,"invalid escape sequence in double-quoted scalar");
 				}
 				q++;
 			}
-			return fail(p,multiline?"Unterminated double-quoted scalar":"Unterminated double-quoted scalar (multi-line quoted scalars require multiline_scalars)");
-		}
-		//引用标量断行折叠:行尾空白剥离,单断行=空格,k个空行=k个换行,续行前导空白剥离。
-		void fold_quoted_break(const char*& q,const char* bound,string_t& out) {
-			while (!out.empty() && (out.back()==' ' || out.back()=='\t')) out.pop_back();
-			std::size_t breaks=0;
-			while (q<bound) {
-				if (is_break(*q)) {
-					if (*q=='\r' && q+1<bound && q[1]=='\n') q++;
-					q++;
-					breaks++;
-					continue;
-				}
-				if (is_space(*q)) {
-					const char* probe=q;
-					while (probe<bound && is_space(*probe)) probe++;
-					if (probe<bound && is_break(*probe)) {
-						q=probe;
-						continue;
-					}
-					q=probe;
-					break;
-				}
-				break;
-			}
-			if (breaks==1) out.push_back(' ');
-			else {
-				for (std::size_t i=1;i<breaks;i++) out.push_back('\n');
-			}
+			return fail(p,"unterminated double-quoted scalar (multi-line quoted scalars are not supported)");
 		}
 
+		//块标量:|字面/＞折叠+chomping(-strip/缺省clip/+keep)+可选显式缩进指示符。
+		//内容缩进自动探测取首个非空行;按规范折叠规则处理更深缩进行与空行。
 		bool scan_block_scalar(const char* p) {
 			const char style_char=*p;
 			const char* q=p+1;
 			int chomp=0;
 			int explicit_indent=0;
-			while (q<line_end && (*q=='+' || *q=='-' || (*q>='1' && *q<='9'))) {
+			while (q<line_end_ && (*q=='+' || *q=='-' || (*q>='1' && *q<='9'))) {
 				if (*q=='+') {
-					if (chomp) return fail(q,"Duplicate chomping indicator");
+					if (chomp) return fail(q,"duplicate chomping indicator");
 					chomp=2;
 				} else if (*q=='-') {
-					if (chomp) return fail(q,"Duplicate chomping indicator");
+					if (chomp) return fail(q,"duplicate chomping indicator");
 					chomp=1;
 				} else {
-					if (explicit_indent) return fail(q,"Duplicate indentation indicator");
+					if (explicit_indent) return fail(q,"duplicate indentation indicator");
 					explicit_indent=*q-'0';
 				}
 				q++;
 			}
-			while (q<line_end && is_space(*q)) q++;
-			if (q<line_end && *q!='#') return fail(q,"Unexpected characters after block scalar header");
-			const std::size_t parent=expect_node?pending_indent:(blocks.empty()?0:blocks.back().indent);
+			while (q<line_end_ && is_space(*q)) q++;
+			if (q<line_end_ && *q!='#') return fail(q,"unexpected characters after block scalar header");
+			const std::size_t parent=expect_node_?pending_indent_:(blocks_.empty()?0:blocks_.back().indent);
 			bool indent_known=(explicit_indent>0);
 			std::size_t content_indent=indent_known?parent+static_cast<std::size_t>(explicit_indent):0;
 			std::vector<string_t> lines;
-			const char* cursor=next_position;
-			while (cursor<last) {
+			const char* cursor=next_position_;
+			while (cursor<last_) {
 				const char* ls=cursor;
 				const char* le=ls;
-				while (le<last && !is_break(*le)) le++;
+				while (le<last_ && !is_break(*le)) le++;
 				const char* r=ls;
 				std::size_t line_indent=0;
 				while (r<le && *r==' ') {
@@ -1229,7 +875,7 @@ private:
 				if (!blank) {
 					if (line_indent==0 && le-r>=3 && ((r[0]=='-' && r[1]=='-' && r[2]=='-') || (r[0]=='.' && r[1]=='.' && r[2]=='.')) && (r+3==le || is_space(r[3]))) break;
 					if (!indent_known) {
-						if (line_indent<=parent && !(blocks.empty() && !expect_node && line_indent==0)) break;
+						if (line_indent<=parent && !(blocks_.empty() && !expect_node_ && line_indent==0)) break;
 						content_indent=line_indent;
 						indent_known=true;
 					}
@@ -1282,19 +928,20 @@ private:
 				if (!text.empty()) text.push_back('\n');
 			}
 			emit_scalar(p,std::move(text),style_char=='|'?YSS_LITERAL:YSS_FOLDED);
-			next_position=cursor;
+			next_position_=cursor;
 			return true;
 		}
 
+		//流上下文:换行视作空白,可跨行;深度归零返回;块标量与显式键在流中非法。
 		bool scan_flow(const char*& p) {
 			int depth=0;
 			while (true) {
-				while (p<last && (is_space(*p) || is_break(*p))) p++;
-				if (p<last && *p=='#' && (p==base || is_space(p[-1]) || is_break(p[-1]))) {
-					while (p<last && !is_break(*p)) p++;
+				while (p<last_ && (is_space(*p) || is_break(*p))) p++;
+				if (p<last_ && *p=='#' && (p==base_ || is_space(p[-1]) || is_break(p[-1]))) {
+					while (p<last_ && !is_break(*p)) p++;
 					continue;
 				}
-				if (p>=last) return fail(p,"Unterminated flow collection");
+				if (p>=last_) return fail(p,"unterminated flow collection");
 				const char c=*p;
 				if (c=='[') {
 					emit(YS_FSEQ_START,p);
@@ -1320,50 +967,50 @@ private:
 					p++;
 					continue;
 				}
-				if (c==':' && (p+1>=last || is_space(p[1]) || is_break(p[1]) || is_flow_indicator(p[1]))) {
+				if (c==':' && (p+1>=last_ || is_space(p[1]) || is_break(p[1]) || is_flow_indicator(p[1]))) {
 					emit(YS_COLON,p);
 					p++;
 					continue;
 				}
-				if (c=='?' && (p+1>=last || is_space(p[1]) || is_break(p[1]))) return fail(p,"Explicit mapping keys ('? ') are not supported");
-				if (c=='|' || c=='>') return fail(p,"Block scalars are not allowed in flow context");
+				if (c=='?' && (p+1>=last_ || is_space(p[1]) || is_break(p[1]))) return fail(p,"explicit mapping keys ('? ') are not supported");
+				if (c=='|' || c=='>') return fail(p,"block scalars are not allowed in flow context");
 				if (c=='&' || c=='*') {
 					const char* q=p+1;
-					while (q<last && !is_space(*q) && !is_break(*q) && !is_flow_indicator(*q)) q++;
-					if (q==p+1) return fail(p,c=='&'?"Empty anchor name":"Empty alias name");
+					while (q<last_ && !is_space(*q) && !is_break(*q) && !is_flow_indicator(*q)) q++;
+					if (q==p+1) return fail(p,c=='&'?"empty anchor name":"empty alias name");
 					yaml_token token;
 					token.symbol=(c=='&')?YS_ANCHOR:YS_ALIAS;
 					token.position=position(p);
 					token.text=string_t(p+1,q);
-					tokens.push_back(std::move(token));
-					if (c=='&') expect_node=true;
-					else expect_node=false;
+					tokens_.push_back(std::move(token));
+					if (c=='&') expect_node_=true;
+					else expect_node_=false;
 					p=q;
 					continue;
 				}
 				if (c=='!') {
 					const char* q=p+1;
-					if (q<last && *q=='<') {
+					if (q<last_ && *q=='<') {
 						q++;
-						while (q<last && *q!='>' && !is_break(*q)) q++;
-						if (q>=last || *q!='>') return fail(p,"Unterminated verbatim tag");
+						while (q<last_ && *q!='>' && !is_break(*q)) q++;
+						if (q>=last_ || *q!='>') return fail(p,"unterminated verbatim tag");
 						q++;
 					} else {
-						while (q<last && !is_space(*q) && !is_break(*q) && !is_flow_indicator(*q)) q++;
+						while (q<last_ && !is_space(*q) && !is_break(*q) && !is_flow_indicator(*q)) q++;
 					}
 					yaml_token token;
 					token.symbol=YS_TAG;
 					token.position=position(p);
 					token.text=string_t(p,q);
-					tokens.push_back(std::move(token));
-					expect_node=true;
+					tokens_.push_back(std::move(token));
+					expect_node_=true;
 					p=q;
 					continue;
 				}
 				if (c=='\'' || c=='"') {
 					const char* qe=p;
-					while (qe<last && !is_break(*qe)) qe++;
-					line_end=qe;
+					while (qe<last_ && !is_break(*qe)) qe++;
+					line_end_=qe;
 					string_t text;
 					const char* q=p;
 					if (!scan_quoted(q,text)) return false;
@@ -1372,115 +1019,83 @@ private:
 					continue;
 				}
 				const char* q=p;
-				while (q<last && !is_break(*q) && !is_flow_indicator(*q)) {
-					if (*q==':' && (q+1>=last || is_space(q[1]) || is_break(q[1]) || is_flow_indicator(q[1]))) break;
+				while (q<last_ && !is_break(*q) && !is_flow_indicator(*q)) {
+					if (*q==':' && (q+1>=last_ || is_space(q[1]) || is_break(q[1]) || is_flow_indicator(q[1]))) break;
 					if (*q=='#' && q>p && is_space(q[-1])) break;
 					q++;
 				}
 				const char* text_last=q;
 				while (text_last>p && is_space(text_last[-1])) text_last--;
-				if (text_last==p) return fail(p,"Unexpected character in flow context");
-				string_t text(p,text_last);
-				if (multiline) {
-					while (true) {
-						const char* peek=q;
-						std::size_t breaks=0;
-						while (peek<last) {
-							if (is_break(*peek)) {
-								if (*peek=='\r' && peek+1<last && peek[1]=='\n') peek++;
-								peek++;
-								breaks++;
-								continue;
-							}
-							if (is_space(*peek)) {
-								peek++;
-								continue;
-							}
-							break;
-						}
-						if (breaks==0 || peek>=last) break;
-						const char head=*peek;
-						if (is_flow_indicator(head) || head=='#' || head==':' || head=='&' || head=='*' || head=='!' || head=='?' || head=='\'' || head=='"' || head=='|' || head=='>') break;
-						const char* segment_end=peek;
-						while (segment_end<last && !is_break(*segment_end) && !is_flow_indicator(*segment_end)) {
-							if (*segment_end==':' && (segment_end+1>=last || is_space(segment_end[1]) || is_break(segment_end[1]) || is_flow_indicator(segment_end[1]))) break;
-							if (*segment_end=='#' && segment_end>peek && is_space(segment_end[-1])) break;
-							segment_end++;
-						}
-						const char* segment_last=segment_end;
-						while (segment_last>peek && is_space(segment_last[-1])) segment_last--;
-						if (segment_last==peek) break;
-						if (breaks==1) text.push_back(' ');
-						else {
-							for (std::size_t i=1;i<breaks;i++) text.push_back('\n');
-						}
-						text.append(peek,segment_last);
-						q=segment_end;
-					}
-				}
-				emit_scalar(p,std::move(text),YSS_PLAIN);
+				if (text_last==p) return fail(p,"unexpected character in flow context");
+				emit_scalar(p,string_t(p,text_last),YSS_PLAIN);
 				p=q;
 				continue;
 			}
-			relocate_line(p);
+			line_start_=p;
+			while (line_start_>base_ && !is_break(line_start_[-1])) line_start_--;
+			line_end_=p;
+			while (line_end_<last_ && !is_break(*line_end_)) line_end_++;
+			next_position_=after_line(line_end_);
 			return true;
 		}
 
+		//行内扫描:依次识别条目"- "/锚点/别名/标签/块标量/流集合/引用标量/plain标量与"键: "。
+		//同一行检测到第二个块映射冒号即"mapping values are not allowed in this context"。
 		bool scan_line(const char* p) {
 			bool entries_only=true;
 			while (true) {
-				while (p<line_end && is_space(*p)) p++;
-				if (p==line_end) return true;
+				while (p<line_end_ && is_space(*p)) p++;
+				if (p==line_end_) return true;
 				if (*p=='#') return true;
-				const std::size_t column=static_cast<std::size_t>(p-line_start);
+				const std::size_t column=static_cast<std::size_t>(p-line_start_);
 				const char c=*p;
-				if (c=='-' && (p+1==line_end || is_space(p[1]))) {
-					if (!entries_only) return fail(p,"Block sequence entries are not allowed in this context");
-					if (blocks.empty() || !blocks.back().sequence || blocks.back().indent!=column) {
-						blocks.push_back(block_frame{column,true});
+				if (c=='-' && (p+1==line_end_ || is_space(p[1]))) {
+					if (!entries_only) return fail(p,"block sequence entries are not allowed in this context");
+					if (blocks_.empty() || !blocks_.back().sequence || blocks_.back().indent!=column) {
+						blocks_.push_back(block_frame{column,true});
 						emit(YS_BSEQ_START,p);
 					}
 					emit(YS_ENTRY,p);
-					expect_node=true;
-					pending_indent=column;
-					pending_in_map=false;
+					expect_node_=true;
+					pending_indent_=column;
+					pending_in_map_=false;
 					p++;
 					continue;
 				}
-				if (c=='?' && (p+1==line_end || is_space(p[1]))) return fail(p,"Explicit mapping keys ('? ') are not supported");
-				if (c==':' && (p+1==line_end || is_space(p[1]))) return fail(p,"A mapping value indicator requires an inline scalar key (complex keys are not supported)");
+				if (c=='?' && (p+1==line_end_ || is_space(p[1]))) return fail(p,"explicit mapping keys ('? ') are not supported");
+				if (c==':' && (p+1==line_end_ || is_space(p[1]))) return fail(p,"a mapping value indicator requires an inline scalar key (complex keys are not supported)");
 				if (c=='&' || c=='*') {
 					entries_only=false;
 					const char* q=p+1;
-					while (q<line_end && !is_space(*q) && !is_flow_indicator(*q)) q++;
-					if (q==p+1) return fail(p,c=='&'?"Empty anchor name":"Empty alias name");
+					while (q<line_end_ && !is_space(*q) && !is_flow_indicator(*q)) q++;
+					if (q==p+1) return fail(p,c=='&'?"empty anchor name":"empty alias name");
 					yaml_token token;
 					token.symbol=(c=='&')?YS_ANCHOR:YS_ALIAS;
 					token.position=position(p);
 					token.text=string_t(p+1,q);
-					tokens.push_back(std::move(token));
-					if (c=='&') expect_node=true;
-					else expect_node=false;
+					tokens_.push_back(std::move(token));
+					if (c=='&') expect_node_=true;
+					else expect_node_=false;
 					p=q;
 					continue;
 				}
 				if (c=='!') {
 					entries_only=false;
 					const char* q=p+1;
-					if (q<line_end && *q=='<') {
+					if (q<line_end_ && *q=='<') {
 						q++;
-						while (q<line_end && *q!='>') q++;
-						if (q==line_end) return fail(p,"Unterminated verbatim tag");
+						while (q<line_end_ && *q!='>') q++;
+						if (q==line_end_) return fail(p,"unterminated verbatim tag");
 						q++;
 					} else {
-						while (q<line_end && !is_space(*q) && !is_flow_indicator(*q)) q++;
+						while (q<line_end_ && !is_space(*q) && !is_flow_indicator(*q)) q++;
 					}
 					yaml_token token;
 					token.symbol=YS_TAG;
 					token.position=position(p);
 					token.text=string_t(p,q);
-					tokens.push_back(std::move(token));
-					expect_node=true;
+					tokens_.push_back(std::move(token));
+					expect_node_=true;
 					p=q;
 					continue;
 				}
@@ -1492,27 +1107,19 @@ private:
 					entries_only=false;
 					if (!scan_flow(p)) return false;
 					const char* q=p;
-					while (q<line_end && is_space(*q)) q++;
-					if (q<line_end && *q==':' && (q+1==line_end || is_space(q[1]))) return fail(q,"Complex mapping keys are not supported");
+					while (q<line_end_ && is_space(*q)) q++;
+					if (q<line_end_ && *q==':' && (q+1==line_end_ || is_space(q[1]))) return fail(q,"complex mapping keys are not supported");
 					continue;
 				}
 				if (c=='\'' || c=='"') {
 					entries_only=false;
 					string_t text;
 					const char* q=p;
-					const char* previous_line_end=line_end;
 					if (!scan_quoted(q,text)) return false;
 					const int style=(c=='\'')?YSS_SINGLE_QUOTED:YSS_DOUBLE_QUOTED;
-					if (q>previous_line_end) {
-						//跨行引用标量:重定位行指针;多行引用标量不可作隐式键。
-						relocate_line(q);
-						emit_scalar(p,std::move(text),style);
-						p=q;
-						continue;
-					}
 					const char* r=q;
-					while (r<line_end && is_space(*r)) r++;
-					if (r<line_end && *r==':' && (r+1==line_end || is_space(r[1]))) {
+					while (r<line_end_ && is_space(*r)) r++;
+					if (r<line_end_ && *r==':' && (r+1==line_end_ || is_space(r[1]))) {
 						if (!begin_mapping_pair(p,column,std::move(text),style,r)) return false;
 						p=r+1;
 						continue;
@@ -1522,8 +1129,8 @@ private:
 					continue;
 				}
 				entries_only=false;
-				const char* span_last=line_end;
-				for (const char* r=p;r<line_end;r++) {
+				const char* span_last=line_end_;
+				for (const char* r=p;r<line_end_;r++) {
 					if (*r=='#' && r>p && is_space(r[-1])) {
 						span_last=r;
 						break;
@@ -1539,32 +1146,25 @@ private:
 				if (colon) {
 					const char* key_last=colon;
 					while (key_last>p && is_space(key_last[-1])) key_last--;
-					if (key_last==p) return fail(p,"Empty plain scalar mapping key");
+					if (key_last==p) return fail(p,"empty plain scalar mapping key");
 					if (!begin_mapping_pair(p,column,string_t(p,key_last),YSS_PLAIN,colon)) return false;
 					p=colon+1;
 					continue;
 				}
 				const char* text_last=span_last;
 				while (text_last>p && is_space(text_last[-1])) text_last--;
-				const std::ptrdiff_t owner=expect_node?static_cast<std::ptrdiff_t>(pending_indent):(blocks.empty()?-1:static_cast<std::ptrdiff_t>(blocks.back().indent));
 				emit_scalar(p,string_t(p,text_last),YSS_PLAIN);
-				if (multiline) {
-					plain_continuing=(span_last==line_end);
-					plain_owner=owner;
-					pending_breaks=0;
-				}
 				p=span_last;
 				continue;
 			}
 		}
 	};
 
-	static bool tokenize(std::string_view input,std::vector<yaml_token>& tokens,std::size_t& error_position,std::string& error_message,const yaml_parse_options& options) {
+	static bool tokenize(std::string_view input,std::vector<yaml_token>& tokens,std::size_t& error_position,std::string& error_message) {
 		tokenizer scanner(input,tokens);
-		scanner.multiline=options.multiline_scalars;
 		if (!scanner.run()) {
-			error_position=scanner.error_position;
-			error_message=scanner.error_message;
+			error_position=scanner.error_position_;
+			error_message=scanner.error_message_;
 			return false;
 		}
 		yaml_token eof_token;
@@ -1629,6 +1229,10 @@ private:
 		return instance;
 	}
 
+	//上下文相关检查与SAX事件次序全部落在listener(文法保持上下文无关):
+	//①键事件在COLON移进时发出(id-2即键SCALAR),保证键先于值;②值标量在NODE->SCALAR归约发出;
+	//③容器end_*在NODE归约发出(而非END移进),保证"{a}"等无冒号键的key/null先于end_mapping;
+	//④标签强制与plain标量类型解析;⑤别名不得携带属性。
 	class yaml_listener : public syntax::parser_listener<yaml_symbol,yaml_production> {
 		std::vector<yaml_token>* tokens_=nullptr;
 		sax_t* sax_=nullptr;
@@ -1663,25 +1267,25 @@ private:
 				}
 				case 2: {
 					int_t value=0;
-					if (plain_integer(token.text,value,true)) abort_check(sax_->number_integer(value));
-					else fail(token,"Scalar does not conform to the !!int tag");
+					if (plain_integer(token.text,value)) abort_check(sax_->number_integer(value));
+					else fail(token,"scalar does not conform to the !!int tag");
 					return;
 				}
 				case 3: {
 					float_t value=0;
-					if (plain_floating(token.text,value,true)) abort_check(sax_->number_float(value,token.text));
-					else fail(token,"Scalar does not conform to the !!float tag");
+					if (plain_floating(token.text,value)) abort_check(sax_->number_float(value,token.text));
+					else fail(token,"scalar does not conform to the !!float tag");
 					return;
 				}
 				case 4: {
 					const int value=plain_boolean(token.text);
-					if (value<0) fail(token,"Scalar does not conform to the !!bool tag");
+					if (value<0) fail(token,"scalar does not conform to the !!bool tag");
 					else abort_check(sax_->boolean(static_cast<boolean_t>(value==1)));
 					return;
 				}
 				case 5: {
 					if (plain_is_null(token.text)) abort_check(sax_->null());
-					else fail(token,"Scalar does not conform to the !!null tag");
+					else fail(token,"scalar does not conform to the !!null tag");
 					return;
 				}
 				default: break;
@@ -1768,7 +1372,7 @@ private:
 				case YP_NODE_ALIAS: {
 					yaml_token& token=(*tokens_)[id-2];
 					if (has_pending_tag_) {
-						fail(token,"An alias node must not have properties");
+						fail(token,"an alias node must not have properties");
 						return 0;
 					}
 					abort_check(sax_->alias(token.text));
@@ -1832,14 +1436,15 @@ private:
 	};
 
 public:
-	static bool sax_parse(std::string_view input,sax_t* sax,const yaml_parse_options& options=yaml_parse_options()) {
+	static bool sax_parse(std::string_view input,sax_t* sax) {
 		std::vector<yaml_token> tokens;
 		std::size_t error_position=0;
 		std::string error_message;
-		if (!tokenize(input,tokens,error_position,error_message,options)) {
+		if (!tokenize(input,tokens,error_position,error_message)) {
 			sax->parse_error(error_position,std::string(),error_message);
 			return false;
 		}
+		//空流(零文档)是合法yaml,由START->EOF接受,不在此拦截。
 		std::vector<typename parser_t::parse_node> nodes;
 		nodes.reserve(tokens.size());
 		for (const auto& it:tokens) {
@@ -1862,10 +1467,10 @@ public:
 		parser.listeners.pop_back();
 		return result && !listener.aborted() && !listener.failed();
 	}
-	static yaml parse(std::string_view input,document_info_t* info=nullptr,bool allow_exceptions=true,const yaml_parse_options& options=yaml_parse_options()) {
+	static yaml parse(std::string_view input,document_info_t* info=nullptr,bool allow_exceptions=true) {
 		std::vector<yaml> documents;
-		yaml_sax_dom_builder<yaml> builder(documents,info,options);
-		const bool ok=sax_parse(input,&builder,options) && builder.completed();
+		yaml_sax_dom_builder<yaml> builder(documents,info);
+		const bool ok=sax_parse(input,&builder) && builder.completed();
 		if (!ok) {
 			if (allow_exceptions) throw std::runtime_error(std::string("Parse error at byte ")+std::to_string(builder.error_position())+std::string(": ")+(builder.error_message().empty()?std::string("Incomplete document"):builder.error_message()));
 			return yaml();
@@ -1876,33 +1481,33 @@ public:
 		}
 		return std::move(documents.front());
 	}
-	static std::vector<yaml> parse_all(std::string_view input,document_info_t* info=nullptr,bool allow_exceptions=true,const yaml_parse_options& options=yaml_parse_options()) {
+	static std::vector<yaml> parse_all(std::string_view input,document_info_t* info=nullptr,bool allow_exceptions=true) {
 		std::vector<yaml> documents;
-		yaml_sax_dom_builder<yaml> builder(documents,info,options);
-		const bool ok=sax_parse(input,&builder,options) && builder.completed();
+		yaml_sax_dom_builder<yaml> builder(documents,info);
+		const bool ok=sax_parse(input,&builder) && builder.completed();
 		if (!ok) {
 			if (allow_exceptions) throw std::runtime_error(std::string("Parse error at byte ")+std::to_string(builder.error_position())+std::string(": ")+(builder.error_message().empty()?std::string("Incomplete document"):builder.error_message()));
 			return std::vector<yaml>();
 		}
 		return documents;
 	}
-	static bool try_parse(std::string_view input,yaml& out,document_info_t* info=nullptr,const yaml_parse_options& options=yaml_parse_options()) {
+	static bool try_parse(std::string_view input,yaml& out,document_info_t* info=nullptr) {
 		std::vector<yaml> documents;
-		yaml_sax_dom_builder<yaml> builder(documents,info,options);
-		if (!sax_parse(input,&builder,options) || !builder.completed() || documents.size()!=1) return false;
+		yaml_sax_dom_builder<yaml> builder(documents,info);
+		if (!sax_parse(input,&builder) || !builder.completed() || documents.size()!=1) return false;
 		out=std::move(documents.front());
 		return true;
 	}
-	static bool try_parse(std::string_view input,std::vector<yaml>& out,document_info_t* info=nullptr,const yaml_parse_options& options=yaml_parse_options()) {
+	static bool try_parse(std::string_view input,std::vector<yaml>& out,document_info_t* info=nullptr) {
 		std::vector<yaml> documents;
-		yaml_sax_dom_builder<yaml> builder(documents,info,options);
-		if (!sax_parse(input,&builder,options) || !builder.completed()) return false;
+		yaml_sax_dom_builder<yaml> builder(documents,info);
+		if (!sax_parse(input,&builder) || !builder.completed()) return false;
 		out=std::move(documents);
 		return true;
 	}
-	static bool accept(std::string_view input,const yaml_parse_options& options=yaml_parse_options()) {
+	static bool accept(std::string_view input) {
 		yaml_sax_acceptor<yaml> acceptor;
-		return sax_parse(input,&acceptor,options);
+		return sax_parse(input,&acceptor);
 	}
 
 private:
@@ -1917,6 +1522,7 @@ private:
 			for (int shift=28;shift>=0;shift-=4) out.push_back(digits[(cp>>shift)&0xF]);
 		}
 	}
+	//双引号风格转义;ensure_ascii按UTF-8解码非ASCII序列并写\u/\U转义,非法UTF-8抛出。
 	static void dump_escaped(string_t& out,const string_t& s,bool ensure_ascii) {
 		const unsigned char* first=reinterpret_cast<const unsigned char*>(s.data());
 		const unsigned char* const last=first+s.size();
@@ -1966,6 +1572,8 @@ private:
 			first+=extra+1;
 		}
 	}
+	//plain风格安全性:为空、首字符为指示符、含"键冒号"/" #"/控制字符/换行、
+	//或会被解析为null/bool/int/float的文本必须加引号;流上下文额外排斥流指示符与':'。
 	static bool plain_safe(const string_t& s,bool flow,bool ensure_ascii) {
 		if (s.empty()) return false;
 		static const char indicators[]="-?:,[]{}#&*!|>'\"%@` \t";
@@ -2004,6 +1612,8 @@ private:
 		const std::string text=std::to_string(static_cast<long long>(value));
 		out.append(text.begin(),text.end());
 	}
+	//非有限值用yaml原生.nan/.inf/-.inf;有限值%.15g起步、必要时%.17g保往返,
+	//无小数点与指数时补".0"以保证重读仍为float。
 	static void dump_floating(string_t& out,float_t value) {
 		if (std::isnan(value)) {
 			out.append({'.','n','a','n'});
@@ -2066,36 +1676,12 @@ private:
 			default: break;
 		}
 	}
+	//外来派生节点(如BDT_BINARY/XDT_ELEMENT)不属于yaml数据模型:依记法转换协议,
+	//请先经assign_converted/convert_to(源侧degrade_unsupported或convert_handler_t)落回基础七型再dump。
 	static void unsupported_node(const base_t& node) {
-		throw std::invalid_argument("Unsupported node type "+std::to_string(static_cast<long long>(static_cast<int>(node.type())))+", convert it to the base dom model first (assign_converted/convert_to)");
-	}
-	//剥取连续YDT_ANCHOR包装,收集"&名 "前缀并返回最内层节点。
-	static const base_t* peel_anchors(const base_t& node,string_t& prefix) {
-		const base_t* current=&node;
-		while (is_anchor(*current)) {
-			prefix.push_back('&');
-			const string_t& name=anchor_name(*current);
-			prefix.append(name.begin(),name.end());
-			prefix.push_back(' ');
-			current=&anchor_target(*current);
-		}
-		return current;
+		throw std::invalid_argument("yaml: unsupported node type "+std::to_string(static_cast<long long>(static_cast<int>(node.type())))+", convert it to the base dom model first (assign_converted/convert_to)");
 	}
 	static void dump_flow(const base_t& node,string_t& out,bool ensure_ascii) {
-		if (is_alias(node)) {
-			out.push_back('*');
-			const string_t& name=alias_name(node);
-			out.append(name.begin(),name.end());
-			return;
-		}
-		if (is_anchor(node)) {
-			out.push_back('&');
-			const string_t& name=anchor_name(node);
-			out.append(name.begin(),name.end());
-			out.push_back(' ');
-			dump_flow(anchor_target(node),out,ensure_ascii);
-			return;
-		}
 		if (is_scalar_node(node)) {
 			dump_scalar(node,out,true,ensure_ascii);
 			return;
@@ -2136,6 +1722,8 @@ private:
 	static void dump_indent(string_t& out,std::size_t count,typename string_t::value_type indent_char) {
 		for (std::size_t i=0;i<count;i++) out.push_back(indent_char);
 	}
+	//块风格:序列项为容器时采用"- "续行内联(项内续行固定+2列,yaml允许各块自选缩进宽度),
+	//映射值为容器时换行加indent_step缩进;空容器以流式[]/{}内联。
 	static void dump_block(const base_t& node,string_t& out,int indent_step,typename string_t::value_type indent_char,bool ensure_ascii,std::size_t current_indent,bool skip_first_indent) {
 		switch (node.type()) {
 			case structure::DDT_ARRAY: {
@@ -2143,33 +1731,22 @@ private:
 				for (auto it=node.cbegin();it!=node.cend();it++) {
 					if (!(skip_first_indent && first)) dump_indent(out,current_indent,indent_char);
 					first=false;
-					out.push_back('-');
-					out.push_back(' ');
-					string_t prefix;
-					const base_t& child=*peel_anchors(*it,prefix);
-					if (is_alias(child)) {
-						out.append(prefix.begin(),prefix.end());
-						out.push_back('*');
-						const string_t& name=alias_name(child);
-						out.append(name.begin(),name.end());
-						out.push_back('\n');
-					} else if (is_scalar_node(child)) {
-						out.append(prefix.begin(),prefix.end());
+					const base_t& child=*it;
+					if (is_scalar_node(child)) {
+						out.push_back('-');
+						out.push_back(' ');
 						dump_scalar(child,out,false,ensure_ascii);
 						out.push_back('\n');
+					} else if (child.empty()) {
+						out.push_back('-');
+						out.push_back(' ');
+						out.push_back(child.type()==structure::DDT_ARRAY?'[':'{');
+						out.push_back(child.type()==structure::DDT_ARRAY?']':'}');
+						out.push_back('\n');
 					} else if (child.type()==structure::DDT_ARRAY || child.type()==structure::DDT_OBJECT) {
-						if (child.empty()) {
-							out.append(prefix.begin(),prefix.end());
-							out.push_back(child.type()==structure::DDT_ARRAY?'[':'{');
-							out.push_back(child.type()==structure::DDT_ARRAY?']':'}');
-							out.push_back('\n');
-						} else if (!prefix.empty()) {
-							//锚定容器:锚点独占"- &名"行,内容换行缩进(项内续行固定+2列)。
-							prefix.pop_back();
-							out.append(prefix.begin(),prefix.end());
-							out.push_back('\n');
-							dump_block(child,out,indent_step,indent_char,ensure_ascii,current_indent+2,false);
-						} else dump_block(child,out,indent_step,indent_char,ensure_ascii,current_indent+2,true);
+						out.push_back('-');
+						out.push_back(' ');
+						dump_block(child,out,indent_step,indent_char,ensure_ascii,current_indent+2,true);
 					} else unsupported_node(child);
 				}
 				break;
@@ -2181,37 +1758,19 @@ private:
 					first=false;
 					dump_scalar_string(out,it.key(),false,ensure_ascii);
 					out.push_back(':');
-					string_t prefix;
-					const base_t& child=*peel_anchors(*it,prefix);
-					if (is_alias(child)) {
+					const base_t& child=*it;
+					if (is_scalar_node(child)) {
 						out.push_back(' ');
-						out.append(prefix.begin(),prefix.end());
-						out.push_back('*');
-						const string_t& name=alias_name(child);
-						out.append(name.begin(),name.end());
-						out.push_back('\n');
-					} else if (is_scalar_node(child)) {
-						out.push_back(' ');
-						out.append(prefix.begin(),prefix.end());
 						dump_scalar(child,out,false,ensure_ascii);
 						out.push_back('\n');
+					} else if (child.empty()) {
+						out.push_back(' ');
+						out.push_back(child.type()==structure::DDT_ARRAY?'[':'{');
+						out.push_back(child.type()==structure::DDT_ARRAY?']':'}');
+						out.push_back('\n');
 					} else if (child.type()==structure::DDT_ARRAY || child.type()==structure::DDT_OBJECT) {
-						if (child.empty()) {
-							out.push_back(' ');
-							out.append(prefix.begin(),prefix.end());
-							out.push_back(child.type()==structure::DDT_ARRAY?'[':'{');
-							out.push_back(child.type()==structure::DDT_ARRAY?']':'}');
-							out.push_back('\n');
-						} else if (!prefix.empty()) {
-							out.push_back(' ');
-							prefix.pop_back();
-							out.append(prefix.begin(),prefix.end());
-							out.push_back('\n');
-							dump_block(child,out,indent_step,indent_char,ensure_ascii,current_indent+static_cast<std::size_t>(indent_step),false);
-						} else {
-							out.push_back('\n');
-							dump_block(child,out,indent_step,indent_char,ensure_ascii,current_indent+static_cast<std::size_t>(indent_step),false);
-						}
+						out.push_back('\n');
+						dump_block(child,out,indent_step,indent_char,ensure_ascii,current_indent+static_cast<std::size_t>(indent_step),false);
 					} else unsupported_node(child);
 				}
 				break;
@@ -2221,43 +1780,28 @@ private:
 	}
 
 public:
+	//indent<0:流风格单行(与json的compact对应);indent>=0:块风格,indent为层缩进宽度(0按1处理)。
 	virtual string_t dump(int indent=-1,typename string_t::value_type indent_char=' ',bool ensure_ascii=false) const {
 		string_t result;
 		if (indent<0) {
 			dump_flow(*this,result,ensure_ascii);
 			return result;
 		}
-		string_t prefix;
-		const base_t& inner=*peel_anchors(*this,prefix);
-		if (is_alias(inner)) {
-			result.append(prefix.begin(),prefix.end());
-			result.push_back('*');
-			const string_t& name=alias_name(inner);
-			result.append(name.begin(),name.end());
+		if (is_scalar_node(*this)) {
+			dump_scalar(*this,result,false,ensure_ascii);
 			return result;
 		}
-		if (is_scalar_node(inner)) {
-			result.append(prefix.begin(),prefix.end());
-			dump_scalar(inner,result,false,ensure_ascii);
-			return result;
-		}
-		if (inner.type()!=structure::DDT_ARRAY && inner.type()!=structure::DDT_OBJECT) unsupported_node(inner);
-		if (inner.empty()) {
-			result.append(prefix.begin(),prefix.end());
-			result.push_back(inner.type()==structure::DDT_ARRAY?'[':'{');
-			result.push_back(inner.type()==structure::DDT_ARRAY?']':'}');
+		if (this->empty()) {
+			result.push_back(this->type()==structure::DDT_ARRAY?'[':'{');
+			result.push_back(this->type()==structure::DDT_ARRAY?']':'}');
 			return result;
 		}
 		const int indent_step=indent>0?indent:1;
-		if (!prefix.empty()) {
-			prefix.pop_back();
-			result.append(prefix.begin(),prefix.end());
-			result.push_back('\n');
-		}
-		dump_block(inner,result,indent_step,indent_char,ensure_ascii,0,false);
+		dump_block(*this,result,indent_step,indent_char,ensure_ascii,0,false);
 		if (!result.empty() && result.back()=='\n') result.pop_back();
 		return result;
 	}
+	//单文档序列化:%YAML/%TAG指令(如info给出)+"---"+内容,恒以换行收尾。
 	static string_t dump_document(const base_t& root,const document_info_t* info=nullptr,int indent=2,typename string_t::value_type indent_char=' ',bool ensure_ascii=false) {
 		string_t result;
 		if (info && info->has_version()) {
@@ -2281,42 +1825,24 @@ public:
 			result.push_back('\n');
 			return result;
 		}
-		string_t prefix;
-		const base_t& inner=*peel_anchors(root,prefix);
-		if (is_alias(inner)) {
+		if (is_scalar_node(root)) {
 			result.push_back(' ');
-			result.append(prefix.begin(),prefix.end());
-			result.push_back('*');
-			const string_t& name=alias_name(inner);
-			result.append(name.begin(),name.end());
+			dump_scalar(root,result,false,ensure_ascii);
 			result.push_back('\n');
 			return result;
 		}
-		if (is_scalar_node(inner)) {
+		if (root.empty()) {
 			result.push_back(' ');
-			result.append(prefix.begin(),prefix.end());
-			dump_scalar(inner,result,false,ensure_ascii);
+			result.push_back(root.type()==structure::DDT_ARRAY?'[':'{');
+			result.push_back(root.type()==structure::DDT_ARRAY?']':'}');
 			result.push_back('\n');
 			return result;
-		}
-		if (inner.type()!=structure::DDT_ARRAY && inner.type()!=structure::DDT_OBJECT) unsupported_node(inner);
-		if (inner.empty()) {
-			result.push_back(' ');
-			result.append(prefix.begin(),prefix.end());
-			result.push_back(inner.type()==structure::DDT_ARRAY?'[':'{');
-			result.push_back(inner.type()==structure::DDT_ARRAY?']':'}');
-			result.push_back('\n');
-			return result;
-		}
-		if (!prefix.empty()) {
-			result.push_back(' ');
-			prefix.pop_back();
-			result.append(prefix.begin(),prefix.end());
 		}
 		result.push_back('\n');
-		dump_block(inner,result,indent>0?indent:1,indent_char,ensure_ascii,0,false);
+		dump_block(root,result,indent>0?indent:1,indent_char,ensure_ascii,0,false);
 		return result;
 	}
+	//多文档流序列化,与parse_all对偶。
 	static string_t dump_all(const std::vector<yaml>& documents,int indent=2,typename string_t::value_type indent_char=' ',bool ensure_ascii=false) {
 		string_t result;
 		for (const auto& it:documents) result+=dump_document(it,nullptr,indent,indent_char,ensure_ascii);
@@ -2331,20 +1857,23 @@ public:
 		return os;
 	}
 	friend std::istream& operator >>(std::istream& is,yaml& value) {
-		std::string content((std::istreambuf_iterator<char>(is)),std::istreambuf_iterator<char>());
+		std::string content;
+		char buffer[4096];
+		while (is.read(buffer,sizeof(buffer))) content.append(buffer,sizeof(buffer));
+		content.append(buffer,static_cast<std::size_t>(is.gcount()));
 		value=parse(content);
 		return is;
 	}
 };
 
-_STDEX_DOM_TPL_DEFAULT_DECLARATION
+_STDEX_DOM_TPL_DECLARATION
 inline typename yaml<_Int,_Float,_Boolean,_String,_Array,_Object,_Allocator>::string_t to_string(const yaml<_Int,_Float,_Boolean,_String,_Array,_Object,_Allocator>& value) {
 	return value.dump();
 }
 
 }
 
-_STDEX_DOM_TPL_DEFAULT_DECLARATION
+_STDEX_DOM_TPL_DECLARATION
 using yaml_t=basic_yaml::yaml<_Int,_Float,_Boolean,_String,_Array,_Object,_Allocator>;
 using yaml=yaml_t<>;
 using basic_yaml::yaml_sax;
@@ -2358,10 +1887,6 @@ using basic_yaml::YSS_DOUBLE_QUOTED;
 using basic_yaml::YSS_LITERAL;
 using basic_yaml::YSS_FOLDED;
 using basic_yaml::to_string;
-using basic_yaml::yaml_data_type;
-using basic_yaml::YDT_ANCHOR;
-using basic_yaml::YDT_ALIAS;
-using basic_yaml::yaml_parse_options;
 
 inline namespace literals {
 

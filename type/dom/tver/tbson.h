@@ -1,5 +1,11 @@
 //Last Modified At 2026/06/12
 //@Version 1.1.0.0
+//修改记录(1.0.0.0->1.1.0.0):补全BSON 1.1原生类型——新增八种派生kind:BSDT_OBJECT_ID(0x07,12字节)、
+//BSDT_DATETIME(0x09,UTC毫秒int64)、BSDT_REGEX(0x0B,pattern+options双cstring)、BSDT_CODE(0x0D,
+//JavaScript代码串)、BSDT_TIMESTAMP(0x11,内部u64:高32位秒/低32位增量,按整体读写)、BSDT_DECIMAL128
+//(0x13,16字节IEEE754-2008十进制)、BSDT_MIN_KEY(0xFF)/BSDT_MAX_KEY(0x7F,无载荷);按现行标准配齐
+//载荷结构/工厂/判断/访问/改写/降级与编解码闭环。弃用类型策略:undefined(0x06)落为null,
+//symbol(0x0E)落为字符串(有损),DBPointer(0x0C)与code with scope(0x0F)抛错;报错措辞按规则去前缀。
 #ifndef _STDEX_TYPE_DOM_BSON_H_
 #define _STDEX_TYPE_DOM_BSON_H_ 1
 
@@ -20,6 +26,7 @@ namespace type {
 
 namespace basic_bson {
 
+//BSON专有kind:自binary_data_type(BDT_BINARY)之后续号。
 _STDEX_DERIVED_KIND(bson_data_type,structure::binary_data_type,_STDEX_KIND_AUTO_START,
 	_STDEX_KIND_VALUE_AUTO(BSDT_OBJECT_ID)
 	_STDEX_KIND_VALUE_AUTO(BSDT_DATETIME)
@@ -46,6 +53,7 @@ public:
 	using decimal128_t=std::array<std::uint8_t,16>;
 
 protected:
+	//---载荷结构:value_t子类,clone/destroy/destroy_self保证拷贝保留动态类型与按真实大小回收---
 	struct object_id_value : base_t::value_t {
 		object_id_t bytes{};
 
@@ -204,6 +212,7 @@ protected:
 		}
 		return result;
 	}
+	//---载荷校验:type值与动态类型双重校验(并行派生分支的kind值可能重合,以dynamic_cast为准)---
 	static object_id_value* object_id_payload(const base_t& node) {
 		object_id_value* payload=node.data().value?dynamic_cast<object_id_value*>(node.data().value):nullptr;
 		if (node.type()!=bson_data_type(BSDT_OBJECT_ID) || !payload) throw std::invalid_argument("Node does not hold a bson ObjectId payload");
@@ -260,10 +269,12 @@ public:
 	bson& operator =(const bson&)=default;
 	bson& operator =(bson&&)=default;
 
+	//支持集=binary_dom支持集+BSON八种专有kind。
 	bool support(structure::dom_data_type t) const noexcept override {
 		return base_t::support(t) || t==BSDT_OBJECT_ID || t==BSDT_DATETIME || t==BSDT_REGEX || t==BSDT_CODE || t==BSDT_TIMESTAMP || t==BSDT_DECIMAL128 || t==BSDT_MIN_KEY || t==BSDT_MAX_KEY;
 	}
 
+	//---工厂---
 	static base_t make_object_id(const object_id_t& id) {
 		base_t node;
 		node.data()=typename base_t::data_t(structure::dom_data_type(BSDT_OBJECT_ID),create_value<object_id_value>(id));
@@ -334,6 +345,7 @@ public:
 		return bson(make_max_key());
 	}
 
+	//---判断---
 	static bool is_object_id(const base_t& node) noexcept {
 		return node.type()==bson_data_type(BSDT_OBJECT_ID);
 	}
@@ -383,6 +395,7 @@ public:
 		return is_max_key(*this);
 	}
 
+	//---访问(工厂与访问器同名处依实参类别消歧;code因const char*会歧义,访问器按text/text_content先例命名code_content)---
 	static object_id_t& object_id(const base_t& node) {
 		return object_id_payload(node)->bytes;
 	}
@@ -447,6 +460,7 @@ public:
 		return decimal128(*this);
 	}
 
+	//---改写---
 	static void set_object_id(base_t& node,const object_id_t& id) {
 		node.data()=typename base_t::data_t(structure::dom_data_type(BSDT_OBJECT_ID),create_value<object_id_value>(id));
 	}
@@ -496,6 +510,7 @@ public:
 		set_max_key(*this);
 	}
 
+	//---解码---
 	static bson parse(const std::uint8_t* data,std::size_t size) {
 		bitwise::bit_reader reader(data,size,bitwise::BO_LSBYTE);
 		bson result(decode_document(reader,false));
@@ -506,6 +521,7 @@ public:
 		return parse(data.data(),data.size());
 	}
 
+	//---编码---
 	binary_t dump() const {
 		if (!this->is_object()) throw std::invalid_argument("Top-level value must be an object");
 		bitwise::bit_writer writer(bitwise::BO_LSBYTE);
@@ -593,12 +609,12 @@ private:
 			case 0x04: return decode_document(reader,true);
 			case 0x05: {
 				const std::uint32_t length=reader.read_u32();
-				reader.read_u8();
+				reader.read_u8();//子类型字节:丢弃,载荷保留
 				dom_t node;
 				base_t::set_binary(node,base_t::template read_block<binary_t>(reader,length));
 				return node;
 			}
-			case 0x06: return dom_t(nullptr);
+			case 0x06: return dom_t(nullptr);//undefined(弃用):落为null
 			case 0x07: {
 				base_t::require_bytes(reader,12);
 				object_id_t id{};
@@ -626,7 +642,7 @@ private:
 				set_code(node,read_string(reader));
 				return node;
 			}
-			case 0x0E: return dom_t(read_string(reader));
+			case 0x0E: return dom_t(read_string(reader));//symbol(弃用):落为字符串(有损)
 			case 0x10: return decode_signed(static_cast<std::int32_t>(reader.read_u32()),start);
 			case 0x11: {
 				dom_t node;
@@ -819,7 +835,7 @@ private:
 	}
 	static void encode_document(const dom_t& node,bitwise::bit_writer& writer) {
 		const std::size_t size_position=writer.tell_bits();
-		writer.write_u32(0);
+		writer.write_u32(0);//总长占位:bit_writer按位或写入,先写零再回填
 		if (node.type()==structure::DDT_OBJECT) {
 			for (auto it=node.cbegin();it!=node.cend();it++) encode_element(it.key(),*it,writer);
 		} else {

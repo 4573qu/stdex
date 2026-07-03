@@ -1,5 +1,9 @@
-//Last Modified At 2026/07/04
+//Last Modified At 2026/06/12
 //@Version 1.1.0.0
+//修改记录(1.0.0.0->1.1.0.0):补全MessagePack原生类型——新增派生kind MPDT_EXT(ext族:int8类型码+字节载荷),
+//解码0xC7-0xC9/0xD4-0xD8不再拒绝而是建MPDT_EXT节点(timestamp即ext(-1),原样往返);编码按载荷长
+//1/2/4/8/16择fixext否则ext8/16/32;按现行标准配齐ext_value载荷/工厂(ext/make_ext)/判断(is_ext)/
+//访问(ext_type/ext_data)/改写(set_ext)/降级(degrade_unsupported链式);报错措辞按规则去前缀。
 #ifndef _STDEX_TYPE_DOM_MSGPACK_H_
 #define _STDEX_TYPE_DOM_MSGPACK_H_ 1
 
@@ -18,6 +22,7 @@ namespace type {
 
 namespace basic_msgpack {
 
+//MessagePack专有kind:自binary_data_type(BDT_BINARY)之后续号。
 _STDEX_DERIVED_KIND(msgpack_data_type,structure::binary_data_type,_STDEX_KIND_AUTO_START,
 	_STDEX_KIND_VALUE_AUTO(MPDT_EXT)
 )
@@ -35,6 +40,7 @@ public:
 	using binary_t=typename base_t::binary_t;
 
 protected:
+	//ext载荷:类型码(int8)+字节序列;union成员闲置。
 	struct ext_value : base_t::value_t {
 		std::int8_t code{};
 		binary_t data{};
@@ -73,6 +79,7 @@ protected:
 		}
 		return result;
 	}
+	//载荷校验:type值与动态类型双重校验(并行派生分支的kind值可能重合,以dynamic_cast为准)。
 	static ext_value* ext_payload(const base_t& node) {
 		ext_value* payload=node.data().value?dynamic_cast<ext_value*>(node.data().value):nullptr;
 		if (node.type()!=msgpack_data_type(MPDT_EXT) || !payload) throw std::invalid_argument("Node does not hold a msgpack ext payload");
@@ -95,10 +102,12 @@ public:
 	msgpack& operator =(const msgpack&)=default;
 	msgpack& operator =(msgpack&&)=default;
 
+	//支持集=binary_dom支持集+MPDT_EXT。
 	bool support(structure::dom_data_type t) const noexcept override {
 		return base_t::support(t) || t==MPDT_EXT;
 	}
 
+	//---工厂---
 	static base_t make_ext(std::int8_t code,binary_t data) {
 		base_t node;
 		node.data()=typename base_t::data_t(structure::dom_data_type(MPDT_EXT),create_value<ext_value>(code,std::move(data)));
@@ -113,6 +122,7 @@ public:
 		return msgpack(make_ext(code,std::move(data)));
 	}
 
+	//---判断---
 	static bool is_ext(const base_t& node) noexcept {
 		return node.type()==msgpack_data_type(MPDT_EXT);
 	}
@@ -120,6 +130,7 @@ public:
 		return is_ext(*this);
 	}
 
+	//---访问---
 	static std::int8_t& ext_type(const base_t& node) {
 		return ext_payload(node)->code;
 	}
@@ -139,6 +150,7 @@ public:
 		return ext_data(*this);
 	}
 
+	//---改写---
 	static void set_ext(base_t& node,std::int8_t code,binary_t data) {
 		node.data()=typename base_t::data_t(structure::dom_data_type(MPDT_EXT),create_value<ext_value>(code,std::move(data)));
 	}
@@ -146,6 +158,7 @@ public:
 		set_ext(*this,code,std::move(data));
 	}
 
+	//---解码---
 	static msgpack parse(const std::uint8_t* data,std::size_t size) {
 		bitwise::bit_reader reader(data,size,bitwise::BO_MSBYTE);
 		msgpack result(decode_value(reader));
@@ -156,6 +169,7 @@ public:
 		return parse(data.data(),data.size());
 	}
 
+	//---编码---
 	binary_t dump() const {
 		bitwise::bit_writer writer(bitwise::BO_MSBYTE);
 		encode_value(*this,writer);

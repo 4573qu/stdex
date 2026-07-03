@@ -1,5 +1,11 @@
-//Last Modified At 2026/07/04
+//Last Modified At 2026/06/12
 //@Version 1.1.0.0
+//修改记录(1.0.0.0->1.1.0.0):补全CBOR原生类型——①新增派生kind CDT_TAG(uint64标号+被标注的dom内容):
+//解码major6不再剥取而是建CDT_TAG节点(标号与内容完整往返),编码发head(6,标号)+内容;②新增CDT_SIMPLE
+//(simple值,std::uint8_t):承载0-19与32-255;20/21/22仍映射bool/null,undefined(23)由落null改为
+//simple(23)以保往返;set_simple拒收20-31(20-23走bool/null规范型,24-31为编码保留段);③按现行标准
+//配齐载荷/工厂(tag/simple/make_*)/判断(is_tag/is_simple)/访问(tag_number/tag_content/simple)/
+//改写(set_tag/set_simple)/降级(tag取内容链式再转换,simple降整数);④报错措辞按规则去前缀。
 #ifndef _STDEX_TYPE_DOM_CBOR_H_
 #define _STDEX_TYPE_DOM_CBOR_H_ 1
 
@@ -19,6 +25,7 @@ namespace type {
 
 namespace basic_cbor {
 
+//CBOR专有kind:自binary_data_type(BDT_BINARY)之后续号。
 _STDEX_DERIVED_KIND(cbor_data_type,structure::binary_data_type,_STDEX_KIND_AUTO_START,
 	_STDEX_KIND_VALUE_AUTO(CDT_TAG)
 	_STDEX_KIND_VALUE_AUTO(CDT_SIMPLE)
@@ -37,6 +44,7 @@ public:
 	using binary_t=typename base_t::binary_t;
 
 protected:
+	//tag载荷:语义标号+被标注的内容(内容为完整dom子树,可再嵌tag)。
 	struct tag_value : base_t::value_t {
 		std::uint64_t number{};
 		dom_t content{};
@@ -62,6 +70,7 @@ protected:
 			std::allocator_traits<_Allocator<tag_value>>::deallocate(alloc,this,1);
 		}
 	};
+	//simple载荷:未指派的简单值(0-19,32-255)。
 	struct simple_value : base_t::value_t {
 		std::uint8_t code{};
 
@@ -99,6 +108,7 @@ protected:
 		}
 		return result;
 	}
+	//载荷校验:type值与动态类型双重校验(并行派生分支的kind值可能重合,以dynamic_cast为准)。
 	static tag_value* tag_payload(const base_t& node) {
 		tag_value* payload=node.data().value?dynamic_cast<tag_value*>(node.data().value):nullptr;
 		if (node.type()!=cbor_data_type(CDT_TAG) || !payload) throw std::invalid_argument("Node does not hold a cbor tag payload");
@@ -123,9 +133,12 @@ public:
 	cbor& operator =(const cbor&)=default;
 	cbor& operator =(cbor&&)=default;
 
+	//支持集=binary_dom支持集+CDT_TAG+CDT_SIMPLE。
 	bool support(structure::dom_data_type t) const noexcept override {
 		return base_t::support(t) || t==CDT_TAG || t==CDT_SIMPLE;
 	}
+
+	//---工厂---
 	static base_t make_tag(std::uint64_t number,base_t content) {
 		base_t node;
 		node.data()=typename base_t::data_t(structure::dom_data_type(CDT_TAG),create_value<tag_value>(number,std::move(content)));
@@ -149,6 +162,7 @@ public:
 		return cbor(make_simple(code));
 	}
 
+	//---判断---
 	static bool is_tag(const base_t& node) noexcept {
 		return node.type()==cbor_data_type(CDT_TAG);
 	}
@@ -162,6 +176,7 @@ public:
 		return is_simple(*this);
 	}
 
+	//---访问---
 	static std::uint64_t& tag_number(const base_t& node) {
 		return tag_payload(node)->number;
 	}
@@ -190,6 +205,7 @@ public:
 		return simple(*this);
 	}
 
+	//---改写---
 	static void set_tag(base_t& node,std::uint64_t number,base_t content) {
 		node.data()=typename base_t::data_t(structure::dom_data_type(CDT_TAG),create_value<tag_value>(number,std::move(content)));
 	}
@@ -204,6 +220,7 @@ public:
 		set_simple(*this,code);
 	}
 
+	//---解码---
 	static cbor parse(const std::uint8_t* data,std::size_t size) {
 		bitwise::bit_reader reader(data,size,bitwise::BO_MSBYTE);
 		cbor result(decode_value(reader));
@@ -214,6 +231,7 @@ public:
 		return parse(data.data(),data.size());
 	}
 
+	//---编码---
 	binary_t dump() const {
 		bitwise::bit_writer writer(bitwise::BO_MSBYTE);
 		encode_value(*this,writer);
@@ -242,6 +260,7 @@ private:
 	static constexpr std::uint8_t indefinite_info=0x1F;
 	static constexpr std::uint8_t break_byte=0xFF;
 
+	//simple值域校验:20-23走boolean/null规范型,24-31为编码保留段。
 	static void check_simple(std::uint8_t code) {
 		if (code>=20 && code<=31) throw std::invalid_argument("Simple values 20 to 31 are reserved");
 	}
@@ -341,18 +360,18 @@ private:
 				}
 				return result;
 			}
-			case 6: {
+			case 6: {//tag:保留标号与内容,建CDT_TAG节点
 				const std::uint64_t number=read_count(reader,info,start);
 				dom_t node;
 				set_tag(node,number,decode_value(reader));
 				return node;
 			}
-			default: {
+			default: {//major 7:simple/浮点
 				switch (info) {
 					case 20: return dom_t(static_cast<boolean_t>(false));
 					case 21: return dom_t(static_cast<boolean_t>(true));
 					case 22: return dom_t(nullptr);
-					case 23: return make_simple(23);
+					case 23: return make_simple(23);//undefined:以simple(23)保往返
 					case 24: {
 						const std::uint8_t code=reader.read_u8();
 						if (code<32) throw std::runtime_error("Invalid simple value encoding at byte "+std::to_string(start));
@@ -362,7 +381,7 @@ private:
 					case 26: return dom_t(static_cast<float_t>(base_t::bits_to_f32(reader.read_u32())));
 					case 27: return dom_t(static_cast<float_t>(base_t::bits_to_f64(reader.read_u64())));
 					case 31: throw std::runtime_error("Unexpected break outside indefinite-length item at byte "+std::to_string(start));
-					default: return make_simple(info);
+					default: return make_simple(info);//0-19:未指派simple
 				}
 			}
 		}
