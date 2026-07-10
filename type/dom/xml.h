@@ -1,5 +1,5 @@
-﻿//Last Modified At 2026/06/12
-//@Version 1.0.0.0
+﻿//Last Modified At 2026/07/11
+//@Version 1.0.1.0
 #ifndef _STDEX_TYPE_DOM_XML_H_
 #define _STDEX_TYPE_DOM_XML_H_ 1
 
@@ -1388,7 +1388,7 @@ private:
 					out.push_back('>');
 					break;
 				}
-				throw std::invalid_argument("xml: unsupported node type "+std::to_string(static_cast<long long>(static_cast<int>(node.type())))+" (use the dom conversion protocol first)");
+				throw std::invalid_argument("Unsupported node type "+std::to_string(static_cast<long long>(static_cast<int>(node.type())))+" (use the dom conversion protocol first)");
 			}
 		}
 	}
