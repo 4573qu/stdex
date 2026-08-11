@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/13
-//@Version 2.2.0.0
+//Last Modified At 2026/08/02
+//@Version 2.2.1.0
 #ifndef _STDEX_BITWISE_BIT_WRITER_H_
 #define _STDEX_BITWISE_BIT_WRITER_H_ 1
 
@@ -223,7 +223,7 @@ public:
 		byte_align();
 		return std::move(buffer_);
 	}
-	bit_order& bit_order() noexcept { return order_; }
+	bit_order& order() noexcept { return order_; }
 };
 
 }

@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/13
-//@Version 2.2.0.0
+//Last Modified At 2026/08/02
+//@Version 2.2.1.0
 #ifndef _STDEX_BITWISE_BIT_READER_H_
 #define _STDEX_BITWISE_BIT_READER_H_ 1
 
@@ -229,7 +229,7 @@ public:
 	void rewind() { seek_bits(0); }
 
 	std::size_t bit_pos() { return bit_pos_; }
-	bit_order& bit_order() noexcept { return order_; }
+	bit_order& order() noexcept { return order_; }
 	const uint8_t* data() const noexcept { return data_; }
 };
 
