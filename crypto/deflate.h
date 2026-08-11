@@ -1,10 +1,11 @@
-//Last Modified At 2026/05/13
-//@Version 1.1.0.0
+//Last Modified At 2026/08/02
+//@Version 2.0.0.0
 #ifndef _STDEX_CRYPTO_DEFLATE_H_
 #define _STDEX_CRYPTO_DEFLATE_H_ 1
 
 #include <algorithm>
 #include <array>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -22,7 +23,7 @@
 #include "../bitwise/bit_reader.h"//At Least 2.2
 #include "../bitwise/bit_writer.h"//At Least 2.2
 #include "../bitwise/bits.h"//At Least 1.2
-#include "../crypto/lz77.h"//At Least 1.2.2
+#include "../crypto/lz77.h"//At Least 1.4
 #include "../integrity/adler.h"//At Least 1.0
 #include "../integrity/crc.h"//At Least 1.0
 #include "../structure/huffman.h"//At Least 3.0
@@ -125,6 +126,7 @@ class deflate {
 		}
 
 		int decode(bitwise::bit_reader& br) const {
+			if (fast_table.empty()) throw std::runtime_error("Empty huffman code table");
 			std::size_t remaining=br.size_bits()-br.tell_bits();
 			if (remaining>=static_cast<std::size_t>(maxbits)) {
 				uint32_t peek_val=br.peek_bits<uint32_t>(maxbits);
@@ -164,7 +166,49 @@ class deflate {
 		{16385,13},{24577,13}
 	};
 
+	struct length_code_table {
+		uint8_t index[259];
+	};
+	static constexpr length_code_table build_length_code_table() noexcept {
+		length_code_table t{};
+		for (int i=0;i<29;i++) {
+			int next_base=(i+1<29)?length_codes_[i+1].first:259;
+			for (int len=length_codes_[i].first;len<next_base;len++) t.index[len]=static_cast<uint8_t>(i);
+		}
+		return t;
+	}
+	struct dist_code_table {
+		uint8_t index[512];
+	};
+	static constexpr dist_code_table build_dist_code_table() noexcept {
+		dist_code_table t{};
+		for (int i=0;i<30;i++) {
+			int next_base=(i+1<30)?dist_codes_[i+1].first:32769;
+			for (int d=dist_codes_[i].first;d<next_base;d++) {
+				if (d<=256) t.index[d-1]=static_cast<uint8_t>(i);
+				else t.index[256+((d-1)>>7)]=static_cast<uint8_t>(i);
+			}
+		}
+		return t;
+	}
+	static const length_code_table length_code_lut_;
+	static const dist_code_table dist_code_lut_;
+
+	static const canonical_tree& fixed_lit_tree() {
+		static const canonical_tree tree=build_fixed_lit();
+		return tree;
+	}
+	static const canonical_tree& fixed_dist_tree() {
+		static const canonical_tree tree=build_fixed_dist();
+		return tree;
+	}
+
 	static constexpr int order_[19]={16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
+
+	using lz_fixed_fastest_=lz77_base<4,false,3,258,32768,15,5,4,8>;
+	using lz_fixed_normal_=lz77_base<16,false,3,258,32768,15,5,4,16>;
+	using lz_dynamic_normal_=lz77_base<128,true,3,258,32768,15,5,8,128>;
+	using lz_dynamic_best_=lz77_base<4096,true,3,258,32768,15,5,32,258>;
 
 	static void build_canonical_table(canonical_tree& h) {
 		int maxbits=0;
@@ -179,6 +223,12 @@ class deflate {
 		std::vector<int> bl_count(maxbits+1,0);
 		for (uint8_t it:h.length) {
 			if (it) bl_count[it]++;
+		}
+		int left=1;
+		for (int bits=1;bits<=maxbits;bits++) {
+			left<<=1;
+			left-=bl_count[bits];
+			if (left<0) throw std::runtime_error("Over-subscribed huffman code");
 		}
 		std::vector<int> next_code(maxbits+1,0);
 		int code=0;
@@ -261,27 +311,27 @@ class deflate {
 	}
 
 	static int get_length_code(int len,int& extra_value,int& extra_bits) noexcept {
-		for (int i=0;i<29;i++) {
-			int next_base=(i+1<29)?length_codes_[i+1].first:259;
-			if (len>=length_codes_[i].first && len<next_base) {
-				extra_bits=length_codes_[i].second;
-				extra_value=len-length_codes_[i].first;
-				return 257+i;
-			}
+		if (len<3 || len>258) {
+			extra_value=0;
+			extra_bits=0;
+			return 285;
 		}
-		return 285;
+		int i=length_code_lut_.index[len];
+		extra_bits=length_codes_[i].second;
+		extra_value=len-length_codes_[i].first;
+		return 257+i;
 	}
 
 	static int get_dist_code(int dist,int& extra_value,int& extra_bits) noexcept {
-		for (int i=0;i<30;i++) {
-			int next_base=(i+1<30)?dist_codes_[i+1].first:dist_codes_[i].first*2;
-			if (dist>=dist_codes_[i].first && dist<next_base) {
-				extra_bits=dist_codes_[i].second;
-				extra_value=dist-dist_codes_[i].first;
-				return i;
-			}
+		if (dist<1 || dist>32768) {
+			extra_value=0;
+			extra_bits=0;
+			return 29;
 		}
-		return 29;
+		int i=(dist<=256)?dist_code_lut_.index[dist-1]:dist_code_lut_.index[256+((dist-1)>>7)];
+		extra_bits=dist_codes_[i].second;
+		extra_value=dist-dist_codes_[i].first;
+		return i;
 	}
 
 	static void write_dynamic_header(bitwise::bit_writer& bw,const std::vector<uint8_t>& litlen_len,const std::vector<uint8_t>& dist_len) {
@@ -368,7 +418,7 @@ class deflate {
 
 	static void encode_stored_blocks(bitwise::bit_writer& bw,const uint8_t* data,std::size_t size,bool is_last_overall) {
 		std::size_t pos=0;
-		while (pos<size) {
+		do {
 			std::size_t blk=std::min<std::size_t>(65535u,size-pos);
 			bool last=(pos+blk==size) && is_last_overall;
 			bw.write_bits<uint8_t>(1,last?1:0);
@@ -378,34 +428,30 @@ class deflate {
 			auto nlen=static_cast<uint16_t>(~len);
 			bw.write_u16(len);
 			bw.write_u16(nlen);
-			for (std::size_t i=0;i<blk;i++) bw.write_u8(data[pos+i]);
+			if (blk>0) bw.write_bytes(data+pos,blk);
 			pos+=blk;
-		}
+		} while (pos<size);
 	}
 
 	static void encode_fixed_block(bitwise::bit_writer& bw,const std::vector<lz77_token>& tokens,bool last) {
 		bw.write_bits<uint8_t>(1,last?1:0);
 		bw.write_bits<uint8_t>(2,1);
+		const canonical_tree& fl=fixed_lit_tree();
+		const canonical_tree& fd=fixed_dist_tree();
 		for (const auto& it:tokens) {
-			if (it.length==0) {
-				auto [code,len]=get_litlen(it.literal);
-				bw.write_bits<uint16_t>(len,bitwise::reverse_bits(code,len));
-			} else {
+			if (it.length==0) bw.write_bits<uint16_t>(fl.length[it.literal],fl.table[it.literal]);
+			else {
 				int ev=0,eb=0;
 				int lc=get_length_code(it.length,ev,eb);
-				auto [code,len]=get_litlen(lc);
-				bw.write_bits<uint16_t>(len,bitwise::reverse_bits(code,len));
-				if (eb>0) bw.write_bits<uint16_t>(eb,static_cast<uint64_t>(ev));
+				bw.write_bits<uint16_t>(fl.length[lc],fl.table[lc]);
+				if (eb>0) bw.write_bits<uint16_t>(eb,static_cast<uint16_t>(ev));
 				int dv=0,db=0;
 				int dc=get_dist_code(it.distance,dv,db);
-				auto [dcode,dlen]=get_dist(dc);
-				bw.write_bits<uint16_t>(dlen,bitwise::reverse_bits(dcode,dlen));
-				if (db>0) bw.write_bits<uint16_t>(db,static_cast<uint64_t>(dv));
+				bw.write_bits<uint16_t>(fd.length[dc],fd.table[dc]);
+				if (db>0) bw.write_bits<uint16_t>(db,static_cast<uint16_t>(dv));
 			}
 		}
-		auto [ec,el]=get_litlen(256);
-		bw.write_bits<uint16_t>(el,bitwise::reverse_bits(ec,el));
-		bw.flush_bits();
+		bw.write_bits<uint16_t>(fl.length[256],fl.table[256]);
 	}
 
 	static void encode_dynamic_block(bitwise::bit_writer& bw,const std::vector<lz77_token>& tokens,bool last) {
@@ -441,7 +487,6 @@ class deflate {
 			}
 		}
 		bw.write_bits(ll.length[256],ll.table[256]);
-		bw.flush_bits();
 	}
 
 	static bool decode_block(bitwise::bit_reader& br,std::vector<uint8_t>& out,const uint8_t* raw_buf,std::size_t raw_size,std::size_t base_offset) {
@@ -468,6 +513,7 @@ class deflate {
 			int hlit=br.read_bits<uint32_t>(5)+257;
 			int hdist=br.read_bits<uint32_t>(5)+1;
 			int hclen=br.read_bits<uint32_t>(4)+4;
+			if (hlit>286 || hdist>30) throw std::runtime_error("Too many length or distance symbols");
 			std::vector<uint8_t> code_len(19,0);
 			for (int i=0;i<hclen;i++) code_len[order_[i]]=br.read_bits<uint32_t>(3);
 			canonical_tree cl;
@@ -480,8 +526,9 @@ class deflate {
 				int sym=cl.decode(br);
 				if (sym<=15) ll_len.push_back(static_cast<uint8_t>(sym));
 				else if (sym==16) {
+					if (ll_len.empty()) throw std::runtime_error("Repeat of previous code length with no predecessor");
 					int rep=3+br.read_bits<uint32_t>(2);
-					uint8_t prev=ll_len.empty()?0:ll_len.back();
+					uint8_t prev=ll_len.back();
 					while (rep--) ll_len.push_back(prev);
 				} else if (sym==17) {
 					int rep=3+br.read_bits<uint32_t>(3);
@@ -497,6 +544,7 @@ class deflate {
 			build_canonical_table(litlen);
 			build_canonical_table(dist);
 		} else throw std::runtime_error("Reserved BTYPE");
+		if (litlen.empty()) throw std::runtime_error("Missing literal/length code table");
 		out.reserve(out.size()+65536);
 		std::size_t local_size=out.size();
 		std::size_t local_cap=out.capacity();
@@ -511,7 +559,7 @@ class deflate {
 			br.fill_buffer();
 			int sym;
 			std::size_t used_bits=br.remaining_bits();
-			if (used_bits>=static_cast<std::size_t>(ll_mb)) {
+			if (ll_mb>0 && used_bits>=static_cast<std::size_t>(ll_mb)) {
 				uint32_t v=br.peek_bits(ll_mb);
 				const auto& e=ll_tab[v];
 				if (e.length==0) throw std::runtime_error("Invalid huffman code");
@@ -529,10 +577,7 @@ class deflate {
 				out_ptr[local_size++]=static_cast<uint8_t>(sym);
 				continue;
 			}
-			if (sym==256) {
-				br.byte_align();
-				break;
-			}
+			if (sym==256) break;
 			if (sym>285) throw std::runtime_error("Bad length symbol");
 			const auto& lce=length_codes_[sym - 257];
 			int mlen=lce.first;
@@ -541,9 +586,10 @@ class deflate {
 				mlen+=br.peek_bits(lce.second);
 				br.drop_bits(lce.second);
 			}
+			if (dist.empty()) throw std::runtime_error("Missing distance code table");
 			br.fill_buffer();
 			int dsym;
-			if (br.remaining_bits()>=static_cast<std::size_t>(d_mb)) {
+			if (d_mb>0 && br.remaining_bits()>=static_cast<std::size_t>(d_mb)) {
 				uint32_t v=br.peek_bits(d_mb);
 				const auto& e=d_tab[v];
 				if (e.length==0) throw std::runtime_error("Invalid huffman code");
@@ -673,7 +719,7 @@ class deflate {
 
 public:
 	static std::size_t compress_bound(std::size_t input_size,deflate_stream_format fmt=DSF_ZLIB) noexcept {
-		std::size_t blocks=(input_size+65534)/65535;
+		std::size_t blocks=input_size?((input_size+65534)/65535):1;
 		std::size_t result=input_size+blocks*5+1;
 		if (fmt==DSF_ZLIB) result+=6;
 		if (fmt==DSF_GZIP) result+=18;
@@ -733,25 +779,26 @@ public:
 		if (effective==DBT_STORED) encode_stored_blocks(bw,data,size,true);
 		else if (effective==DBT_FIXED) {
 			if (level<=DL_FASTEST) {
-				lz77_base<4,false,3,258,32768,15,5,4,8> lz;
+				lz_fixed_fastest_ lz;
 				auto tokens=lz.encode(data,size);
 				encode_fixed_block(bw,tokens,true);
 			} else {
-				lz77_base<16,false,3,258,32768,15,5,4,16> lz;
+				lz_fixed_normal_ lz;
 				auto tokens=lz.encode(data,size);
 				encode_fixed_block(bw,tokens,true);
 			}
 		} else {
 			if (level>=DL_BEST) {
-				lz77_base<4096,true,3,258,32768,15,5,32,258> lz;
+				lz_dynamic_best_ lz;
 				auto tokens=lz.encode(data,size);
 				encode_dynamic_block(bw,tokens,true);
 			} else {
-				lz77_base<128,true,3,258,32768,15,5,8,128> lz;
+				lz_dynamic_normal_ lz;
 				auto tokens=lz.encode(data,size);
 				encode_dynamic_block(bw,tokens,true);
 			}
 		}
+		bw.flush_bits();
 		if (fmt==DSF_ZLIB) {
 			uint32_t ad=integrity::adler32::calculate(data,size);
 			bw.write_u8(static_cast<uint8_t>(ad>>24));
@@ -772,7 +819,7 @@ public:
 			bw.write_u8(static_cast<uint8_t>((isize>>16)&0xFF));
 			bw.write_u8(static_cast<uint8_t>((isize>>24)&0xFF));
 		}
-		return bw.buffer();
+		return std::move(bw).buffer();
 	}
 
 	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,deflate_level level=DL_NORMAL,deflate_stream_format fmt=DSF_ZLIB,deflate_block_type btype=DBT_AUTOMATIC) {
@@ -798,12 +845,28 @@ public:
 		write_gzip_header(bw,info,level);
 		deflate_block_type effective=resolve_block_type(btype,level);
 		if (effective==DBT_STORED) encode_stored_blocks(bw,data,size,true);
-		else {
-			lz77<> lz;
-			auto tokens=lz.encode_chunk(data,size,true);
-			if (effective==DBT_FIXED) encode_fixed_block(bw,tokens,true);
-			else encode_dynamic_block(bw,tokens,true);
+		else if (effective==DBT_FIXED) {
+			if (level<=DL_FASTEST) {
+				lz_fixed_fastest_ lz;
+				auto tokens=lz.encode(data,size);
+				encode_fixed_block(bw,tokens,true);
+			} else {
+				lz_fixed_normal_ lz;
+				auto tokens=lz.encode(data,size);
+				encode_fixed_block(bw,tokens,true);
+			}
+		} else {
+			if (level>=DL_BEST) {
+				lz_dynamic_best_ lz;
+				auto tokens=lz.encode(data,size);
+				encode_dynamic_block(bw,tokens,true);
+			} else {
+				lz_dynamic_normal_ lz;
+				auto tokens=lz.encode(data,size);
+				encode_dynamic_block(bw,tokens,true);
+			}
 		}
+		bw.flush_bits();
 		integrity::crc32 crc_calc;
 		crc_calc.update(data,size);
 		uint32_t crc_val=crc_calc.checksum();
@@ -816,7 +879,7 @@ public:
 		bw.write_u8(static_cast<uint8_t>((isize>>8)&0xFF));
 		bw.write_u8(static_cast<uint8_t>((isize>>16)&0xFF));
 		bw.write_u8(static_cast<uint8_t>((isize>>24)&0xFF));
-		return bw.buffer();
+		return std::move(bw).buffer();
 	}
 
 	static std::vector<uint8_t> compress(const std::vector<uint8_t>& data,const gzip_info& info,deflate_level level=DL_NORMAL,deflate_block_type btype=DBT_AUTOMATIC) {
@@ -868,15 +931,17 @@ public:
 		out.reserve(size*3);
 		bool last=false;
 		while (!last) last=decode_block(br,out,data,size,offset);
+		br.byte_align();
+		const std::size_t consumed=offset+br.tell_bits()/CHAR_BIT;
 		if (fmt==DSF_ZLIB) {
-			if (size<6) throw std::runtime_error("Zlib too short for adler32");
-			std::size_t ap=size-4;
+			if (size<consumed+4) throw std::runtime_error("Zlib too short for adler32");
+			std::size_t ap=consumed;
 			uint32_t expect=(static_cast<uint32_t>(data[ap])<<24)|(static_cast<uint32_t>(data[ap+1])<<16)|(static_cast<uint32_t>(data[ap+2])<<8)|static_cast<uint32_t>(data[ap+3]);
 			uint32_t actual=integrity::adler32::calculate(out.data(),out.size());
 			if (actual!=expect) throw std::runtime_error("Adler32 mismatch");
 		} else if (fmt==DSF_GZIP) {
-			if (size<8) throw std::runtime_error("Gzip trailer truncated");
-			std::size_t tp=size-8;
+			if (size<consumed+8) throw std::runtime_error("Gzip trailer truncated");
+			std::size_t tp=consumed;
 			uint32_t expect_crc=static_cast<uint32_t>(data[tp])|(static_cast<uint32_t>(data[tp+1])<<8)|(static_cast<uint32_t>(data[tp+2])<<16)|(static_cast<uint32_t>(data[tp+3])<<24);
 			uint32_t expect_size=static_cast<uint32_t>(data[tp+4])|(static_cast<uint32_t>(data[tp+5])<<8)|(static_cast<uint32_t>(data[tp+6])<<16)|(static_cast<uint32_t>(data[tp+7])<<24);
 			integrity::crc32 crc_calc;
@@ -912,8 +977,10 @@ public:
 		out.reserve(size*3);
 		bool last=false;
 		while (!last) last=decode_block(br,out,data,size,offset);
-		if (size<8) throw std::runtime_error("Gzip trailer truncated");
-		std::size_t tp=size-8;
+		br.byte_align();
+		const std::size_t consumed=offset+br.tell_bits()/CHAR_BIT;
+		if (size<consumed+8) throw std::runtime_error("Gzip trailer truncated");
+		std::size_t tp=consumed;
 		uint32_t expect_crc=static_cast<uint32_t>(data[tp])|(static_cast<uint32_t>(data[tp+1])<<8)|(static_cast<uint32_t>(data[tp+2])<<16)|(static_cast<uint32_t>(data[tp+3])<<24);
 		uint32_t expect_size=static_cast<uint32_t>(data[tp+4])|(static_cast<uint32_t>(data[tp+5])<<8)|(static_cast<uint32_t>(data[tp+6])<<16)|(static_cast<uint32_t>(data[tp+7])<<24);
 		integrity::crc32 crc_calc;
@@ -957,15 +1024,49 @@ public:
 };
 
 class deflate_compressor {
+	struct lz_engine {
+		virtual ~lz_engine()=default;
+		virtual std::vector<lz77_token> encode_chunk(const uint8_t* data,std::size_t size,bool is_final,std::size_t start)=0;
+		virtual void rebase(std::size_t delta)=0;
+		virtual void reset()=0;
+		virtual std::size_t window_size() const noexcept=0;
+	};
+
+	template <typename _Lz>
+	class lz_engine_for : public lz_engine {
+		_Lz lz_;
+
+	public:
+		std::vector<lz77_token> encode_chunk(const uint8_t* data,std::size_t size,bool is_final,std::size_t start) override {
+			return lz_.encode_chunk(data,size,is_final,start);
+		}
+		void rebase(std::size_t delta) override { lz_.rebase(delta); }
+		void reset() override { lz_.reset(); }
+		std::size_t window_size() const noexcept override { return _Lz::window_size(); }
+	};
+
+	static std::unique_ptr<lz_engine> make_lz_engine(deflate_level level,deflate_block_type effective) {
+		if (effective==DBT_STORED) return nullptr;
+		if (effective==DBT_FIXED) {
+			if (level<=DL_FASTEST) return std::unique_ptr<lz_engine>(new lz_engine_for<deflate::lz_fixed_fastest_>());
+			return std::unique_ptr<lz_engine>(new lz_engine_for<deflate::lz_fixed_normal_>());
+		}
+		if (level>=DL_BEST) return std::unique_ptr<lz_engine>(new lz_engine_for<deflate::lz_dynamic_best_>());
+		return std::unique_ptr<lz_engine>(new lz_engine_for<deflate::lz_dynamic_normal_>());
+	}
+
 	deflate_level level_;
 	deflate_stream_format fmt_;
 	deflate_block_type btype_;
 	gzip_info gzip_info_;
 
 	bitwise::bit_writer bw_;
-	lz77<> lz_;
+	std::unique_ptr<lz_engine> lz_;
 
-	std::vector<lz77<>::token> pending_tokens_;
+	std::vector<lz77_token> pending_tokens_;
+	std::vector<uint8_t> pending_raw_;
+	std::vector<uint8_t> window_;
+	std::size_t window_pos_=0;
 	std::size_t pending_bytes_=0;
 	std::size_t block_threshold_=65536;
 
@@ -986,41 +1087,92 @@ class deflate_compressor {
 		header_written_=true;
 	}
 
+	void trim_window() {
+		if (!lz_) return;
+		const std::size_t win=lz_->window_size();
+		while (window_pos_>=win*2) {
+			window_.erase(window_.begin(),window_.begin()+win);
+			window_pos_-=win;
+			lz_->rebase(win);
+		}
+	}
+
+	void tokenize(bool is_final) {
+		if (!lz_) return;
+		auto produced=lz_->encode_chunk(window_.data(),window_.size(),is_final,window_pos_);
+		window_pos_=window_.size();
+		pending_tokens_.insert(pending_tokens_.end(),produced.begin(),produced.end());
+		trim_window();
+	}
+
 	void flush_block(bool last) {
-		if (pending_tokens_.empty() && !last) return;
-		if (effective_btype_==DBT_STORED) deflate::encode_dynamic_block(bw_,pending_tokens_,last);
-		else if (effective_btype_==DBT_FIXED) deflate::encode_fixed_block(bw_,pending_tokens_,last);
-		else deflate::encode_dynamic_block(bw_,pending_tokens_,last);
-		pending_tokens_.clear();
+		if (effective_btype_==DBT_STORED) {
+			if (pending_raw_.empty() && !last) return;
+			deflate::encode_stored_blocks(bw_,pending_raw_.data(),pending_raw_.size(),last);
+			pending_raw_.clear();
+		} else {
+			if (pending_tokens_.empty() && !last) return;
+			if (effective_btype_==DBT_FIXED) deflate::encode_fixed_block(bw_,pending_tokens_,last);
+			else deflate::encode_dynamic_block(bw_,pending_tokens_,last);
+			pending_tokens_.clear();
+		}
 		pending_bytes_=0;
 	}
 
+	void write_sync_marker() {
+		bw_.write_bits<uint8_t>(1,0);
+		bw_.write_bits<uint8_t>(2,0);
+		bw_.flush_bits();
+		bw_.write_u16(0);
+		bw_.write_u16(0xFFFF);
+	}
+
 	std::vector<uint8_t> take_output() {
-		auto buf=bw_.buffer();
+		const std::size_t bits=bw_.tell_bits();
+		const std::size_t whole=bits/CHAR_BIT;
+		const std::size_t rest=bits%CHAR_BIT;
+		const uint8_t* raw=bw_.data();
+		std::vector<uint8_t> result;
+		if (whole>0 && raw!=nullptr) result.assign(raw,raw+whole);
+		const uint8_t tail=(rest>0 && raw!=nullptr)?raw[whole]:0;
 		bw_=bitwise::bit_writer(bitwise::BO_LSBYTE);
-		return buf;
+		if (rest>0) bw_.write_bits<uint8_t>(rest,tail);
+		return result;
 	}
 
 public:
-	explicit deflate_compressor(deflate_level level=DL_NORMAL,deflate_stream_format fmt=DSF_ZLIB,deflate_block_type btype=DBT_AUTOMATIC,std::size_t block_threshold=65536) : level_(level) , fmt_(fmt) , btype_(btype), bw_(bitwise::BO_LSBYTE) , block_threshold_(block_threshold) , effective_btype_(deflate::resolve_block_type(btype,level)) { }
-	explicit deflate_compressor(const gzip_info& info,deflate_level level=DL_NORMAL,deflate_block_type btype=DBT_AUTOMATIC,std::size_t block_threshold=65536) : level_(level) , fmt_(DSF_GZIP) , btype_(btype) , gzip_info_(info) , bw_(bitwise::BO_LSBYTE) , block_threshold_(block_threshold) , effective_btype_(deflate::resolve_block_type(btype,level)) { }
+	explicit deflate_compressor(deflate_level level=DL_NORMAL,deflate_stream_format fmt=DSF_ZLIB,deflate_block_type btype=DBT_AUTOMATIC,std::size_t block_threshold=65536) : level_(level) , fmt_(fmt) , btype_(btype) , bw_(bitwise::BO_LSBYTE) , block_threshold_(block_threshold) , effective_btype_(deflate::resolve_block_type(btype,level)) {
+		lz_=make_lz_engine(level_,effective_btype_);
+	}
+	explicit deflate_compressor(const gzip_info& info,deflate_level level=DL_NORMAL,deflate_block_type btype=DBT_AUTOMATIC,std::size_t block_threshold=65536) : level_(level) , fmt_(DSF_GZIP) , btype_(btype) , gzip_info_(info) , bw_(bitwise::BO_LSBYTE) , block_threshold_(block_threshold) , effective_btype_(deflate::resolve_block_type(btype,level)) {
+		lz_=make_lz_engine(level_,effective_btype_);
+	}
 
 	void set_block_threshold(std::size_t n) noexcept { block_threshold_=n; }
 	std::size_t block_threshold() const noexcept { return block_threshold_; }
+
+	deflate_level level() const noexcept { return level_; }
+	deflate_stream_format format() const noexcept { return fmt_; }
+	deflate_block_type block_type() const noexcept { return effective_btype_; }
 
 	bool is_finished() const noexcept { return finished_; }
 
 	std::vector<uint8_t> feed(const uint8_t* data,std::size_t size) {
 		if (finished_) throw std::logic_error("Already finished");
 		if (!header_written_) write_header();
-		adler_state_.update(data,size);
-		crc_state_.update(data,size);
-		total_input_bytes_+=static_cast<uint32_t>(size&0xFFFFFFFFu);
-		auto new_tokens=lz_.encode_chunk(data,size,false);
-		pending_tokens_.insert(pending_tokens_.end(),new_tokens.begin(),new_tokens.end());
-		pending_bytes_+=size;
+		if (size>0) {
+			adler_state_.update(data,size);
+			crc_state_.update(data,size);
+			total_input_bytes_+=static_cast<uint32_t>(size&0xFFFFFFFFu);
+			if (effective_btype_==DBT_STORED) pending_raw_.insert(pending_raw_.end(),data,data+size);
+			else {
+				window_.insert(window_.end(),data,data+size);
+				tokenize(false);
+			}
+			pending_bytes_+=size;
+		}
 		std::vector<uint8_t> output;
-		while (pending_bytes_>=block_threshold_) {
+		while (pending_bytes_>=block_threshold_ && pending_bytes_>0) {
 			flush_block(false);
 			auto chunk=take_output();
 			output.insert(output.end(),chunk.begin(),chunk.end());
@@ -1048,16 +1200,17 @@ public:
 	std::vector<uint8_t> flush() {
 		if (finished_) throw std::logic_error("Already finished");
 		if (!header_written_) write_header();
-		if (!pending_tokens_.empty()) flush_block(false);
+		if (!pending_tokens_.empty() || !pending_raw_.empty()) flush_block(false);
+		write_sync_marker();
 		return take_output();
 	}
 
 	std::vector<uint8_t> finish() {
 		if (finished_) throw std::logic_error("Already finished");
 		if (!header_written_) write_header();
-		auto tail_tokens=lz_.encode_chunk(nullptr,0,true);
-		pending_tokens_.insert(pending_tokens_.end(),tail_tokens.begin(),tail_tokens.end());
+		tokenize(true);
 		flush_block(true);
+		bw_.flush_bits();
 		if (fmt_==DSF_ZLIB) {
 			uint32_t ad=adler_state_.checksum();
 			bw_.write_u8(static_cast<uint8_t>(ad>>24));
@@ -1081,9 +1234,12 @@ public:
 	}
 
 	void reset() {
-		lz_.reset();
+		if (lz_) lz_->reset();
 		bw_=bitwise::bit_writer(bitwise::BO_LSBYTE);
 		pending_tokens_.clear();
+		pending_raw_.clear();
+		window_.clear();
+		window_pos_=0;
 		pending_bytes_=0;
 		adler_state_.reset();
 		crc_state_.reset();
@@ -1097,6 +1253,7 @@ public:
 		fmt_=fmt;
 		btype_=btype;
 		effective_btype_=deflate::resolve_block_type(btype,level);
+		lz_=make_lz_engine(level_,effective_btype_);
 		reset();
 	}
 };
@@ -1111,6 +1268,7 @@ class deflate_decompressor {
 
 	bool header_parsed_=false;
 	std::size_t data_offset_=0;
+	std::size_t consumed_bytes_=0;
 	bool done_=false;
 	gzip_info gzip_info_;
 
@@ -1143,18 +1301,28 @@ class deflate_decompressor {
 		return false;
 	}
 
+	static std::size_t trailer_size(deflate_stream_format fmt) noexcept {
+		if (fmt==DSF_ZLIB) return 4;
+		if (fmt==DSF_GZIP) return 8;
+		return 0;
+	}
+
 	void try_decompress() {
 		if (!header_parsed_ && !try_parse_header()) return;
 		if (done_) return;
 		const uint8_t* raw=in_buf_.data();
-		std::size_t raw_size=in_buf_.size();
-		if (raw_size<=data_offset_+1) return;
+		const std::size_t raw_size=in_buf_.size();
+		if (raw_size<=data_offset_) return;
 		bitwise::bit_reader br(raw+data_offset_,raw_size-data_offset_,bitwise::BO_LSBYTE);
-		std::size_t decoded_start=out_buf_.size();
+		const std::size_t decoded_start=out_buf_.size();
 		bool last=false;
+		std::size_t consumed=0;
 		try {
 			while (!last) last=deflate::decode_block(br,out_buf_,raw,raw_size,data_offset_);
-		} catch (const std::runtime_error&) {
+			br.byte_align();
+			consumed=data_offset_+br.tell_bits()/CHAR_BIT;
+			if (raw_size<consumed+trailer_size(fmt_)) throw std::runtime_error("Unexpected EOF");
+		} catch (const std::exception&) {
 			out_buf_.resize(decoded_start);
 			return;
 		}
@@ -1162,21 +1330,18 @@ class deflate_decompressor {
 			adler_state_.update(out_buf_.data()+decoded_start,out_buf_.size()-decoded_start);
 			crc_state_.update(out_buf_.data()+decoded_start,out_buf_.size()-decoded_start);
 		}
-		if (last) {
-			done_=true;
-			if (fmt_==DSF_ZLIB) {
-				if (in_buf_.size()<6) throw std::runtime_error("Zlib too short for adler32");
-				std::size_t ap=in_buf_.size()-4;
-				uint32_t expect=(static_cast<uint32_t>(in_buf_[ap])<<24)|(static_cast<uint32_t>(in_buf_[ap+1])<<16)|(static_cast<uint32_t>(in_buf_[ap+2])<<8)|static_cast<uint32_t>(in_buf_[ap+3]);
-				if (adler_state_.checksum()!=expect) throw std::runtime_error("Adler32 mismatch");
-			} else if (fmt_==DSF_GZIP) {
-				if (in_buf_.size()<8) throw std::runtime_error("Gzip trailer truncated");
-				std::size_t tp=in_buf_.size()-8;
-				uint32_t expect_crc=static_cast<uint32_t>(in_buf_[tp])|(static_cast<uint32_t>(in_buf_[tp+1])<<8)|(static_cast<uint32_t>(in_buf_[tp+2])<<16)|(static_cast<uint32_t>(in_buf_[tp+3])<<24);
-				uint32_t expect_isize=static_cast<uint32_t>(in_buf_[tp+4])|(static_cast<uint32_t>(in_buf_[tp+5])<<8)|(static_cast<uint32_t>(in_buf_[tp+6])<<16)|(static_cast<uint32_t>(in_buf_[tp+7])<<24);
-				if (crc_state_.checksum()!=expect_crc) throw std::runtime_error("Gzip crc32 mismatch");
-				if (static_cast<uint32_t>(out_buf_.size()&0xFFFFFFFFu)!=expect_isize) throw std::runtime_error("Gzip isize mismatch");
-			}
+		consumed_bytes_=consumed+trailer_size(fmt_);
+		done_=true;
+		if (fmt_==DSF_ZLIB) {
+			const std::size_t ap=consumed;
+			uint32_t expect=(static_cast<uint32_t>(in_buf_[ap])<<24)|(static_cast<uint32_t>(in_buf_[ap+1])<<16)|(static_cast<uint32_t>(in_buf_[ap+2])<<8)|static_cast<uint32_t>(in_buf_[ap+3]);
+			if (adler_state_.checksum()!=expect) throw std::runtime_error("Adler32 mismatch");
+		} else if (fmt_==DSF_GZIP) {
+			const std::size_t tp=consumed;
+			uint32_t expect_crc=static_cast<uint32_t>(in_buf_[tp])|(static_cast<uint32_t>(in_buf_[tp+1])<<8)|(static_cast<uint32_t>(in_buf_[tp+2])<<16)|(static_cast<uint32_t>(in_buf_[tp+3])<<24);
+			uint32_t expect_isize=static_cast<uint32_t>(in_buf_[tp+4])|(static_cast<uint32_t>(in_buf_[tp+5])<<8)|(static_cast<uint32_t>(in_buf_[tp+6])<<16)|(static_cast<uint32_t>(in_buf_[tp+7])<<24);
+			if (crc_state_.checksum()!=expect_crc) throw std::runtime_error("Gzip crc32 mismatch");
+			if (static_cast<uint32_t>(out_buf_.size()&0xFFFFFFFFu)!=expect_isize) throw std::runtime_error("Gzip isize mismatch");
 		}
 	}
 
@@ -1227,6 +1392,9 @@ public:
 	[[nodiscard]]
 	const gzip_info& info() const noexcept { return gzip_info_; }
 
+	[[nodiscard]]
+	std::size_t consumed() const noexcept { return consumed_bytes_; }
+
 	void reset(deflate_stream_format fmt) {
 		fmt_=fmt;
 		in_buf_.clear();
@@ -1235,6 +1403,7 @@ public:
 		crc_state_.reset();
 		header_parsed_=false;
 		data_offset_=0;
+		consumed_bytes_=0;
 		done_=false;
 		gzip_info_={};
 	}
@@ -1243,6 +1412,9 @@ public:
 		reset(fmt_);
 	}
 };
+
+inline const deflate::length_code_table deflate::length_code_lut_=deflate::build_length_code_table();
+inline const deflate::dist_code_table deflate::dist_code_lut_=deflate::build_dist_code_table();
 
 inline std::vector<uint8_t> deflate_compress(const std::vector<uint8_t>& data,deflate_level level=DL_NORMAL,deflate_stream_format fmt=DSF_ZLIB,deflate_block_type btype=DBT_AUTOMATIC) {
 	return deflate::compress(data,level,fmt,btype);

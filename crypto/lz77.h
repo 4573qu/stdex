@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/13
-//@Version 1.2.2.0
+//Last Modified At 2026/08/02
+//@Version 1.4.0.0
 #ifndef _STDEX_CRYPTO_LZ77_H_
 #define _STDEX_CRYPTO_LZ77_H_ 1
 
@@ -25,7 +25,7 @@ struct lz77_token {
 	byte literal;
 };
 
-template <std::size_t _MaxChain,bool _Lazy,std::size_t _MinMatch,std::size_t _MaxMatch,std::size_t _WindowSize,std::size_t _HashBits,std::size_t _HashShift,std::size_t _GoodLength=_MaxMatch,std::size_t _NiceLength=_MaxMatch>
+template <std::size_t _MaxChain,bool _Lazy,std::size_t _MinMatch,std::size_t _MaxMatch,std::size_t _WindowSize,std::size_t _HashBits,std::size_t _HashShift,std::size_t _GoodLength=_MaxMatch,std::size_t _NiceLength=_MaxMatch,std::size_t _MaxLazy=_MaxMatch>
 class lz77_base {
 	static_assert(_MinMatch>=1 && _MinMatch<=8,"Min match cannot be negative than 1 or positive than 8.");
 	static_assert(_MaxMatch>=_MinMatch,"Max match cannot be negative than min match.");
@@ -40,8 +40,8 @@ public:
 private:
 	static constexpr std::size_t hash_size_=std::size_t(1)<<_HashBits; // Hash table size (zlib uses 32K)
 
-	std::vector<int32_t> head_; // hash -> latest position
-	std::vector<int32_t> prev_; // previous position with same hash
+	std::vector<int64_t> head_; // hash -> latest absolute position
+	std::vector<int64_t> prev_; // previous absolute position with same hash
 	int lazy_len_=0;
 	int lazy_dist_=0;
 	// total input bytes fed so far (absolute position)
@@ -61,18 +61,34 @@ private:
 		return result;
 	}
 
-	int insert_hash(std::size_t pos,uint64_t h) noexcept {
-		int32_t prev_head=head_[h];
-		head_[h]=pos%_WindowSize;
+	int64_t insert_hash(std::size_t pos,uint64_t h) noexcept {
+		int64_t prev_head=head_[h];
+		head_[h]=static_cast<int64_t>(pos);
 		prev_[pos%_WindowSize]=prev_head;
 		return prev_head;
 	}
 
+	static std::size_t match_length(const byte* a,const byte* b,std::size_t limit) noexcept {
+		std::size_t len=0;
+		while (len+8<=limit) {
+			uint64_t va=0,vb=0;
+			std::memcpy(&va,a+len,8);
+			std::memcpy(&vb,b+len,8);
+			if (va!=vb) {
+				while (len<limit && a[len]==b[len]) len++;
+				return len;
+			}
+			len+=8;
+		}
+		while (len<limit && a[len]==b[len]) len++;
+		return len;
+	}
+
 	std::pair<int,int> find_match(const byte* data,std::size_t size,std::size_t pos,uint64_t h,int current_lazy_len=0) noexcept {
 		int best_len=0,best_dist=0;
-		const std::size_t cur_slot=pos%_WindowSize;
 		const std::size_t max_match=std::min(static_cast<std::size_t>(_MaxMatch),size-pos);
-		const int max_dist=static_cast<int>(std::min(pos,static_cast<std::size_t>(_WindowSize)));
+		if (max_match<_MinMatch) return {0,0};
+		const std::size_t min_pos=pos>_WindowSize?pos-_WindowSize:0;
 		int effective_chain=static_cast<int>(_MaxChain);
 		if constexpr (_Lazy) {
 			if (current_lazy_len>=static_cast<int>(_GoodLength)) {
@@ -80,48 +96,31 @@ private:
 				effective_chain=std::max(effective_chain,1);
 			}
 		}
-		int match_pos=head_[h];
+		int64_t match_pos=head_[h];
 		int chain=0;
-		while (match_pos>=0 && chain++<static_cast<int>(_MaxChain)) {
-			const std::size_t mat_slot=static_cast<std::size_t>(match_pos);
-			std::size_t abs_match;
-			if (mat_slot<=cur_slot) abs_match=pos-(cur_slot-mat_slot);
-			else abs_match=pos-(_WindowSize-mat_slot+cur_slot);
-			const int dist=static_cast<int>(pos-abs_match);
-			if (pos<static_cast<std::size_t>(dist)) {
-				match_pos=prev_[mat_slot];
-				continue; 
-			}
-			if (dist<=0 || dist>static_cast<int>(_WindowSize)) break;
-			if (best_len>0) {
-				 if (static_cast<std::size_t>(best_len)>=max_match || data[abs_match+best_len]!=data[pos+best_len]) {
-					match_pos=prev_[mat_slot];
-					continue;
-				}
-			}
-			if (data[abs_match]!= data[pos]) {
-				match_pos=prev_[mat_slot];
+		while (match_pos>=0 && static_cast<std::size_t>(match_pos)>=min_pos && chain++<effective_chain) {
+			const std::size_t abs_match=static_cast<std::size_t>(match_pos);
+			if (abs_match>=pos) {
+				match_pos=prev_[abs_match%_WindowSize];
 				continue;
 			}
-			std::size_t len=1;
-			std::size_t remain=max_match-1;
-			const byte* pa=data+abs_match+1;
-			const byte* pb=data+pos+1;
-			while (len<max_match && *pa==*pb) {
-				pa++;
-				pb++;
-				len++;
+			if (best_len>0 && data[abs_match+best_len]!=data[pos+best_len]) {
+				match_pos=prev_[abs_match%_WindowSize];
+				continue;
 			}
-			//while (len<max_match && data[abs_match+len]==data[pos+len]) len++;
-			if (static_cast<int>(len)>best_len) {
-				best_len=static_cast<int>(len);
-				best_dist=dist;
-				if (best_len>=static_cast<int>(_NiceLength)) break;
+			if (data[abs_match]==data[pos]) {
+				std::size_t len=match_length(data+abs_match,data+pos,max_match);
+				if (static_cast<int>(len)>best_len) {
+					best_len=static_cast<int>(len);
+					best_dist=static_cast<int>(pos-abs_match);
+					if (best_len>=static_cast<int>(_NiceLength) || static_cast<std::size_t>(best_len)>=max_match) break;
+				}
 			}
-			match_pos=prev_[mat_slot];
+			match_pos=prev_[abs_match%_WindowSize];
 		}
 		return {best_len,best_dist};
 	}
+
 
 
 public:
@@ -135,6 +134,20 @@ public:
 		total_pos_=0;
 	}
 
+	void rebase(std::size_t delta) {
+		if (delta==0) return;
+		if (delta%_WindowSize!=0) throw std::invalid_argument("delta must be a multiple of the window size");
+		const int64_t shift=static_cast<int64_t>(delta);
+		for (auto& it:head_) it=it>=shift?it-shift:-1;
+		for (auto& it:prev_) it=it>=shift?it-shift:-1;
+		lazy_len_=0;
+		lazy_dist_=0;
+	}
+
+	static constexpr std::size_t window_size() noexcept { return _WindowSize; }
+	static constexpr std::size_t min_match() noexcept { return _MinMatch; }
+	static constexpr std::size_t max_match() noexcept { return _MaxMatch; }
+
 	std::vector<token> encode(const byte* data,std::size_t size) {
 		reset();
 		return encode_chunk(data,size,true);
@@ -144,9 +157,9 @@ public:
 		return encode(input.data(),input.size());
 	}
 
-	std::vector<token> encode_chunk(const byte* data,std::size_t size,bool is_final=false) {
+	std::vector<token> encode_chunk(const byte* data,std::size_t size,bool is_final=false,std::size_t start=0) {
 		std::vector<token> tokens;
-		if (size==0) {
+		if (size<=start) {
 			if (is_final && lazy_len_>=static_cast<int>(_MinMatch)) {
 				tokens.push_back({static_cast<uint16_t>(lazy_dist_),static_cast<uint16_t>(lazy_len_),0});
 				lazy_len_=0;
@@ -154,11 +167,25 @@ public:
 			}
 			return tokens;
 		}
-		std::size_t position=0;
+		std::size_t position=start;
 		const std::size_t matchable_end=size>_MinMatch?size-(_MinMatch-1):0;
+		static constexpr int too_far_=4096;
 		while (position<matchable_end) {
 			uint64_t hash=hash_func(load3(data,position));
-			auto [best_len,best_dist]=find_match(data,size,position,hash,lazy_len_);
+			int best_len=0,best_dist=0;
+			bool do_search=true;
+			if constexpr (_Lazy) {
+				if (lazy_len_>=static_cast<int>(_MaxLazy)) do_search=false;
+			}
+			if (do_search) {
+				auto found=find_match(data,size,position,hash,lazy_len_);
+				best_len=found.first;
+				best_dist=found.second;
+				if (best_len==static_cast<int>(_MinMatch) && best_dist>too_far_) {
+					best_len=0;
+					best_dist=0;
+				}
+			}
 			insert_hash(position,hash);
 			if constexpr (_Lazy) {
 				if (lazy_len_>=static_cast<int>(_MinMatch)) {
@@ -218,7 +245,7 @@ public:
 			tokens.push_back({0,0,data[position]});
 			position++;
 		}
-		total_pos_+=size;
+		total_pos_+=size-start;
 		return tokens;
 	}
 
