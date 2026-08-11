@@ -1,13 +1,13 @@
-//Last Modified At 2026/04/16
-//@Version 1.2.2.0
+//Last Modified At 2026/08/10
+//@Version 1.3.0.0
 #ifndef _STDEX_UTILITY_VERSION_H_
 #define _STDEX_UTILITY_VERSION_H_ 1
 
 #include <algorithm>
 #include <cctype>
-#include <climits>
-#include <cmath>
 #include <cstddef>
+#include <cstdio>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -27,11 +27,12 @@ struct version {
 	version()=default;
 	version(_Tp major,_Tp minor,_Tp patch,_Tp build) : major(major) , minor(minor) , patch(patch) , build(build) { }
 	std::string to_string() const {
-		constexpr double log10_2=0.30102999566398119521373889472449;
-		constexpr int digits=static_cast<int>(sizeof(_Tp)*CHAR_BIT*log10_2)+2;
-		char result[digits*4];
-		snprintf(result,sizeof(result),"%d.%02d.%03d.%03d",major,minor,patch,build);
-		return std::string(result);
+		constexpr int digits=std::numeric_limits<_Tp>::digits10+1;
+		char result[digits*4+4];
+		const int length=std::snprintf(result,sizeof(result),"%llu.%02llu.%03llu.%03llu",static_cast<unsigned long long>(major),static_cast<unsigned long long>(minor),static_cast<unsigned long long>(patch),static_cast<unsigned long long>(build));
+		if (length<=0) return std::string();
+		const std::size_t count=static_cast<std::size_t>(length);
+		return std::string(result,count<sizeof(result)?count:sizeof(result)-1);
 	}
 	std::size_t from_string(const std::string& s,bool initialize=false,bool strict=true) {
 		if (initialize) major=minor=patch=build=0;
