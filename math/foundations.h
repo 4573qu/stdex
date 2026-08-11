@@ -1,5 +1,5 @@
-//Last Modified At 2026/06/04
-//@Version 1.1.0.0
+//Last Modified At 2026/07/12
+//@Version 1.2.0.0
 #ifndef _STDEX_MATH_FOUNDATIONS_H_
 #define _STDEX_MATH_FOUNDATIONS_H_ 1
 
@@ -63,7 +63,7 @@ struct base_unit_trait {
 };
 
 template <>
-std::string base_unit_trait<char>::to_string(char value) {
+inline std::string base_unit_trait<char>::to_string(char value) {
 	return std::string(1,value);
 }
 
