@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/28
-//@Version 1.1.0.0
+//Last Modified At 2026/08/11
+//@Version 1.1.0.1
 #ifndef _STDEX_STRUCTURE_FLAT_BUFFER_H_
 #define _STDEX_STRUCTURE_FLAT_BUFFER_H_ 1
 
@@ -1223,7 +1223,7 @@ public:
 			flat_buffer result;
 			result.data_.assign(decoded.begin(),decoded.end());
 			return result;
-		} catch (const std::exception& e) {
+		} catch (const std::exception&) {
 			throw;
 		}
 	}
