@@ -1,5 +1,5 @@
-//Last Modified At 2026/07/03
-//@Version 1.0.0.1
+//Last Modified At 2026/09/03
+//@Version 1.1.0.0
 #ifndef _STDEX_STRUCTURE_DOM_H_
 #define _STDEX_STRUCTURE_DOM_H_ 1
 
@@ -648,8 +648,8 @@ inline _Tp dom_path_unescape(_Tp s) {
 	auto replace_substring=[](_Tp& str,const _Tp& format,const _Tp& target){
 		for (auto it=str.find(format);it!=_Tp::npos;str.replace(it,format.size(),target),it=str.find(format,it+target.size())) { }
 	};
-	replace_substring(s,_Tp{"~0"},_Tp{"~"});
 	replace_substring(s,_Tp{"~1"},_Tp{"/"});
+	replace_substring(s,_Tp{"~0"},_Tp{"~"});
 	return s;
 }
 
@@ -685,8 +685,8 @@ private:
 		char* p_end=nullptr;
 		errno=0;
 		const unsigned long long result=std::strtoull(p,&p_end,10);
-		if (p==p_end || errno==ERANGE || static_cast<std::size_t>(p_end-p)!=s.size()) throw std::invalid_argument("Unresolved reference token");
-		if (result>=static_cast<unsigned long long>((std::numeric_limits<size_type>::max)())) throw std::out_of_range("Array index exceeds size_type");
+		if (p==p_end || static_cast<std::size_t>(p_end-p)!=s.size()) throw std::invalid_argument("Unresolved reference token");
+		if (errno==ERANGE || result>=static_cast<unsigned long long>((std::numeric_limits<size_type>::max)())) throw std::out_of_range("Array index exceeds size_type");
 		return static_cast<size_type>(result);
 	}
 
@@ -864,7 +864,7 @@ private:
 	static std::vector<string_t> split(const string_t& ref_string) {
 		std::vector<string_t> result;
 		if (ref_string.empty()) return result;
-		if (ref_string[0]!=separator()) throw std::invalid_argument("dom_pointer: pointer must be empty or begin with '/'");
+		if (ref_string[0]!=separator()) throw std::invalid_argument("Dom pointer must be empty or begin with '/'");
 		for (std::size_t slash=ref_string.find_first_of(separator(),1),start=1;start!=0;start=(slash==string_t::npos)?0:slash+1,slash=ref_string.find_first_of(separator(),start)) {
 			auto ref_token=ref_string.substr(start,slash-start);
 			for (std::size_t pos=ref_token.find_first_of(static_cast<typename string_t::value_type>('~'));pos!=string_t::npos;pos=ref_token.find_first_of(static_cast<typename string_t::value_type>('~'),pos+1)) {
@@ -1364,8 +1364,8 @@ public:
 	dom(size_type cnt,const dom& val) : data_(cnt,val) { }
 	template <typename _InputIt,std::enable_if_t<std::is_same<_InputIt,typename dom::iterator>::value || std::is_same<_InputIt,typename dom::const_iterator>::value,int> =0>
 	dom(_InputIt first,_InputIt last) {
-		if (first.object!=last.object) throw std::invalid_argument("Iterators are not compatible");
-		const dom_data_type t=first.object->type();
+		if (first.object_!=last.object_) throw std::invalid_argument("Iterators are not compatible");
+		const dom_data_type t=first.object_->type();
 		switch (t) {
 			case DDT_INT:
 			case DDT_FLOAT:
@@ -1380,10 +1380,10 @@ public:
 			default: break;
 		}
 		switch (t) {
-			case DDT_INT: data_=data_t(DDT_INT,create<value_t>(first.object->value().integer));break;
-			case DDT_FLOAT: data_=data_t(DDT_FLOAT,create<value_t>(first.object->value().floating));break;
-			case DDT_BOOL: data_=data_t(DDT_BOOL,create<value_t>(first.object->value().boolean));break;
-			case DDT_STRING: data_=data_t(DDT_STRING,create<value_t>(*first.object->value().string));break;
+			case DDT_INT: data_=data_t(DDT_INT,create<value_t>(first.object_->value().integer));break;
+			case DDT_FLOAT: data_=data_t(DDT_FLOAT,create<value_t>(first.object_->value().floating));break;
+			case DDT_BOOL: data_=data_t(DDT_BOOL,create<value_t>(first.object_->value().boolean));break;
+			case DDT_STRING: data_=data_t(DDT_STRING,create<value_t>(*first.object_->value().string));break;
 			case DDT_OBJECT: data_=data_t(DDT_OBJECT,create<value_t>(object_t(first.it_.object_iterator_,last.it_.object_iterator_)));break;
 			case DDT_ARRAY: data_=data_t(DDT_ARRAY,create<value_t>(array_t(first.it_.array_iterator_,last.it_.array_iterator_)));break;
 			case DDT_NULL:
@@ -1929,7 +1929,7 @@ public:
 	}
 	template <typename _IteratorType,std::enable_if_t<std::is_same<_IteratorType,typename self_t::iterator>::value || std::is_same<_IteratorType,typename self_t::const_iterator>::value,int> =0>
 	_IteratorType erase(_IteratorType first,_IteratorType last) {
-		if (this!=first.object || this!=last.object) throw std::invalid_argument("Iterators do not fit current value");
+		if (this!=first.object_ || this!=last.object_) throw std::invalid_argument("Iterators do not fit current value");
 		_IteratorType result=end();
 		switch (type()) {
 			case DDT_BOOL:
@@ -2402,7 +2402,6 @@ public:
 		return dom(lhs)==rhs;
 	}
 	friend bool operator !=(const_ref lhs,const_ref rhs) noexcept {
-		if (compares_unordered(lhs,rhs,true)) return false;
 		return !(lhs==rhs);
 	}
 	template <typename _Scalar,std::enable_if_t<is_dom_scalar<_Scalar>::value,int> =0>
