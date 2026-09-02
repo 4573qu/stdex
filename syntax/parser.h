@@ -1,5 +1,5 @@
-//Last Modified At 2026/06/11
-//@Version 3.4.0.0
+//Last Modified At 2026/09/03
+//@Version 3.4.1.0
 #ifndef _STDEX_SYNTAX_PARSER_H_
 #define _STDEX_SYNTAX_PARSER_H_ 1
 
@@ -20,8 +20,11 @@
 #include <utility>
 #include <vector>
 
-#include "../macros/cpp_version.h"//At Least 1.0
 #include "../structure/graph_algorithm.h"//At Least 1.0
+
+#if __has_include("../macros/cpp_version.h")
+#include "../macros/cpp_version.h"//At Least 1.0
+#endif
 
 #ifndef _STDEX_CPP17_VERSION
 #define _STDEX_CPP17_VERSION 201703L
