@@ -1,5 +1,5 @@
-//Last Modified At 2026/09/03
-//@Version 1.1.0.0
+//Last Modified At 2026/09/04
+//@Version 1.2.0.0
 #ifndef _STDEX_TYPE_DOM_JSON_H_
 #define _STDEX_TYPE_DOM_JSON_H_ 1
 
@@ -1313,7 +1313,11 @@ private:
 		return result;
 	}
 
-	static bool decode_string(const char* first,const char* last,string_t& out,std::string& error_message) {
+	static bool decode_string(const char* first,const char* last,std::size_t base,string_t& out,std::size_t& error_position,std::string& error_message) {
+		const char* const origin=first;
+		auto at=[origin,base](const char* where){
+			return base+static_cast<std::size_t>(where-origin);
+		};
 		first++;
 		last--;
 		auto append_codepoint=[&out](unsigned long cp){
@@ -1362,25 +1366,30 @@ private:
 					raw=lead&0x07;
 					extra=3;
 				} else {
+					error_position=at(first);
 					error_message="Invalid UTF-8 lead byte";
 					return false;
 				}
 				if (static_cast<std::size_t>(last-first)<extra+1) {
+					error_position=at(first);
 					error_message="Truncated UTF-8 sequence";
 					return false;
 				}
 				for (std::size_t i=1;i<=extra;i++) {
 					if ((static_cast<unsigned char>(first[i])&0xC0)!=0x80) {
+						error_position=at(first+i);
 						error_message="Invalid UTF-8 continuation byte";
 						return false;
 					}
 					raw=(raw<<6)|(static_cast<unsigned char>(first[i])&0x3F);
 				}
 				if ((extra==1 && raw<0x80) || (extra==2 && raw<0x800) || (extra==3 && raw<0x10000)) {
+					error_position=at(first);
 					error_message="Overlong UTF-8 sequence";
 					return false;
 				}
 				if (raw>0x10FFFF || (raw>=0xD800 && raw<=0xDFFF)) {
+					error_position=at(first);
 					error_message="Invalid UTF-8 code point";
 					return false;
 				}
@@ -1408,14 +1417,17 @@ private:
 								cp=0x10000+((cp-0xD800)<<10)+(low-0xDC00);
 								first+=6;
 							} else {
+								error_position=at(first+2);
 								error_message="Invalid low surrogate in \\u escape";
 								return false;
 							}
 						} else {
+							error_position=at(first-6);
 							error_message="Lone high surrogate in \\u escape";
 							return false;
 						}
 					} else if (cp>=0xDC00 && cp<=0xDFFF) {
+						error_position=at(first-6);
 						error_message="Lone low surrogate in \\u escape";
 						return false;
 					}
@@ -1423,12 +1435,58 @@ private:
 					break;
 				}
 				default: {
+					error_position=at(first-2);
 					error_message="Invalid escape sequence";
 					return false;
 				}
 			}
 		}
 		return true;
+	}
+
+	//Diagnostics helpers. A printable byte keeps the original "character 'x'"
+	//wording, anything else is named by its value instead of being embedded raw.
+	static std::string describe_byte(char c) {
+		const unsigned char byte=static_cast<unsigned char>(c);
+		if (byte>=0x20 && byte<0x7F) return std::string("character '")+c+"'";
+		static const char digits[]="0123456789ABCDEF";
+		std::string result("byte 0x");
+		result.push_back(digits[(byte>>4)&0xF]);
+		result.push_back(digits[byte&0xF]);
+		return result;
+	}
+	static std::string describe_position(std::string_view input,std::size_t position) {
+		std::size_t line=1;
+		std::size_t column=1;
+		const std::size_t limit=(position<input.size())?position:input.size();
+		for (std::size_t i=0;i<limit;i++) {
+			if (input[i]=='\n') {
+				line++;
+				column=1;
+			} else column++;
+		}
+		return std::string("byte ")+std::to_string(position)+" (line "+std::to_string(line)+", column "+std::to_string(column)+")";
+	}
+	static const char* symbol_name(json_symbol symbol) noexcept {
+		switch (symbol) {
+			case JS_EOF: return "end of input";
+			case JS_LBRACE: return "'{'";
+			case JS_RBRACE: return "'}'";
+			case JS_LBRACKET: return "'['";
+			case JS_RBRACKET: return "']'";
+			case JS_COLON: return "':'";
+			case JS_COMMA: return "','";
+			case JS_STRING: return "a string";
+			case JS_INT: return "an integer";
+			case JS_FLOAT: return "a number";
+			case JS_TRUE: return "'true'";
+			case JS_FALSE: return "'false'";
+			case JS_NULL: return "'null'";
+			default: return "a value";
+		}
+	}
+	static bool is_value_start(json_symbol symbol) noexcept {
+		return symbol==JS_LBRACE || symbol==JS_LBRACKET || symbol==JS_STRING || symbol==JS_INT || symbol==JS_FLOAT || symbol==JS_TRUE || symbol==JS_FALSE || symbol==JS_NULL;
 	}
 
 	static bool is_hexadecimal_digit(char c) noexcept {
@@ -1509,10 +1567,7 @@ private:
 				first=match[0].second;
 			} else if (std::regex_search(first,last,match,string_regex(),flags)) {
 				token.symbol=JS_STRING;
-				if (!decode_string(match[0].first,match[0].second,token.string,error_message)) {
-					error_position=token.position;
-					return false;
-				}
+				if (!decode_string(match[0].first,match[0].second,token.position,token.string,error_position,error_message)) return false;
 				first=match[0].second;
 			} else if (*first=='"') {
 				diagnose_string(first,last,token.position,error_position,error_message);
@@ -1540,7 +1595,8 @@ private:
 				first=match[0].second;
 			} else {
 				error_position=token.position;
-				error_message=std::string("Unexpected character '")+*first+"'";
+				if (last-first>=3 && static_cast<unsigned char>(first[0])==0xEF && static_cast<unsigned char>(first[1])==0xBB && static_cast<unsigned char>(first[2])==0xBF) error_message="Unexpected UTF-8 byte order mark";
+				else error_message="Unexpected "+describe_byte(*first);
 				return false;
 			}
 			tokens.push_back(std::move(token));
@@ -1597,6 +1653,7 @@ private:
 	class json_listener : public syntax::parser_listener<json_symbol,json_production> {
 		std::vector<json_token>* tokens_=nullptr;
 		sax_t* sax_=nullptr;
+		const parser_t* parser_=nullptr;
 		bool aborted_=false;
 		bool failed_=false;
 
@@ -1604,10 +1661,42 @@ private:
 			if (!keep_going) aborted_=true;
 		}
 
+		//The table already knows which terminals the current state accepts, so the
+		//diagnostic reports them instead of a bare "Unexpected token".
+		std::string expected_symbols(int state) const {
+			if (!parser_) return std::string();
+			std::vector<json_symbol> accepted;
+			std::size_t value_starts=0;
+			for (const auto& it:parser_->lr_sheet) {
+				if (it.first.second!=static_cast<uintptr_t>(state) || it.second.type==syntax::ST_ERROR) continue;
+				const json_symbol symbol=it.first.first;
+				if (symbol==JS_EPSILON) continue;
+				const auto found=parser_->ptrs.find(symbol);
+				if (found!=parser_->ptrs.end() && found->second) continue;
+				accepted.push_back(symbol);
+				if (is_value_start(symbol)) value_starts++;
+			}
+			if (accepted.empty()) return std::string();
+			std::vector<std::string> names;
+			if (value_starts==8) names.push_back("a value");
+			for (const auto& it:accepted) {
+				if (value_starts==8 && is_value_start(it)) continue;
+				names.push_back(symbol_name(it));
+			}
+			if (names.size()==1) return names[0];
+			std::string result((names.size()>2)?"one of ":"");
+			for (std::size_t i=0;i<names.size();i++) {
+				if (i) result+=(i+1==names.size())?" or ":", ";
+				result+=names[i];
+			}
+			return result;
+		}
+
 	public:
-		void reset(std::vector<json_token>& tokens,sax_t& sax) {
+		void reset(std::vector<json_token>& tokens,sax_t& sax,const parser_t& parser) {
 			tokens_=&tokens;
 			sax_=&sax;
+			parser_=&parser;
 			aborted_=false;
 			failed_=false;
 			this->enabled=true;
@@ -1668,11 +1757,19 @@ private:
 			static_cast<void>(state);
 			static_cast<void>(word);
 			failed_=true;
+			std::string message="Unexpected token";
+			const std::string expected=expected_symbols(state);
 			if (sax_ && tokens_ && id!=static_cast<uintptr_t>(-1) && id>=1 && id<=tokens_->size()) {
 				const json_token& token=(*tokens_)[id-1];
 				const std::string text(token.string.begin(),token.string.end());
-				sax_->parse_error(token.position,text,"Unexpected token");
-			} else if (sax_) sax_->parse_error(0,std::string(),"Unexpected end of input");
+				message+=std::string(", found ")+symbol_name(token.symbol);
+				if (!expected.empty()) message+=" while expecting "+expected;
+				sax_->parse_error(token.position,text,message);
+			} else if (sax_) {
+				message="Unexpected end of input";
+				if (!expected.empty()) message+=" while expecting "+expected;
+				sax_->parse_error((tokens_ && !tokens_->empty())?tokens_->back().position:0,std::string(),message);
+			}
 			return 0;
 		}
 	};
@@ -1687,7 +1784,7 @@ public:
 			return false;
 		}
 		if (tokens.size()==1) {
-			sax->parse_error(0,std::string(),"Attempting to parse an empty input");
+			sax->parse_error(0,std::string(),input.empty()?"Attempting to parse an empty input":"Attempting to parse an input that holds only whitespace");
 			return false;
 		}
 		std::vector<typename parser_t::parse_node> nodes;
@@ -1699,16 +1796,18 @@ public:
 		}
 		parser_t& parser=grammar();
 		json_listener listener;
-		listener.reset(tokens,*sax);
+		listener.reset(tokens,*sax,parser);
+		std::vector<syntax::parser_listener<json_symbol,json_production>*> outer;
+		outer.swap(parser.listeners);
 		parser.listeners.push_back(&listener);
 		bool result=false;
 		try {
 			result=parser.parse_with_listener(nodes);
 		} catch (...) {
-			parser.listeners.pop_back();
+			parser.listeners.swap(outer);
 			throw;
 		}
-		parser.listeners.pop_back();
+		parser.listeners.swap(outer);
 		return result && !listener.aborted() && !listener.failed();
 	}
 	static json parse(std::string_view input,bool allow_exceptions=true) {
@@ -1716,7 +1815,7 @@ public:
 		json_sax_dom_builder<json> builder(result);
 		const bool ok=sax_parse(input,&builder) && builder.completed();
 		if (!ok) {
-			if (allow_exceptions) throw std::runtime_error(std::string("Parse error at byte ")+std::to_string(builder.error_position())+std::string(": ")+(builder.error_message().empty()?std::string("Incomplete document"):builder.error_message()));
+			if (allow_exceptions) throw std::runtime_error(std::string("Parse error at ")+describe_position(input,builder.error_position())+std::string(": ")+(builder.error_message().empty()?std::string("Incomplete document"):builder.error_message()));
 			return json();
 		}
 		return result;
