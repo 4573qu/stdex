@@ -1,5 +1,5 @@
-//Last Modified At 2026/05/11
-//@Version 1.0.1.1
+//Last Modified At 2026/09/04
+//@Version 1.0.1.2
 #ifndef _STDEX_STRUCTURE_FLAT_MAP_H_
 #define _STDEX_STRUCTURE_FLAT_MAP_H_ 1
 
@@ -248,12 +248,12 @@ public:
 	}
 	template <typename _P=std::pair<_Key,_Tp>>
 	iterator insert(const_iterator hint,const _P& value) {
-		(void)hint;
+		static_cast<void>(hint);
 		return insert(value).first;
 	}
 	template <typename _P=std::pair<_Key,_Tp>>
 	iterator insert(const_iterator hint,_P&& value) {
-		(void)hint;
+		static_cast<void>(hint);
 		return insert(std::forward<_P>(value)).first;
 	}
 	template <typename _InputIt>
