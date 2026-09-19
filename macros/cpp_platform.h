@@ -1,5 +1,5 @@
-//Last Modified At 2026/06/01
-//@Version 1.0.2.0
+//Last Modified At 2026/09/19
+//@Version 1.0.3.0
 #ifndef _STDEX_WINDOWS_PLATFORM
 #if defined(_WIN32)
 #define _STDEX_WINDOWS_PLATFORM 1
@@ -64,5 +64,12 @@
 #endif
 #else
 #define _STDEX_MACOS_PLATFORM 0
+#endif
+#endif
+#ifndef _STDEX_EMSCRIPTEN_PLATFORM
+#if defined(__EMSCRIPTEN__)
+#define _STDEX_EMSCRIPTEN_PLATFORM 1
+#else
+#define _STDEX_EMSCRIPTEN_PLATFORM 0
 #endif
 #endif

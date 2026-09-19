@@ -1,5 +1,6 @@
 //Last Modified At 2026/08/29
 //@Version 1.0.0.0
+
 #include "cpp_compiler.h"//At Least 1.0
 #include "cpp_platform.h"//At Least 1.0
 
