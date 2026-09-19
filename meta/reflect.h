@@ -1,5 +1,5 @@
-//Last Modified At 2026/06/27
-//@Version 1.3.0.0
+//Last Modified At 2026/09/04
+//@Version 1.3.0.1
 #ifndef _STDEX_META_REFLECT_H_
 #define _STDEX_META_REFLECT_H_ 1
 
@@ -567,7 +567,8 @@ struct member_field_descriptor {
 	}
 	static void* get_mut(void* obj) noexcept {
 		if constexpr (std::is_const<value_type>::value || _Const) {
-			(void)obj;return nullptr;
+			static_cast<void>(obj);
+			return nullptr;
 		} else {
 			return const_cast<void*>(static_cast<const void*>(&(static_cast<class_type*>(obj)->*_Member)));
 		}
@@ -577,8 +578,8 @@ struct member_field_descriptor {
 	}
 	static bool set_from_any(void* obj,const std::any& value) noexcept {
 		if constexpr (std::is_const<value_type>::value || _Const) {
-			(void)obj;
-			(void)value;
+			static_cast<void>(obj);
+			static_cast<void>(value);
 			return false;
 		} else {
 			using _Store=remove_cvref_t<value_type>;
@@ -622,7 +623,7 @@ struct static_field_descriptor {
 	}
 	static bool set_from_any(void*,const std::any& value) noexcept {
 		if constexpr (std::is_const<value_type>::value || _Const) {
-			(void)value;
+			static_cast<void>(value);
 			return false;
 		} else {
 			using _Store=remove_cvref_t<value_type>;
