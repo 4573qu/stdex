@@ -1,5 +1,5 @@
-//Last Modified At 2026/04/06
-//@Version 1.0.0.0
+//Last Modified At 2026/09/04
+//@Version 1.0.0.1
 #ifndef _STDEX_CRYPTO_BASE_H_
 #define _STDEX_CRYPTO_BASE_H_ 1
 
@@ -364,7 +364,7 @@ inline std::size_t decoded_size_pow2(const alphabet_data& data,const char* text,
 		}
 		int value=decode_char_with_alias(data,ch,options);
 		if (value<0) throw std::invalid_argument("Invalid base decode character");
-		(void)value;//[[maybe_unused]] auto _ = value;
+		static_cast<void>(value);//[[maybe_unused]] auto _ = value;
 		effective_chars++;
 	}
 	if (data.uses_padding) {
@@ -389,7 +389,7 @@ inline std::size_t decoded_size_generic(const alphabet_data& data,const char* te
 		}
 		int value=decode_char_with_alias(data,ch,options);
 		if (value<0) throw std::invalid_argument("Invalid base decode character");
-		(void)value;//[[maybe_unused]] auto _ = value;
+		static_cast<void>(value);//[[maybe_unused]] auto _ = value;
 		filtered_chars++;
 	}
 	return decoded_max_size_generic(filtered_chars,data.radix);
@@ -450,7 +450,7 @@ public:
 			if (with_padding && alphabet_data_.uses_padding) return ((chars+alphabet_data_.output_block_chars-1)/alphabet_data_.output_block_chars)*alphabet_data_.output_block_chars;
 			return chars;
 		}
-		(void)with_padding;
+		static_cast<void>(with_padding);
 		return encoded_max_size_generic(input_size,alphabet_data_.radix);
 	}
 	std::size_t decoded_max_size(std::size_t encoded_size) const noexcept {

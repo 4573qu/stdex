@@ -1,5 +1,5 @@
-//Last Modified At 2026/04/25
-//@Version 1.0.0.0
+//Last Modified At 2026/09/04
+//@Version 1.1.0.0
 #ifndef _STDEX_MACHINE_DEBUG_H_
 #define _STDEX_MACHINE_DEBUG_H_ 1
 
@@ -18,8 +18,17 @@
 
 #include "../bitwise/flags.h"//At Least 1.1
 
+#if __has_include("../macros/cpp_abi.h")
+#include "../macros/cpp_abi.h"//At Least 1.0
+#endif
 #if __has_include("../macros/cpp_compiler.h")
 #include "../macros/cpp_compiler.h"//At Least 1.0
+#endif
+#if __has_include("../macros/cpp_platform.h")
+#include "../macros/cpp_platform.h"//At Least 1.0
+#endif
+#if __has_include("../macros/cpp_version.h")
+#include "../macros/cpp_version.h"//At Least 1.0
 #endif
 
 #ifndef _STDEX_GNU_COMPILER
@@ -42,10 +51,6 @@
 #else
 #define _STDEX_MSVC_COMPILER 0
 #endif
-#endif
-
-#if __has_include("../macros/cpp_platform.h")
-#include "../macros/cpp_platform.h"//At Least 1.0
 #endif
 
 #ifndef _STDEX_WINDOWS_PLATFORM
@@ -75,6 +80,87 @@
 #else
 #define _STDEX_APPLE_PLATFORM 0
 #endif
+#endif
+
+#ifndef _STDEX_CPP20_VERSION
+#define _STDEX_CPP20_VERSION 202002L
+#endif
+
+#if __cplusplus>=_STDEX_CPP20_VERSION
+#include <version>
+#else
+#include <ciso646>
+#endif
+
+#ifndef _STDEX_ABI_STD_GNU
+#if defined(__GLIBCXX__) || defined(_GLIBCXX_RELEASE)
+#define _STDEX_ABI_STD_GNU 1
+#else
+#define _STDEX_ABI_STD_GNU 0
+#endif
+#endif
+#ifndef _STDEX_ABI_STD_LLVM
+#if defined(_LIBCPP_VERSION)
+#define _STDEX_ABI_STD_LLVM 1
+#else
+#define _STDEX_ABI_STD_LLVM 0
+#endif
+#endif
+#ifndef _STDEX_ABI_STD_MSVC
+#if defined(_MSVC_STL_VERSION) || defined(_CPPLIB_VER)
+#define _STDEX_ABI_STD_MSVC 1
+#else
+#define _STDEX_ABI_STD_MSVC 0
+#endif
+#endif
+
+#ifndef _STDEX_ABI_STD_GNU_DEBUG
+#if _STDEX_ABI_STD_GNU && defined(_GLIBCXX_DEBUG)
+#define _STDEX_ABI_STD_GNU_DEBUG 1
+#else
+#define _STDEX_ABI_STD_GNU_DEBUG 0
+#endif
+#endif
+#ifndef _STDEX_ABI_STD_GNU_ASSERTIONS
+#if _STDEX_ABI_STD_GNU && defined(_GLIBCXX_ASSERTIONS)
+#define _STDEX_ABI_STD_GNU_ASSERTIONS 1
+#else
+#define _STDEX_ABI_STD_GNU_ASSERTIONS 0
+#endif
+#endif
+#ifndef _STDEX_ABI_STD_LLVM_HARDENING
+#if _STDEX_ABI_STD_LLVM && defined(_LIBCPP_HARDENING_MODE) && defined(_LIBCPP_HARDENING_MODE_NONE)
+#if _LIBCPP_HARDENING_MODE!=_LIBCPP_HARDENING_MODE_NONE
+#define _STDEX_ABI_STD_LLVM_HARDENING 1
+#else
+#define _STDEX_ABI_STD_LLVM_HARDENING 0
+#endif
+#elif _STDEX_ABI_STD_LLVM && defined(_LIBCPP_ENABLE_ASSERTIONS) && _LIBCPP_ENABLE_ASSERTIONS
+#define _STDEX_ABI_STD_LLVM_HARDENING 1
+#else
+#define _STDEX_ABI_STD_LLVM_HARDENING 0
+#endif
+#endif
+
+#ifndef _STDEX_ABI_STD_MSVC_ITERATOR_DEBUG
+#if _STDEX_ABI_STD_MSVC
+#if defined(_ITERATOR_DEBUG_LEVEL)
+#define _STDEX_ABI_STD_MSVC_ITERATOR_DEBUG _ITERATOR_DEBUG_LEVEL
+#elif defined(_DEBUG)
+#define _STDEX_ABI_STD_MSVC_ITERATOR_DEBUG 2
+#else
+#define _STDEX_ABI_STD_MSVC_ITERATOR_DEBUG 0
+#endif
+#else
+#define _STDEX_ABI_STD_MSVC_ITERATOR_DEBUG 0
+#endif
+#endif
+
+#ifndef _STDEX_ABI_DEBUG
+#if defined(_DEBUG) || _STDEX_ABI_STD_GNU_DEBUG || _STDEX_ABI_STD_GNU_ASSERTIONS || _STDEX_ABI_STD_LLVM_HARDENING || _STDEX_ABI_STD_MSVC_ITERATOR_DEBUG>0
+#define _STDEX_ABI_DEBUG 1
+#else
+#define _STDEX_ABI_DEBUG 0
 #endif
 
 #if _STDEX_WINDOWS_PLATFORM
@@ -367,7 +453,7 @@ private:
 		#elif _STDEX_ANDROID_PLATFORM
 			__android_log_print(ANDROID_LOG_DEBUG,"stdex_debug","%s",msg);
 		#else
-			(void)msg;
+			static_cast<void>(msg);
 		#endif
 	}
 
@@ -800,7 +886,11 @@ inline void trace_memory() {
 #define _STDEX_MACHINE_DEBUG_BREAK() do { } while (false)
 #endif
 
-#if defined(_DEBUG) || defined(_STDEX_MACHINE_DEBUG_PERMANENT)
+}
+
+}
+
+#if _STDEX_ABI_DEBUG || defined(_STDEX_MACHINE_DEBUG_PERMANENT)
 #define _STDEX_MACHINE_DEBUG_ASSERT(cfg,cond,...) \
 	do { \
 		if (!bool(cond)) { \
@@ -882,9 +972,9 @@ inline void trace_memory() {
 	stdex::machine::debug::tracked_free(stdex::machine::default_config(),ptr)
 #else 
 #define _STDEX_MACHINE_DEBUG_ASSERT(cfg,cond,...) \
-	do { (void)sizeof(bool(cond)); } while (false)
+	do { static_cast<void>(sizeof(bool(cond))); } while (false)
 #define _STDEX_MACHINE_DEBUG_ASSERT_DEFAULT(cond,...) \
-	do { (void)sizeof(bool(cond)); } while (false)
+	do { static_cast<void>(sizeof(bool(cond))); } while (false)
 #define _STDEX_MACHINE_DEBUG_FAIL(cfg,fmt,...) do { } while (false)
 #define _STDEX_MACHINE_DEBUG_FAIL_DEFAULT(fmt,...) do { } while (false)
 #define _STDEX_MACHINE_DEBUG_LOG(cfg,level,fmt,...) do { } while (false)
@@ -901,9 +991,5 @@ inline void trace_memory() {
 #define _STDEX_MACHINE_DEBUG_TRACKED_FREE_DEFAULT(ptr) \
 	stdex::machine::debug::safe_free(ptr)
 #endif
-
-}
-
-}
 
 #endif

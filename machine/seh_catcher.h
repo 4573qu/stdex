@@ -1,5 +1,5 @@
-//Last Modified At 2026/06/01
-//@Version 2.2.0.0
+//Last Modified At 2026/09/04
+//@Version 2.2.0.1
 #ifndef _STDEX_MACHINE_SEHCATCHER_H_
 #define _STDEX_MACHINE_SEHCATCHER_H_ 1
 
@@ -530,8 +530,8 @@ private:
 			#elif _STDEX_ABI_ARMEABI
 				return seh_fp_walk(uc->uc_mcontext.arm_pc,uc->uc_mcontext.arm_lr,uc->uc_mcontext.arm_fp,out,max);
 			#else
-				(void)out;
-				(void)max;
+				static_cast<void>(out);
+				static_cast<void>(max);
 				return 0;
 			#endif
 		}
@@ -606,7 +606,7 @@ private:
 					}
 					mi.size=total;
 				}
-				(void)slide;
+				static_cast<void>(slide);
 				info.modules.push_back(std::move(mi));
 			}
 		}
@@ -705,19 +705,16 @@ private:
 			#else
 				info.error_detail+="~/Library/Logs/DiagnosticReports/ .";
 			#endif
-			(void)dump_path_;
 			return false;
 		#else
 			info.error_detail+="\n[write_dump] not supported on this platform";
-			(void)dump_path_;
-			(void)info;
 			return false;
 		#endif
 	}
 
 	bool basic_recovery(exception_infos& info) {
 		#if _STDEX_WINDOWS_PLATFORM
-			(void)info;
+			static_cast<void>(info);
 			return false;
 		#elif _STDEX_APPLE_PLATFORM || _STDEX_ANDROID_PLATFORM || _STDEX_LINUX_PLATFORM
 			if (!current_ucontext_) return false;
@@ -751,11 +748,11 @@ private:
 				#endif
 				return true;
 			#else
-				(void)uc;
+				static_cast<void>(uc);
 				return false;
 			#endif
 		#else
-			(void)info;
+			static_cast<void>(info);
 			return false;
 		#endif
 	}
@@ -947,25 +944,6 @@ private:
 					self.recovery_point_valid=0;
 					siglongjmp(self.recovery_point,1);
 				}
-				/*{
-					static const char prefix[]="[seh_catcher] fatal signal ";
-					(void)!write(STDERR_FILENO,prefix,sizeof(prefix)-1);
-					char buf[16];
-					int n=0;
-					int s=sig;
-					if (s==0) buf[n++]='0';
-					else {
-						char tmp[16];
-						int k=0;
-						while (s>0) {
-							tmp[k++]=char('0'+(s%10));
-							s/=10;
-						}
-						while (k>0) buf[n++]=tmp[--k];
-					}
-					buf[n++]='\n';
-					(void)!write(STDERR_FILENO,buf,n);
-				}*/
 				int idx=-1;
 				switch (sig) {
 					case SIGSEGV: {
