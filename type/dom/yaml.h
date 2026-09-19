@@ -1,5 +1,5 @@
-//Last Modified At 2026/06/12
-//@Version 1.0.0.0
+//Last Modified At 2026/09/05
+//@Version 1.1.0.0
 #ifndef _STDEX_TYPE_DOM_YAML_H_
 #define _STDEX_TYPE_DOM_YAML_H_ 1
 
@@ -12,7 +12,6 @@
 #include <istream>
 #include <limits>
 #include <map>
-#include <mutex>
 #include <ostream>
 #include <regex>
 #include <stdexcept>
@@ -21,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "../../structure/dom.h"//At Least 1.0
+#include "../../structure/dom.h"//At Least 1.2
 #include "../../syntax/parser.h"//At Least 3.4
 #include "../../utility/kind.h"//At Least 1.4
 
@@ -116,11 +115,22 @@ enum yaml_scalar_style : int {
 	YSS_FOLDED,
 };
 
+//YAML 1.2第10章推荐的三个schema。解析时决定plain标量解析为哪个具体类型,
+//序列化时决定一个字符串是否必须加引号才能被同一schema读回为字符串,
+enum yaml_schema_type : int {
+	YST_FAILSAFE,
+	YST_JSON,
+	YST_CORE,
+};
+
+//10.2要求JSON schema把无法解析的plain标量视为错误,本记法与tprotobuf对未知枚举值、
+//未知字段编号的处理一致,统一退化为字符串而不是报错。
 //parse行为选项:preserve_references=true时锚点/别名以YDT_ANCHOR/YDT_ALIAS节点保真入树,
 //false时按展开语义将别名替换为锚定子树的拷贝;multiline_scalars控制多行plain/引用标量折叠。
 struct yaml_parse_options {
 	bool preserve_references=true;
 	bool multiline_scalars=true;
+	yaml_schema_type scalar_schema=YST_JSON;
 };
 
 template <typename _String>
@@ -159,6 +169,12 @@ struct yaml_sax {
 	virtual bool anchor(string_t& name)=0;
 	virtual bool alias(string_t& name)=0;
 	virtual bool tag(string_t& text)=0;
+	//Announces where the next event comes from. Not pure on purpose: a handler that
+	//does not need positions is unaffected.
+	virtual bool location(std::size_t position) {
+		static_cast<void>(position);
+		return true;
+	}
 	virtual bool parse_error(std::size_t position,const std::string& last_token,const std::string& message)=0;
 	virtual ~yaml_sax()=default;
 };
@@ -176,7 +192,8 @@ private:
 	std::vector<_Yaml>& documents_;
 	document_info_t* info_=nullptr;
 	yaml_parse_options options_{};
-	std::vector<_Yaml*> ref_stack_;
+	using node_t=typename _Yaml::base_t;
+	std::vector<node_t*> ref_stack_;
 	string_t key_;
 	std::map<string_t,_Yaml> anchors_;
 	std::vector<std::pair<string_t,std::size_t>> pending_anchors_;
@@ -184,6 +201,7 @@ private:
 	bool document_value_seen_=false;
 	bool errored_=false;
 	std::size_t error_position_=0;
+	std::size_t current_position_=0;
 	std::string error_message_;
 
 	static bool text_equals(const string_t& text,const char* literal) noexcept {
@@ -195,22 +213,22 @@ private:
 	}
 
 	template <typename _Vp>
-	_Yaml* handle_value(_Vp&& value) {
+	node_t* handle_value(_Vp&& value) {
 		if (ref_stack_.empty()) {
 			documents_.push_back(_Yaml(std::forward<_Vp>(value)));
 			document_value_seen_=true;
 			return &documents_.back();
 		}
-		_Yaml* parent=ref_stack_.back();
+		node_t* parent=ref_stack_.back();
 		if (parent->is_array()) {
 			parent->push_back(std::forward<_Vp>(value));
-			return static_cast<_Yaml*>(&parent->back());
+			return &parent->back();
 		}
 		auto& slot=(*parent)[std::move(key_)];
 		slot=std::forward<_Vp>(value);
-		return static_cast<_Yaml*>(&slot);
+		return &slot;
 	}
-	void bind_anchors(std::size_t depth,_Yaml* node) {
+	void bind_anchors(std::size_t depth,node_t* node) {
 		while (!pending_anchors_.empty() && pending_anchors_.back().second==depth) {
 			if (options_.preserve_references) {
 				anchors_[pending_anchors_.back().first]=_Yaml();
@@ -249,35 +267,35 @@ public:
 		return true;
 	}
 	bool null() override {
-		_Yaml* node=handle_value(nullptr);
+		node_t* node=handle_value(nullptr);
 		bind_anchors(ref_stack_.size(),node);
 		return true;
 	}
 	bool boolean(boolean_t value) override {
-		_Yaml* node=handle_value(value);
+		node_t* node=handle_value(value);
 		bind_anchors(ref_stack_.size(),node);
 		return true;
 	}
 	bool number_integer(int_t value) override {
-		_Yaml* node=handle_value(value);
+		node_t* node=handle_value(value);
 		bind_anchors(ref_stack_.size(),node);
 		return true;
 	}
 	bool number_float(float_t value,const string_t& raw) override {
 		static_cast<void>(raw);
-		_Yaml* node=handle_value(value);
+		node_t* node=handle_value(value);
 		bind_anchors(ref_stack_.size(),node);
 		return true;
 	}
 	bool string(string_t& value,yaml_scalar_style style) override {
 		static_cast<void>(style);
-		_Yaml* node=handle_value(std::move(value));
+		node_t* node=handle_value(std::move(value));
 		bind_anchors(ref_stack_.size(),node);
 		return true;
 	}
 	bool start_mapping(std::size_t cnt) override {
 		static_cast<void>(cnt);
-		ref_stack_.push_back(handle_value(_Yaml(structure::DDT_OBJECT)));
+		ref_stack_.push_back(handle_value(node_t(structure::DDT_OBJECT)));
 		return true;
 	}
 	bool key(string_t& value) override {
@@ -286,19 +304,19 @@ public:
 	}
 	bool end_mapping() override {
 		if (ref_stack_.empty()) return true;
-		_Yaml* node=ref_stack_.back();
+		node_t* node=ref_stack_.back();
 		ref_stack_.pop_back();
 		bind_anchors(ref_stack_.size(),node);
 		return true;
 	}
 	bool start_sequence(std::size_t cnt) override {
 		static_cast<void>(cnt);
-		ref_stack_.push_back(handle_value(_Yaml(structure::DDT_ARRAY)));
+		ref_stack_.push_back(handle_value(node_t(structure::DDT_ARRAY)));
 		return true;
 	}
 	bool end_sequence() override {
 		if (ref_stack_.empty()) return true;
-		_Yaml* node=ref_stack_.back();
+		node_t* node=ref_stack_.back();
 		ref_stack_.pop_back();
 		bind_anchors(ref_stack_.size(),node);
 		return true;
@@ -307,16 +325,21 @@ public:
 		pending_anchors_.emplace_back(std::move(name),ref_stack_.size());
 		return true;
 	}
+	bool location(std::size_t position) override {
+		current_position_=position;
+		return true;
+	}
 	bool alias(string_t& name) override {
 		auto it=anchors_.find(name);
 		if (it==anchors_.end()) {
 			errored_=true;
+			error_position_=current_position_;
 			error_message_="Unknown alias '"+std::string(name.begin(),name.end())+"'";
 			return false;
 		}
-		_Yaml* node=nullptr;
+		node_t* node=nullptr;
 		if (options_.preserve_references) node=handle_value(_Yaml(_Yaml::make_alias(std::move(name))));
-		else node=handle_value(_Yaml(it->second));
+		else node=handle_value(it->second);
 		bind_anchors(ref_stack_.size(),node);
 		return true;
 	}
@@ -528,6 +551,20 @@ protected:
 
 		anchor_value(const anchor_value& other) : base_t::value_t() , name(other.name) , target(other.target) { }
 
+		bool equals(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
+			if (t!=yaml_data_type(YDT_ANCHOR)) return base_t::value_t::equals(t,other);
+			const anchor_value* right=dynamic_cast<const anchor_value*>(&other);
+			if (!right) return false;
+			return name==right->name && target==right->target;
+		}
+		bool less(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
+			if (t!=yaml_data_type(YDT_ANCHOR)) return base_t::value_t::less(t,other);
+			const anchor_value* right=dynamic_cast<const anchor_value*>(&other);
+			if (!right) return false;
+			if (name!=right->name) return name<right->name;
+			return target<right->target;
+		}
+
 		typename base_t::value_t* clone(structure::dom_data_type t) const override {
 			if (t==yaml_data_type(YDT_ANCHOR)) return create_value<anchor_value>(*this);
 			return base_t::value_t::clone(t);
@@ -551,6 +588,19 @@ protected:
 		~alias_value() override=default;
 
 		alias_value(const alias_value& other) : base_t::value_t() , name(other.name) { }
+
+		bool equals(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
+			if (t!=yaml_data_type(YDT_ALIAS)) return base_t::value_t::equals(t,other);
+			const alias_value* right=dynamic_cast<const alias_value*>(&other);
+			if (!right) return false;
+			return name==right->name;
+		}
+		bool less(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
+			if (t!=yaml_data_type(YDT_ALIAS)) return base_t::value_t::less(t,other);
+			const alias_value* right=dynamic_cast<const alias_value*>(&other);
+			if (!right) return false;
+			return name<right->name;
+		}
 
 		typename base_t::value_t* clone(structure::dom_data_type t) const override {
 			if (t==yaml_data_type(YDT_ALIAS)) return create_value<alias_value>(*this);
@@ -659,36 +709,153 @@ private:
 		int extra=0;
 	};
 
-	static const std::regex& null_regex() {
-		static const std::regex result(R"(~|null|Null|NULL)",std::regex::optimize);
+	static std::string hexadecimal_code(unsigned long cp) {
+		static const char digits[]="0123456789ABCDEF";
+		std::string result;
+		for (int shift=12;shift>=0;shift-=4) result.push_back(digits[(cp>>shift)&0xF]);
+		if (cp>0xFFFF) {
+			result.clear();
+			for (int shift=28;shift>=0;shift-=4) result.push_back(digits[(cp>>shift)&0xF]);
+			while (result.size()>4 && result[0]=='0') result.erase(result.begin());
+		}
 		return result;
 	}
-	static const std::regex& true_regex() {
-		static const std::regex result(R"(true|True|TRUE)",std::regex::optimize);
+	//Diagnostics helper. A printable byte keeps the "character 'x'" wording, anything
+	//else is named by its value instead of being embedded raw in the message.
+	static std::string describe_byte(char c) {
+		const unsigned char byte=static_cast<unsigned char>(c);
+		if (byte>=0x20 && byte<0x7F) return std::string("character '")+c+"'";
+		static const char digits[]="0123456789ABCDEF";
+		std::string result("byte 0x");
+		result.push_back(digits[(byte>>4)&0xF]);
+		result.push_back(digits[byte&0xF]);
 		return result;
 	}
-	static const std::regex& false_regex() {
-		static const std::regex result(R"(false|False|FALSE)",std::regex::optimize);
-		return result;
+	static std::string describe_position(std::string_view input,std::size_t position) {
+		std::size_t line=1;
+		std::size_t column=1;
+		const std::size_t limit=(position<input.size())?position:input.size();
+		for (std::size_t i=0;i<limit;i++) {
+			if (input[i]=='\n') {
+				line++;
+				column=1;
+			} else column++;
+		}
+		return std::string("byte ")+std::to_string(position)+" (line "+std::to_string(line)+", column "+std::to_string(column)+")";
 	}
-	//严格判定(plain解析与dump互逆):十进制不允许前导零,浮点必须含小数点或指数,
-	//使"0001"这类文本保持字符串,消除反序列化+序列化的取值失真。
-	static const std::regex& integer_regex() {
-		static const std::regex result(R"([-+]?(?:0|[1-9][0-9]*)|0x[0-9A-Fa-f]+|0o[0-7]+)",std::regex::optimize);
-		return result;
+	static bool is_printable_code(unsigned long cp) noexcept {
+		if (cp==0x9 || cp==0xA || cp==0xD || cp==0x85) return true;
+		if (cp>=0x20 && cp<=0x7E) return true;
+		if (cp>=0xA0 && cp<=0xD7FF) return true;
+		if (cp>=0xE000 && cp<=0xFFFD) return true;
+		return cp>=0x10000 && cp<=0x10FFFF;
 	}
-	static const std::regex& floating_regex() {
-		static const std::regex result(R"([-+]?(?:(?:0|[1-9][0-9]*)(?:\.[0-9]*(?:[eE][-+]?[0-9]+)?|[eE][-+]?[0-9]+)|\.[0-9]+(?:[eE][-+]?[0-9]+)?)|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))",std::regex::optimize);
-		return result;
+	//YAML 1.2 c-printable plus UTF-8 well formedness, applied to the whole stream so
+	//that whatever the parser accepts can also be serialised again.
+	static bool validate_characters(std::string_view input,std::size_t& error_position,std::string& error_message) {
+		const char* first=input.data();
+		const char* const last=first+input.size();
+		while (first<last) {
+			const unsigned char lead=static_cast<unsigned char>(*first);
+			unsigned long raw=0;
+			std::size_t extra=0;
+			if (lead<0x80) raw=lead;
+			else if ((lead&0xE0)==0xC0) {
+				raw=lead&0x1F;
+				extra=1;
+			} else if ((lead&0xF0)==0xE0) {
+				raw=lead&0x0F;
+				extra=2;
+			} else if ((lead&0xF8)==0xF0) {
+				raw=lead&0x07;
+				extra=3;
+			} else {
+				error_position=static_cast<std::size_t>(first-input.data());
+				error_message="Invalid UTF-8 lead byte";
+				return false;
+			}
+			if (static_cast<std::size_t>(last-first)<extra+1) {
+				error_position=static_cast<std::size_t>(first-input.data());
+				error_message="Truncated UTF-8 sequence";
+				return false;
+			}
+			for (std::size_t i=1;i<=extra;i++) {
+				if ((static_cast<unsigned char>(first[i])&0xC0)!=0x80) {
+					error_position=static_cast<std::size_t>(first+i-input.data());
+					error_message="Invalid UTF-8 continuation byte";
+					return false;
+				}
+				raw=(raw<<6)|(static_cast<unsigned char>(first[i])&0x3F);
+			}
+			if ((extra==1 && raw<0x80) || (extra==2 && raw<0x800) || (extra==3 && raw<0x10000)) {
+				error_position=static_cast<std::size_t>(first-input.data());
+				error_message="Overlong UTF-8 sequence";
+				return false;
+			}
+			if (!is_printable_code(raw)) {
+				error_position=static_cast<std::size_t>(first-input.data());
+				error_message="Character U+"+hexadecimal_code(raw)+" is not allowed in YAML 1.2";
+				return false;
+			}
+			first+=extra+1;
+		}
+		return true;
 	}
-	//宽松判定(!!int/!!float显式标签用):允许前导零与纯整数形浮点。
-	static const std::regex& integer_lenient_regex() {
-		static const std::regex result(R"([-+]?[0-9]+|0x[0-9A-Fa-f]+|0o[0-7]+)",std::regex::optimize);
-		return result;
+	static const char* symbol_name(yaml_symbol symbol) noexcept {
+		switch (symbol) {
+			case YS_EOF: return "end of input";
+			case YS_DOC_START: return "'---'";
+			case YS_DOC_END: return "'...'";
+			case YS_DIRECTIVE: return "a directive";
+			case YS_BSEQ_START: return "the start of a block sequence";
+			case YS_BSEQ_END: return "the end of a block sequence";
+			case YS_BMAP_START: return "the start of a block mapping";
+			case YS_BMAP_END: return "the end of a block mapping";
+			case YS_ENTRY: return "'-'";
+			case YS_COLON: return "':'";
+			case YS_COMMA: return "','";
+			case YS_FSEQ_START: return "'['";
+			case YS_FSEQ_END: return "']'";
+			case YS_FMAP_START: return "'{'";
+			case YS_FMAP_END: return "'}'";
+			case YS_SCALAR: return "a scalar";
+			case YS_EMPTY: return "an empty node";
+			case YS_ANCHOR: return "an anchor";
+			case YS_ALIAS: return "an alias";
+			case YS_TAG: return "a tag";
+			default: return "a node";
+		}
 	}
-	static const std::regex& floating_lenient_regex() {
-		static const std::regex result(R"([-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))",std::regex::optimize);
-		return result;
+
+	//10.2与10.3的判定式。10.1不调用它们:失效安全schema下没有任何标量会被解析。
+	static const std::regex& null_regex(yaml_schema_type schema) {
+		static const std::regex json_result(R"(null)",std::regex::optimize);
+		static const std::regex core_result(R"(~|null|Null|NULL)",std::regex::optimize);
+		return schema==YST_CORE?core_result:json_result;
+	}
+	static const std::regex& true_regex(yaml_schema_type schema) {
+		static const std::regex json_result(R"(true)",std::regex::optimize);
+		static const std::regex core_result(R"(true|True|TRUE)",std::regex::optimize);
+		return schema==YST_CORE?core_result:json_result;
+	}
+	static const std::regex& false_regex(yaml_schema_type schema) {
+		static const std::regex json_result(R"(false)",std::regex::optimize);
+		static const std::regex core_result(R"(false|False|FALSE)",std::regex::optimize);
+		return schema==YST_CORE?core_result:json_result;
+	}
+	static const std::regex& integer_regex(yaml_schema_type schema) {
+		//10.2.1.3: -?(0|[1-9][0-9]*)
+		static const std::regex json_result(R"(-?(?:0|[1-9][0-9]*))",std::regex::optimize);
+		//10.3.2: [-+]?[0-9]+ 与 0o[0-7]+ 与 0x[0-9a-fA-F]+
+		static const std::regex core_result(R"([-+]?[0-9]+|0x[0-9A-Fa-f]+|0o[0-7]+)",std::regex::optimize);
+		return schema==YST_CORE?core_result:json_result;
+	}
+	static const std::regex& floating_regex(yaml_schema_type schema) {
+		//10.2.1.4: -?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][-+]?[0-9]+)?
+		static const std::regex json_result(R"(-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?)",std::regex::optimize);
+		//10.3.2: 追加前导零、正号、.5形式与.inf/.nan
+		static const std::regex core_result(R"([-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))",std::regex::optimize);
+		return schema==YST_CORE?core_result:json_result;
 	}
 
 	static bool regex_match_text(const string_t& text,const std::regex& expression) {
@@ -696,16 +863,21 @@ private:
 		const char* first=reinterpret_cast<const char*>(text.data());
 		return std::regex_match(first,first+text.size(),expression);
 	}
-	static bool plain_is_null(const string_t& text) {
-		return text.empty() || regex_match_text(text,null_regex());
+	//空标量只在10.3下解析为null,10.1与10.2下是空字符串。
+	static bool plain_is_null(const string_t& text,yaml_schema_type schema) {
+		if (schema==YST_FAILSAFE) return false;
+		if (text.empty()) return schema==YST_CORE;
+		return regex_match_text(text,null_regex(schema));
 	}
-	static int plain_boolean(const string_t& text) {
-		if (regex_match_text(text,true_regex())) return 1;
-		if (regex_match_text(text,false_regex())) return 0;
+	static int plain_boolean(const string_t& text,yaml_schema_type schema) {
+		if (schema==YST_FAILSAFE) return -1;
+		if (regex_match_text(text,true_regex(schema))) return 1;
+		if (regex_match_text(text,false_regex(schema))) return 0;
 		return -1;
 	}
-	static bool plain_integer(const string_t& text,int_t& out,bool lenient=false) {
-		if (!regex_match_text(text,lenient?integer_lenient_regex():integer_regex())) return false;
+	static bool plain_integer(const string_t& text,int_t& out,yaml_schema_type schema) {
+		if (schema==YST_FAILSAFE) return false;
+		if (!regex_match_text(text,integer_regex(schema))) return false;
 		const std::string buffer(text.begin(),text.end());
 		errno=0;
 		if (buffer.size()>2 && buffer[0]=='0' && (buffer[1]=='x' || buffer[1]=='o')) {
@@ -719,8 +891,9 @@ private:
 		out=static_cast<int_t>(value);
 		return true;
 	}
-	static bool plain_floating(const string_t& text,float_t& out,bool lenient=false) {
-		if (!regex_match_text(text,lenient?floating_lenient_regex():floating_regex())) return false;
+	static bool plain_floating(const string_t& text,float_t& out,yaml_schema_type schema) {
+		if (schema==YST_FAILSAFE) return false;
+		if (!regex_match_text(text,floating_regex(schema))) return false;
 		std::string buffer(text.begin(),text.end());
 		std::string body=buffer;
 		float_t sign=1;
@@ -1560,6 +1733,7 @@ private:
 	};
 
 	static bool tokenize(std::string_view input,std::vector<yaml_token>& tokens,std::size_t& error_position,std::string& error_message,const yaml_parse_options& options) {
+		if (!validate_characters(input,error_position,error_message)) return false;
 		tokenizer scanner(input,tokens);
 		scanner.multiline=options.multiline_scalars;
 		if (!scanner.run()) {
@@ -1618,20 +1792,20 @@ private:
 		target.generate_parser();
 		return true;
 	}
+	//The LR machine mutates its own tables while parsing, so every thread owns one.
+	//This removes the global lock and makes reentrant parsing possible.
 	static parser_t& grammar() {
-		static parser_t instance(YS_START,YS_EPSILON,YS_EOF);
-		static const bool initialized=initialize_grammar(instance);
+		static thread_local parser_t instance(YS_START,YS_EPSILON,YS_EOF);
+		static thread_local const bool initialized=initialize_grammar(instance);
 		static_cast<void>(initialized);
-		return instance;
-	}
-	static std::mutex& grammar_mutex() {
-		static std::mutex instance;
 		return instance;
 	}
 
 	class yaml_listener : public syntax::parser_listener<yaml_symbol,yaml_production> {
 		std::vector<yaml_token>* tokens_=nullptr;
 		sax_t* sax_=nullptr;
+		const parser_t* parser_=nullptr;
+		yaml_schema_type schema_=YST_JSON;
 		bool aborted_=false;
 		bool failed_=false;
 		bool has_pending_tag_=false;
@@ -1663,24 +1837,24 @@ private:
 				}
 				case 2: {
 					int_t value=0;
-					if (plain_integer(token.text,value,true)) abort_check(sax_->number_integer(value));
+					if (plain_integer(token.text,value,YST_CORE)) abort_check(sax_->number_integer(value));
 					else fail(token,"Scalar does not conform to the !!int tag");
 					return;
 				}
 				case 3: {
 					float_t value=0;
-					if (plain_floating(token.text,value,true)) abort_check(sax_->number_float(value,token.text));
+					if (plain_floating(token.text,value,YST_CORE)) abort_check(sax_->number_float(value,token.text));
 					else fail(token,"Scalar does not conform to the !!float tag");
 					return;
 				}
 				case 4: {
-					const int value=plain_boolean(token.text);
+					const int value=plain_boolean(token.text,YST_CORE);
 					if (value<0) fail(token,"Scalar does not conform to the !!bool tag");
 					else abort_check(sax_->boolean(static_cast<boolean_t>(value==1)));
 					return;
 				}
 				case 5: {
-					if (plain_is_null(token.text)) abort_check(sax_->null());
+					if (plain_is_null(token.text,YST_CORE)) abort_check(sax_->null());
 					else fail(token,"Scalar does not conform to the !!null tag");
 					return;
 				}
@@ -1690,22 +1864,22 @@ private:
 				abort_check(sax_->string(token.text,style));
 				return;
 			}
-			if (plain_is_null(token.text)) {
+			if (plain_is_null(token.text,schema_)) {
 				abort_check(sax_->null());
 				return;
 			}
-			const int truth=plain_boolean(token.text);
+			const int truth=plain_boolean(token.text,schema_);
 			if (truth>=0) {
 				abort_check(sax_->boolean(static_cast<boolean_t>(truth==1)));
 				return;
 			}
 			int_t integer_value=0;
-			if (plain_integer(token.text,integer_value)) {
+			if (plain_integer(token.text,integer_value,schema_)) {
 				abort_check(sax_->number_integer(integer_value));
 				return;
 			}
 			float_t floating_value=0;
-			if (plain_floating(token.text,floating_value)) {
+			if (plain_floating(token.text,floating_value,schema_)) {
 				abort_check(sax_->number_float(floating_value,token.text));
 				return;
 			}
@@ -1713,9 +1887,31 @@ private:
 		}
 
 	public:
-		void reset(std::vector<yaml_token>& tokens,sax_t& sax) {
+		std::string expected_symbols(int state) const {
+			if (!parser_) return std::string();
+			std::vector<std::string> names;
+			for (const auto& it:parser_->lr_sheet) {
+				if (it.first.second!=static_cast<uintptr_t>(state) || it.second.type==syntax::ST_ERROR) continue;
+				const yaml_symbol symbol=it.first.first;
+				if (symbol==YS_EPSILON) continue;
+				const auto found=parser_->ptrs.find(symbol);
+				if (found!=parser_->ptrs.end() && found->second) continue;
+				names.push_back(symbol_name(symbol));
+			}
+			if (names.empty()) return std::string();
+			if (names.size()==1) return names[0];
+			std::string result((names.size()>2)?"one of ":"");
+			for (std::size_t i=0;i<names.size();i++) {
+				if (i) result+=(i+1==names.size())?" or ":", ";
+				result+=names[i];
+			}
+			return result;
+		}
+		void reset(std::vector<yaml_token>& tokens,sax_t& sax,const parser_t& parser,yaml_schema_type schema) {
 			tokens_=&tokens;
 			sax_=&sax;
+			parser_=&parser;
+			schema_=schema;
 			aborted_=false;
 			failed_=false;
 			clear_pending_tag();
@@ -1731,6 +1927,8 @@ private:
 			static_cast<void>(state);
 			if (aborted_ || failed_) return 0;
 			yaml_token& token=(*tokens_)[id-1];
+			abort_check(sax_->location(token.position));
+			if (aborted_) return 0;
 			switch (word) {
 				case YS_DOC_START: abort_check(sax_->start_document());break;
 				case YS_BSEQ_START:
@@ -1767,6 +1965,8 @@ private:
 				case YP_NODE_EMPTY: emit_scalar_event((*tokens_)[id-2]);break;
 				case YP_NODE_ALIAS: {
 					yaml_token& token=(*tokens_)[id-2];
+					abort_check(sax_->location(token.position));
+					if (aborted_) return 0;
 					if (has_pending_tag_) {
 						fail(token,"An alias node must not have properties");
 						return 0;
@@ -1822,11 +2022,19 @@ private:
 			static_cast<void>(state);
 			static_cast<void>(word);
 			failed_=true;
+			std::string message="Unexpected token";
+			const std::string expected=expected_symbols(state);
 			if (sax_ && tokens_ && id!=static_cast<uintptr_t>(-1) && id>=1 && id<=tokens_->size()) {
 				const yaml_token& token=(*tokens_)[id-1];
 				const std::string text(token.text.begin(),token.text.end());
-				sax_->parse_error(token.position,text,"Unexpected token");
-			} else if (sax_) sax_->parse_error(0,std::string(),"Unexpected end of input");
+				message+=std::string(", found ")+symbol_name(token.symbol);
+				if (!expected.empty()) message+=" while expecting "+expected;
+				sax_->parse_error(token.position,text,message);
+			} else if (sax_) {
+				message="Unexpected end of input";
+				if (!expected.empty()) message+=" while expecting "+expected;
+				sax_->parse_error((tokens_ && !tokens_->empty())?tokens_->back().position:0,std::string(),message);
+			}
 			return 0;
 		}
 	};
@@ -1847,19 +2055,20 @@ public:
 			node.op=it.symbol;
 			nodes.push_back(std::move(node));
 		}
-		std::lock_guard<std::mutex> lock(grammar_mutex());
 		parser_t& parser=grammar();
-		static yaml_listener listener;
-		listener.reset(tokens,*sax);
+		yaml_listener listener;
+		listener.reset(tokens,*sax,parser,options.scalar_schema);
+		std::vector<syntax::parser_listener<yaml_symbol,yaml_production>*> outer;
+		outer.swap(parser.listeners);
 		parser.listeners.push_back(&listener);
 		bool result=false;
 		try {
 			result=parser.parse_with_listener(nodes);
 		} catch (...) {
-			parser.listeners.pop_back();
+			parser.listeners.swap(outer);
 			throw;
 		}
-		parser.listeners.pop_back();
+		parser.listeners.swap(outer);
 		return result && !listener.aborted() && !listener.failed();
 	}
 	static yaml parse(std::string_view input,document_info_t* info=nullptr,bool allow_exceptions=true,const yaml_parse_options& options=yaml_parse_options()) {
@@ -1867,11 +2076,11 @@ public:
 		yaml_sax_dom_builder<yaml> builder(documents,info,options);
 		const bool ok=sax_parse(input,&builder,options) && builder.completed();
 		if (!ok) {
-			if (allow_exceptions) throw std::runtime_error(std::string("Parse error at byte ")+std::to_string(builder.error_position())+std::string(": ")+(builder.error_message().empty()?std::string("Incomplete document"):builder.error_message()));
+			if (allow_exceptions) throw std::runtime_error(std::string("Parse error at ")+describe_position(input,builder.error_position())+std::string(": ")+(builder.error_message().empty()?std::string("Incomplete document"):builder.error_message()));
 			return yaml();
 		}
 		if (documents.size()!=1) {
-			if (allow_exceptions) throw std::runtime_error(documents.empty()?std::string("Parse error: the stream contains no document"):std::string("Parse error: the stream contains multiple documents, use parse_all"));
+			if (allow_exceptions) throw std::runtime_error(documents.empty()?std::string("Parse error: The stream contains no document"):std::string("Parse error: The stream contains multiple documents, use parse_all"));
 			return yaml();
 		}
 		return std::move(documents.front());
@@ -1881,7 +2090,7 @@ public:
 		yaml_sax_dom_builder<yaml> builder(documents,info,options);
 		const bool ok=sax_parse(input,&builder,options) && builder.completed();
 		if (!ok) {
-			if (allow_exceptions) throw std::runtime_error(std::string("Parse error at byte ")+std::to_string(builder.error_position())+std::string(": ")+(builder.error_message().empty()?std::string("Incomplete document"):builder.error_message()));
+			if (allow_exceptions) throw std::runtime_error(std::string("Parse error at ")+describe_position(input,builder.error_position())+std::string(": ")+(builder.error_message().empty()?std::string("Incomplete document"):builder.error_message()));
 			return std::vector<yaml>();
 		}
 		return documents;
@@ -1966,7 +2175,13 @@ private:
 			first+=extra+1;
 		}
 	}
-	static bool plain_safe(const string_t& s,bool flow,bool ensure_ascii) {
+	//First characters of null_regex, true_regex, false_regex, integer_regex and
+	//floating_regex. A plain scalar starting with anything else cannot match any of
+	//them, so the whole resolution step can be skipped.
+	static bool could_resolve_to_another_type(char c) noexcept {
+		return c=='~' || c=='n' || c=='N' || c=='t' || c=='T' || c=='f' || c=='F' || c=='+' || c=='-' || c=='.' || (c>='0' && c<='9');
+	}
+	static bool plain_safe(const string_t& s,bool flow,bool ensure_ascii,yaml_schema_type schema) {
 		if (s.empty()) return false;
 		static const char indicators[]="-?:,[]{}#&*!|>'\"%@` \t";
 		const char head=static_cast<char>(s[0]);
@@ -1983,16 +2198,18 @@ private:
 			if (c=='#' && i>0 && (s[i-1]==' ' || s[i-1]=='\t')) return false;
 			if (flow && (c==',' || c=='[' || c==']' || c=='{' || c=='}' || c==':')) return false;
 		}
-		if (plain_is_null(s)) return false;
-		if (plain_boolean(s)>=0) return false;
+		if (schema==YST_FAILSAFE) return true;
+		if (!could_resolve_to_another_type(head)) return true;
+		if (plain_is_null(s,schema)) return false;
+		if (plain_boolean(s,schema)>=0) return false;
 		int_t integer_value=0;
-		if (plain_integer(s,integer_value)) return false;
+		if (plain_integer(s,integer_value,schema)) return false;
 		float_t floating_value=0;
-		if (plain_floating(s,floating_value)) return false;
+		if (plain_floating(s,floating_value,schema)) return false;
 		return true;
 	}
-	static void dump_scalar_string(string_t& out,const string_t& s,bool flow,bool ensure_ascii) {
-		if (plain_safe(s,flow,ensure_ascii)) {
+	static void dump_scalar_string(string_t& out,const string_t& s,bool flow,bool ensure_ascii,yaml_schema_type schema) {
+		if (plain_safe(s,flow,ensure_ascii,schema)) {
 			out.append(s.begin(),s.end());
 			return;
 		}
@@ -2016,6 +2233,7 @@ private:
 		}
 		char buffer[64];
 		int length=std::snprintf(buffer,sizeof(buffer),"%.15g",static_cast<double>(value));
+		if (std::strtod(buffer,nullptr)!=static_cast<double>(value)) length=std::snprintf(buffer,sizeof(buffer),"%.16g",static_cast<double>(value));
 		if (std::strtod(buffer,nullptr)!=static_cast<double>(value)) length=std::snprintf(buffer,sizeof(buffer),"%.17g",static_cast<double>(value));
 		bool needs_dot=true;
 		for (int i=0;i<length;i++) {
@@ -2040,7 +2258,7 @@ private:
 			default: return false;
 		}
 	}
-	static void dump_scalar(const base_t& node,string_t& out,bool flow,bool ensure_ascii) {
+	static void dump_scalar(const base_t& node,string_t& out,bool flow,bool ensure_ascii,yaml_schema_type schema) {
 		switch (node.type()) {
 			case structure::DDT_NULL: {
 				out.append({'n','u','l','l'});
@@ -2060,7 +2278,7 @@ private:
 				break;
 			}
 			case structure::DDT_STRING: {
-				dump_scalar_string(out,*node.template get_ptr<const string_t*>(),flow,ensure_ascii);
+				dump_scalar_string(out,*node.template get_ptr<const string_t*>(),flow,ensure_ascii,schema);
 				break;
 			}
 			default: break;
@@ -2081,7 +2299,7 @@ private:
 		}
 		return current;
 	}
-	static void dump_flow(const base_t& node,string_t& out,bool ensure_ascii) {
+	static void dump_flow(const base_t& node,string_t& out,bool ensure_ascii,yaml_schema_type schema) {
 		if (is_alias(node)) {
 			out.push_back('*');
 			const string_t& name=alias_name(node);
@@ -2093,18 +2311,18 @@ private:
 			const string_t& name=anchor_name(node);
 			out.append(name.begin(),name.end());
 			out.push_back(' ');
-			dump_flow(anchor_target(node),out,ensure_ascii);
+			dump_flow(anchor_target(node),out,ensure_ascii,schema);
 			return;
 		}
 		if (is_scalar_node(node)) {
-			dump_scalar(node,out,true,ensure_ascii);
+			dump_scalar(node,out,true,ensure_ascii,schema);
 			return;
 		}
 		switch (node.type()) {
 			case structure::DDT_ARRAY: {
 				out.push_back('[');
 				for (auto it=node.cbegin();it!=node.cend();) {
-					dump_flow(*it,out,ensure_ascii);
+					dump_flow(*it,out,ensure_ascii,schema);
 					it++;
 					if (it!=node.cend()) {
 						out.push_back(',');
@@ -2117,10 +2335,10 @@ private:
 			case structure::DDT_OBJECT: {
 				out.push_back('{');
 				for (auto it=node.cbegin();it!=node.cend();) {
-					dump_scalar_string(out,it.key(),true,ensure_ascii);
+					dump_scalar_string(out,it.key(),true,ensure_ascii,schema);
 					out.push_back(':');
 					out.push_back(' ');
-					dump_flow(*it,out,ensure_ascii);
+					dump_flow(*it,out,ensure_ascii,schema);
 					it++;
 					if (it!=node.cend()) {
 						out.push_back(',');
@@ -2136,7 +2354,7 @@ private:
 	static void dump_indent(string_t& out,std::size_t count,typename string_t::value_type indent_char) {
 		for (std::size_t i=0;i<count;i++) out.push_back(indent_char);
 	}
-	static void dump_block(const base_t& node,string_t& out,int indent_step,typename string_t::value_type indent_char,bool ensure_ascii,std::size_t current_indent,bool skip_first_indent) {
+	static void dump_block(const base_t& node,string_t& out,int indent_step,typename string_t::value_type indent_char,bool ensure_ascii,yaml_schema_type schema,std::size_t current_indent,bool skip_first_indent) {
 		switch (node.type()) {
 			case structure::DDT_ARRAY: {
 				bool first=true;
@@ -2155,7 +2373,7 @@ private:
 						out.push_back('\n');
 					} else if (is_scalar_node(child)) {
 						out.append(prefix.begin(),prefix.end());
-						dump_scalar(child,out,false,ensure_ascii);
+						dump_scalar(child,out,false,ensure_ascii,schema);
 						out.push_back('\n');
 					} else if (child.type()==structure::DDT_ARRAY || child.type()==structure::DDT_OBJECT) {
 						if (child.empty()) {
@@ -2168,8 +2386,8 @@ private:
 							prefix.pop_back();
 							out.append(prefix.begin(),prefix.end());
 							out.push_back('\n');
-							dump_block(child,out,indent_step,indent_char,ensure_ascii,current_indent+2,false);
-						} else dump_block(child,out,indent_step,indent_char,ensure_ascii,current_indent+2,true);
+							dump_block(child,out,indent_step,indent_char,ensure_ascii,schema,current_indent+2,false);
+						} else dump_block(child,out,indent_step,indent_char,ensure_ascii,schema,current_indent+2,true);
 					} else unsupported_node(child);
 				}
 				break;
@@ -2179,7 +2397,7 @@ private:
 				for (auto it=node.cbegin();it!=node.cend();it++) {
 					if (!(skip_first_indent && first)) dump_indent(out,current_indent,indent_char);
 					first=false;
-					dump_scalar_string(out,it.key(),false,ensure_ascii);
+					dump_scalar_string(out,it.key(),false,ensure_ascii,schema);
 					out.push_back(':');
 					string_t prefix;
 					const base_t& child=*peel_anchors(*it,prefix);
@@ -2193,7 +2411,7 @@ private:
 					} else if (is_scalar_node(child)) {
 						out.push_back(' ');
 						out.append(prefix.begin(),prefix.end());
-						dump_scalar(child,out,false,ensure_ascii);
+						dump_scalar(child,out,false,ensure_ascii,schema);
 						out.push_back('\n');
 					} else if (child.type()==structure::DDT_ARRAY || child.type()==structure::DDT_OBJECT) {
 						if (child.empty()) {
@@ -2207,10 +2425,10 @@ private:
 							prefix.pop_back();
 							out.append(prefix.begin(),prefix.end());
 							out.push_back('\n');
-							dump_block(child,out,indent_step,indent_char,ensure_ascii,current_indent+static_cast<std::size_t>(indent_step),false);
+							dump_block(child,out,indent_step,indent_char,ensure_ascii,schema,current_indent+static_cast<std::size_t>(indent_step),false);
 						} else {
 							out.push_back('\n');
-							dump_block(child,out,indent_step,indent_char,ensure_ascii,current_indent+static_cast<std::size_t>(indent_step),false);
+							dump_block(child,out,indent_step,indent_char,ensure_ascii,schema,current_indent+static_cast<std::size_t>(indent_step),false);
 						}
 					} else unsupported_node(child);
 				}
@@ -2221,14 +2439,16 @@ private:
 	}
 
 public:
-	virtual string_t dump(int indent=-1,typename string_t::value_type indent_char=' ',bool ensure_ascii=false) const {
+	//Children of a yaml are plain dom nodes, so serialising a subtree through the
+	//member dump() would require a deep copy; this entry point does not.
+	static string_t dump_node(const base_t& node,int indent=-1,typename string_t::value_type indent_char=' ',bool ensure_ascii=false,yaml_schema_type schema=YST_JSON) {
 		string_t result;
 		if (indent<0) {
-			dump_flow(*this,result,ensure_ascii);
+			dump_flow(node,result,ensure_ascii,schema);
 			return result;
 		}
 		string_t prefix;
-		const base_t& inner=*peel_anchors(*this,prefix);
+		const base_t& inner=*peel_anchors(node,prefix);
 		if (is_alias(inner)) {
 			result.append(prefix.begin(),prefix.end());
 			result.push_back('*');
@@ -2238,7 +2458,7 @@ public:
 		}
 		if (is_scalar_node(inner)) {
 			result.append(prefix.begin(),prefix.end());
-			dump_scalar(inner,result,false,ensure_ascii);
+			dump_scalar(inner,result,false,ensure_ascii,schema);
 			return result;
 		}
 		if (inner.type()!=structure::DDT_ARRAY && inner.type()!=structure::DDT_OBJECT) unsupported_node(inner);
@@ -2254,11 +2474,14 @@ public:
 			result.append(prefix.begin(),prefix.end());
 			result.push_back('\n');
 		}
-		dump_block(inner,result,indent_step,indent_char,ensure_ascii,0,false);
+		dump_block(inner,result,indent_step,indent_char,ensure_ascii,schema,0,false);
 		if (!result.empty() && result.back()=='\n') result.pop_back();
 		return result;
 	}
-	static string_t dump_document(const base_t& root,const document_info_t* info=nullptr,int indent=2,typename string_t::value_type indent_char=' ',bool ensure_ascii=false) {
+	virtual string_t dump(int indent=-1,typename string_t::value_type indent_char=' ',bool ensure_ascii=false,yaml_schema_type schema=YST_JSON) const {
+		return dump_node(*this,indent,indent_char,ensure_ascii,schema);
+	}
+	static string_t dump_document(const base_t& root,const document_info_t* info=nullptr,int indent=2,typename string_t::value_type indent_char=' ',bool ensure_ascii=false,yaml_schema_type schema=YST_JSON) {
 		string_t result;
 		if (info && info->has_version()) {
 			result.append({'%','Y','A','M','L',' '});
@@ -2277,7 +2500,7 @@ public:
 		result.append({'-','-','-'});
 		if (indent<0) {
 			result.push_back(' ');
-			dump_flow(root,result,ensure_ascii);
+			dump_flow(root,result,ensure_ascii,schema);
 			result.push_back('\n');
 			return result;
 		}
@@ -2295,7 +2518,7 @@ public:
 		if (is_scalar_node(inner)) {
 			result.push_back(' ');
 			result.append(prefix.begin(),prefix.end());
-			dump_scalar(inner,result,false,ensure_ascii);
+			dump_scalar(inner,result,false,ensure_ascii,schema);
 			result.push_back('\n');
 			return result;
 		}
@@ -2314,12 +2537,12 @@ public:
 			result.append(prefix.begin(),prefix.end());
 		}
 		result.push_back('\n');
-		dump_block(inner,result,indent>0?indent:1,indent_char,ensure_ascii,0,false);
+		dump_block(inner,result,indent>0?indent:1,indent_char,ensure_ascii,schema,0,false);
 		return result;
 	}
-	static string_t dump_all(const std::vector<yaml>& documents,int indent=2,typename string_t::value_type indent_char=' ',bool ensure_ascii=false) {
+	static string_t dump_all(const std::vector<yaml>& documents,int indent=2,typename string_t::value_type indent_char=' ',bool ensure_ascii=false,yaml_schema_type schema=YST_JSON) {
 		string_t result;
-		for (const auto& it:documents) result+=dump_document(it,nullptr,indent,indent_char,ensure_ascii);
+		for (const auto& it:documents) result+=dump_document(it,nullptr,indent,indent_char,ensure_ascii,schema);
 		return result;
 	}
 
@@ -2362,6 +2585,10 @@ using basic_yaml::yaml_data_type;
 using basic_yaml::YDT_ANCHOR;
 using basic_yaml::YDT_ALIAS;
 using basic_yaml::yaml_parse_options;
+using basic_yaml::yaml_schema_type;
+using basic_yaml::YST_FAILSAFE;
+using basic_yaml::YST_JSON;
+using basic_yaml::YST_CORE;
 
 inline namespace literals {
 

@@ -1,5 +1,5 @@
-﻿//Last Modified At 2026/09/04
-//@Version 1.1.0.0
+﻿//Last Modified At 2026/09/05
+//@Version 1.2.0.0
 #ifndef _STDEX_TYPE_DOM_XML_H_
 #define _STDEX_TYPE_DOM_XML_H_ 1
 
@@ -2281,11 +2281,19 @@ protected:
 
 		element_value(const element_value& other) : base_t::value_t() , name(other.name) , attributes(other.attributes) , children(other.children) { }
 
-		bool equals(structure::dom_data_type t,const typename base_t::value_t& other) const override {
+		bool equals(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
 			if (t!=XDT_ELEMENT) return base_t::value_t::equals(t,other);
 			const element_value* right=dynamic_cast<const element_value*>(&other);
 			if (!right) return false;
 			return name==right->name && attributes==right->attributes && children==right->children;
+		}
+		bool less(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
+			if (t!=XDT_ELEMENT) return base_t::value_t::less(t,other);
+			const element_value* right=dynamic_cast<const element_value*>(&other);
+			if (!right) return false;
+			if (name!=right->name) return name<right->name;
+			if (attributes!=right->attributes) return attributes<right->attributes;
+			return children<right->children;
 		}
 
 		typename base_t::value_t* clone(structure::dom_data_type t) const override {
@@ -2312,11 +2320,17 @@ protected:
 
 		text_value(const text_value& other) : base_t::value_t() , text(other.text) { }
 
-		bool equals(structure::dom_data_type t,const typename base_t::value_t& other) const override {
+		bool equals(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
 			if (t!=XDT_CDATA && t!=XDT_COMMENT) return base_t::value_t::equals(t,other);
 			const text_value* right=dynamic_cast<const text_value*>(&other);
 			if (!right) return false;
 			return text==right->text;
+		}
+		bool less(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
+			if (t!=XDT_CDATA && t!=XDT_COMMENT) return base_t::value_t::less(t,other);
+			const text_value* right=dynamic_cast<const text_value*>(&other);
+			if (!right) return false;
+			return text<right->text;
 		}
 
 		typename base_t::value_t* clone(structure::dom_data_type t) const override {
@@ -2344,11 +2358,18 @@ protected:
 
 		procinst_value(const procinst_value& other) : base_t::value_t() , target(other.target) , content(other.content) { }
 
-		bool equals(structure::dom_data_type t,const typename base_t::value_t& other) const override {
+		bool equals(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
 			if (t!=XDT_PROCINST) return base_t::value_t::equals(t,other);
 			const procinst_value* right=dynamic_cast<const procinst_value*>(&other);
 			if (!right) return false;
 			return target==right->target && content==right->content;
+		}
+		bool less(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
+			if (t!=XDT_PROCINST) return base_t::value_t::less(t,other);
+			const procinst_value* right=dynamic_cast<const procinst_value*>(&other);
+			if (!right) return false;
+			if (target!=right->target) return target<right->target;
+			return content<right->content;
 		}
 
 		typename base_t::value_t* clone(structure::dom_data_type t) const override {

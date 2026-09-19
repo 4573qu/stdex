@@ -1,5 +1,5 @@
 //Last Modified At 2026/09/04
-//@Version 1.1.1.0
+//@Version 1.2.0.0
 #ifndef _STDEX_STRUCTURE_DOM_H_
 #define _STDEX_STRUCTURE_DOM_H_ 1
 
@@ -1240,12 +1240,21 @@ public:
 			std::allocator_traits<allocator_t<value_t>>::destroy(alloc,this);
 			std::allocator_traits<allocator_t<value_t>>::deallocate(alloc,this,1);
 		}
+
 		//Extension payloads answer equality for the data types they introduce; the
 		//default identity answer keeps the built in types untouched.
-		virtual bool equals(dom_data_type t,const value_t& other) const {
+		virtual bool equals(dom_data_type t,const value_t& other) const noexcept {
 			static_cast<void>(t);
 			return this==&other;
 		}
+		//Ordering counterpart of equals. Returning false for both directions leaves the
+		//two values unordered, which operator <=> and the relational operators honour.
+		virtual bool less(dom_data_type t,const value_t& other) const noexcept {
+			static_cast<void>(t);
+			static_cast<void>(other);
+			return false;
+		}
+
 		virtual value_t* clone(dom_data_type t) const {
 			value_t* result=create<value_t>();
 			switch (t) {
@@ -2338,7 +2347,10 @@ private:
 				case DDT_BOOL: return lhs.value().boolean<rhs.value().boolean;
 				case DDT_INT: return lhs.value().integer<rhs.value().integer;
 				case DDT_FLOAT: return lhs.value().floating<rhs.value().floating;
-				default: return false;
+				default: {
+					if (lhs.data_.value && rhs.data_.value) return lhs.data_.value->less(lhs_type,*rhs.data_.value);
+					return false;
+				}
 			}
 		} else if (lhs_type==DDT_INT && rhs_type==DDT_FLOAT) return static_cast<float_t>(lhs.value().integer)<rhs.value().floating;
 		else if (lhs_type==DDT_FLOAT && rhs_type==DDT_INT) return lhs.value().floating<static_cast<float_t>(rhs.value().integer);
@@ -2367,7 +2379,8 @@ public:
 		if (equal_impl(*this,rhs)) return std::partial_ordering::equivalent;
 		if (compares_unordered(*this,rhs)) return std::partial_ordering::unordered;
 		if (less_impl(*this,rhs)) return std::partial_ordering::less;
-		return std::partial_ordering::greater;
+		if (less_impl(rhs,*this)) return std::partial_ordering::greater;
+		return std::partial_ordering::unordered;
 	}
 	template <typename _Scalar>
 	requires is_dom_scalar<_Scalar>::value

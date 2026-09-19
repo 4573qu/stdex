@@ -1,5 +1,5 @@
-﻿//Last Modified At 2026/06/12
-//@Version 1.0.0.0
+﻿//Last Modified At 2026/09/06
+//@Version 1.1.0.0
 #ifndef _STDEX_TYPE_DOM_TOML_H_
 #define _STDEX_TYPE_DOM_TOML_H_ 1
 
@@ -10,7 +10,6 @@
 #include <istream>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <ostream>
 #include <regex>
 #include <set>
@@ -20,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "../../structure/dom.h"//At Least 1.0
+#include "../../structure/dom.h"//At Least 1.2
 #include "../../syntax/parser.h"//At Least 3.4
 #include "../../utility/kind.h"//At Least 1.4
 
@@ -138,6 +137,30 @@ enum toml_production : int {
 	TP_MEMBERS_APPEND,
 };
 
+//主模板故意不定义:没有特化时,下面的检测会给出一句可读的诊断,而不是模板展开噪音。。
+template <typename _Target>
+struct toml_datetime_convert;
+
+template <>
+struct toml_datetime_convert<toml_datetime> {
+	static toml_datetime from_datetime(const toml_datetime& value) {
+		return value;
+	}
+	static toml_datetime to_datetime(const toml_datetime& value) {
+		return value;
+	}
+};
+
+//检测惯用法。这里用SFINAE而不是concepts,因为判定只有"两个静态函数是否可调用"
+template <typename _Target,typename=void>
+struct is_convertible_datetime : std::false_type { };
+
+template <typename _Target>
+struct is_convertible_datetime<_Target,std::void_t<decltype(toml_datetime_convert<_Target>::to_datetime(std::declval<const _Target&>())),decltype(toml_datetime_convert<_Target>::from_datetime(std::declval<const toml_datetime&>()))>> : std::true_type { };
+
+template <typename _Target>
+constexpr bool is_convertible_datetime_v=is_convertible_datetime<_Target>::value;
+
 template <typename _Toml>
 struct toml_sax {
 	using int_t=typename _Toml::int_t;
@@ -158,6 +181,11 @@ struct toml_sax {
 	virtual bool end_array()=0;
 	virtual bool start_inline_table(std::size_t cnt)=0;
 	virtual bool end_inline_table()=0;
+	//告知下一个事件来自哪个字节。刻意不是纯虚:不需要位置的处理器不受影响。
+	virtual bool location(std::size_t position) {
+		static_cast<void>(position);
+		return true;
+	}
 	virtual bool parse_error(std::size_t position,const std::string& last_token,const std::string& message)=0;
 	virtual ~toml_sax()=default;
 };
@@ -194,6 +222,7 @@ private:
 	std::size_t depth_=0;
 	bool errored_=false;
 	std::size_t error_position_=0;
+	std::size_t current_position_=0;
 	std::string error_message_;
 
 	static shadow_t* shadow_child(shadow_t& parent,const string_t& key) {
@@ -209,6 +238,7 @@ private:
 	bool fail(const std::string& message) {
 		if (!errored_) {
 			errored_=true;
+			error_position_=current_position_;
 			error_message_=message;
 		}
 		return false;
@@ -228,9 +258,9 @@ private:
 			} else if (csh->array_table) {
 				node=&it->second.value().array->back();
 			} else if (csh->closed) {
-				return fail("key '"+narrow(key)+"' conflicts with a previously defined value");
+				return fail("Key '"+narrow(key)+"' conflicts with a previously defined value");
 			} else if (csh->dotted) {
-				return fail("cannot extend table '"+narrow(key)+"' defined by dotted keys with a table header");
+				return fail("Cannot extend table '"+narrow(key)+"' defined by dotted keys with a table header");
 			} else {
 				node=&it->second;
 			}
@@ -245,10 +275,10 @@ private:
 				auto result=table.emplace(key,dom_t(structure::DDT_OBJECT));
 				node=&result.first->second;
 			} else {
-				if (csh->array_table) return fail("cannot redefine array of tables '"+narrow(key)+"' as a table");
-				if (csh->closed) return fail("table header '"+narrow(key)+"' conflicts with a previously defined value");
-				if (csh->dotted) return fail("cannot reopen table '"+narrow(key)+"' defined by dotted keys");
-				if (csh->explicit_header) return fail("table '"+narrow(key)+"' is already defined");
+				if (csh->array_table) return fail("Cannot redefine array of tables '"+narrow(key)+"' as a table");
+				if (csh->closed) return fail("Table header '"+narrow(key)+"' conflicts with a previously defined value");
+				if (csh->dotted) return fail("Cannot reopen table '"+narrow(key)+"' defined by dotted keys");
+				if (csh->explicit_header) return fail("Table '"+narrow(key)+"' is already defined");
 				node=&it->second;
 			}
 			csh->explicit_header=true;
@@ -260,7 +290,7 @@ private:
 				csh->array_table=true;
 				current_table_=&result.first->second.value().array->back();
 			} else {
-				if (!csh->array_table) return fail("cannot append to '"+narrow(key)+"': not an array of tables created by [[...]]");
+				if (!csh->array_table) return fail("Cannot append to '"+narrow(key)+"': not an array of tables created by [[...]]");
 				it->second.value().array->push_back(dom_t(structure::DDT_OBJECT));
 				current_table_=&it->second.value().array->back();
 			}
@@ -285,7 +315,7 @@ private:
 				csh->generation=generation_;
 			} else {
 				if (!csh->dotted || csh->generation!=generation_) {
-					fail("dotted key cannot extend '"+narrow(key)+"': it was not created by dotted keys in the current table");
+					fail("Dotted key cannot extend '"+narrow(key)+"': it was not created by dotted keys in the current table");
 					return nullptr;
 				}
 				node=&it->second;
@@ -296,7 +326,7 @@ private:
 		auto& table=*node->value().object;
 		auto it=table.find(key);
 		if (it!=table.end()) {
-			fail("duplicate key '"+narrow(key)+"'");
+			fail("Duplicate key '"+narrow(key)+"'");
 			return nullptr;
 		}
 		shadow_t* csh=shadow_child(*sh,key);
@@ -317,7 +347,7 @@ private:
 				node=&result.first->second;
 			} else {
 				if (it->second.type()!=structure::DDT_OBJECT || closed.count(&it->second)) {
-					fail("dotted key cannot extend '"+narrow(key)+"' inside an inline table");
+					fail("Dotted key cannot extend '"+narrow(key)+"' inside an inline table");
 					return nullptr;
 				}
 				node=&it->second;
@@ -326,7 +356,7 @@ private:
 		const string_t& key=pending_path_.back();
 		auto& table=*node->value().object;
 		if (table.find(key)!=table.end()) {
-			fail("duplicate key '"+narrow(key)+"' in inline table");
+			fail("Duplicate key '"+narrow(key)+"' in inline table");
 			return nullptr;
 		}
 		auto result=table.emplace(key,dom_t());
@@ -340,13 +370,14 @@ private:
 			return &array.back();
 		}
 		if (!pending_) {
-			fail("value arrived without a pending key");
+			fail("Value arrived without a pending key");
 			return nullptr;
 		}
 		pending_=false;
 		dom_t* slot=ref_stack_.empty()?resolve_table_slot():resolve_inline_slot();
 		if (!slot) return nullptr;
-		*slot=std::move(value);
+		//赋值门是 !support(t) && !other.support(t),源侧是_Toml才允许TDT_DATETIME落地。
+		*slot=_Toml(std::move(value));
 		return slot;
 	}
 
@@ -388,6 +419,10 @@ public:
 	bool boolean(boolean_t value) override {
 		if (errored_) return false;
 		return handle_value(dom_t(value))!=nullptr;
+	}
+	bool location(std::size_t position) override {
+		current_position_=position;
+		return true;
 	}
 	bool datetime(toml_datetime& value) override {
 		if (errored_) return false;
@@ -496,6 +531,30 @@ protected:
 		~datetime_value() override=default;
 
 		datetime_value(const datetime_value& other) : base_t::value_t() , moment(other.moment) { }
+
+		//两个日期时间按变体、日期、时间、纳秒、偏移逐项比较。
+		static int compare_datetime(const toml_datetime& lhs,const toml_datetime& rhs) noexcept {
+			if (lhs.variant!=rhs.variant) return lhs.variant<rhs.variant?-1:1;
+			const long long left[7]={lhs.year,lhs.month,lhs.day,lhs.hour,lhs.minute,lhs.second,lhs.offset_minutes};
+			const long long right[7]={rhs.year,rhs.month,rhs.day,rhs.hour,rhs.minute,rhs.second,rhs.offset_minutes};
+			for (int i=0;i<7;i++) {
+				if (left[i]!=right[i]) return left[i]<right[i]?-1:1;
+			}
+			if (lhs.nanosecond!=rhs.nanosecond) return lhs.nanosecond<rhs.nanosecond?-1:1;
+			return 0;
+		}
+		bool equals(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
+			if (t!=toml_data_type(TDT_DATETIME)) return base_t::value_t::equals(t,other);
+			const datetime_value* right=dynamic_cast<const datetime_value*>(&other);
+			if (!right) return false;
+			return compare_datetime(moment,right->moment)==0;
+		}
+		bool less(structure::dom_data_type t,const typename base_t::value_t& other) const noexcept override {
+			if (t!=toml_data_type(TDT_DATETIME)) return base_t::value_t::less(t,other);
+			const datetime_value* right=dynamic_cast<const datetime_value*>(&other);
+			if (!right) return false;
+			return compare_datetime(moment,right->moment)<0;
+		}
 
 		typename base_t::value_t* clone(structure::dom_data_type t) const override {
 			if (t==TDT_DATETIME) return create_value<datetime_value>(*this);
@@ -634,6 +693,26 @@ public:
 		set_datetime(*this,value);
 	}
 
+	template <typename _Target>
+	static _Target get_datetime_as(const base_t& node) {
+		static_assert(is_convertible_datetime<_Target>::value,"toml_datetime_convert must be specialized for the target type with static to_datetime and from_datetime.");
+		return toml_datetime_convert<_Target>::from_datetime(get_datetime(node));
+	}
+	template <typename _Target>
+	static toml make_datetime_from(const _Target& value) {
+		static_assert(is_convertible_datetime<_Target>::value,"toml_datetime_convert must be specialized for the target type with static to_datetime and from_datetime.");
+		return toml(make_datetime(toml_datetime_convert<_Target>::to_datetime(value)));
+	}
+	template <typename _Target>
+	static void set_datetime_from(base_t& node,const _Target& value) {
+		static_assert(is_convertible_datetime<_Target>::value,"toml_datetime_convert must be specialized for the target type with static to_datetime and from_datetime.");
+		set_datetime(node,toml_datetime_convert<_Target>::to_datetime(value));
+	}
+	template <typename _Target>
+	_Target datetime_as() const {
+		return get_datetime_as<_Target>(*this);
+	}
+
 protected:
 	//记法转换协议·源侧降级:TDT_DATETIME默认降级为RFC 3339字符串(无损可读)。
 	//如需其他形态(如epoch整数)请用convert_handler_t。
@@ -670,6 +749,114 @@ private:
 	}
 	//四种RFC 3339变体合一:组1-3日期,组4-7时间(组7小数),组8为Z,组9-11数字时差,
 	//组12-15为纯本地时间。空格分隔形态仅当其后紧跟完整时间才并入,否则回退为纯日期。
+	static std::string hexadecimal_code(unsigned long cp) {
+		static const char digits[]="0123456789ABCDEF";
+		std::string result;
+		for (int shift=12;shift>=0;shift-=4) result.push_back(digits[(cp>>shift)&0xF]);
+		if (cp>0xFFFF) {
+			result.clear();
+			for (int shift=28;shift>=0;shift-=4) result.push_back(digits[(cp>>shift)&0xF]);
+			while (result.size()>4 && result[0]=='0') result.erase(result.begin());
+		}
+		return result;
+	}
+	//可打印字节保留"character 'x'"的措辞,其余按值命名,避免把原始字节塞进异常消息。
+	static std::string describe_byte(char c) {
+		const unsigned char byte=static_cast<unsigned char>(c);
+		if (byte>=0x20 && byte<0x7F) return std::string("character '")+c+"'";
+		static const char digits[]="0123456789ABCDEF";
+		std::string result("byte 0x");
+		result.push_back(digits[(byte>>4)&0xF]);
+		result.push_back(digits[byte&0xF]);
+		return result;
+	}
+	static std::string describe_position(std::string_view input,std::size_t position) {
+		std::size_t line=1;
+		std::size_t column=1;
+		const std::size_t limit=(position<input.size())?position:input.size();
+		for (std::size_t i=0;i<limit;i++) {
+			if (input[i]=='\n') {
+				line++;
+				column=1;
+			} else column++;
+		}
+		return std::string("byte ")+std::to_string(position)+" (line "+std::to_string(line)+", column "+std::to_string(column)+")";
+	}
+	static const char* symbol_name(toml_symbol symbol) noexcept {
+		switch (symbol) {
+			case TS_EOF: return "end of input";
+			case TS_NEWLINE: return "a newline";
+			case TS_EQ: return "'='";
+			case TS_DOT: return "'.'";
+			case TS_COMMA: return "','";
+			case TS_LBRACKET: return "'['";
+			case TS_RBRACKET: return "']'";
+			case TS_TABLE_OPEN: return "'['";
+			case TS_TABLE_CLOSE: return "']'";
+			case TS_ARRAY_TABLE_OPEN: return "'[['";
+			case TS_ARRAY_TABLE_CLOSE: return "']]'";
+			case TS_LBRACE: return "'{'";
+			case TS_RBRACE: return "'}'";
+			case TS_KEY: return "a key";
+			case TS_STRING: return "a string";
+			case TS_INT: return "an integer";
+			case TS_FLOAT: return "a float";
+			case TS_BOOL: return "a boolean";
+			case TS_DATETIME: return "a datetime";
+			default: return "a value";
+		}
+	}
+	//TOML 1.0要求文档是有效的UTF-8,并禁止裸控制字符(制表符与换行除外)。
+	static bool validate_characters(std::string_view input,std::size_t& error_position,std::string& error_message) {
+		const char* first=input.data();
+		const char* const last=first+input.size();
+		while (first<last) {
+			const unsigned char lead=static_cast<unsigned char>(*first);
+			unsigned long raw=0;
+			std::size_t extra=0;
+			if (lead<0x80) raw=lead;
+			else if ((lead&0xE0)==0xC0) {
+				raw=lead&0x1F;
+				extra=1;
+			} else if ((lead&0xF0)==0xE0) {
+				raw=lead&0x0F;
+				extra=2;
+			} else if ((lead&0xF8)==0xF0) {
+				raw=lead&0x07;
+				extra=3;
+			} else {
+				error_position=static_cast<std::size_t>(first-input.data());
+				error_message="Invalid UTF-8 lead byte";
+				return false;
+			}
+			if (static_cast<std::size_t>(last-first)<extra+1) {
+				error_position=static_cast<std::size_t>(first-input.data());
+				error_message="Truncated UTF-8 sequence";
+				return false;
+			}
+			for (std::size_t i=1;i<=extra;i++) {
+				if ((static_cast<unsigned char>(first[i])&0xC0)!=0x80) {
+					error_position=static_cast<std::size_t>(first+i-input.data());
+					error_message="Invalid UTF-8 continuation byte";
+					return false;
+				}
+				raw=(raw<<6)|(static_cast<unsigned char>(first[i])&0x3F);
+			}
+			if ((extra==1 && raw<0x80) || (extra==2 && raw<0x800) || (extra==3 && raw<0x10000)) {
+				error_position=static_cast<std::size_t>(first-input.data());
+				error_message="Overlong UTF-8 sequence";
+				return false;
+			}
+			if (raw>0x10FFFF || (raw>=0xD800 && raw<=0xDFFF)) {
+				error_position=static_cast<std::size_t>(first-input.data());
+				error_message="Character U+"+hexadecimal_code(raw)+" is not a Unicode scalar value";
+				return false;
+			}
+			first+=extra+1;
+		}
+		return true;
+	}
+
 	static const std::regex& datetime_regex() {
 		static const std::regex result(R"((\d{4})-(\d{2})-(\d{2})(?:[Tt ](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(?:([Zz])|([+-])(\d{2}):(\d{2}))?)?|(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?)",std::regex::optimize);
 		return result;
@@ -759,7 +946,7 @@ private:
 					break;
 				}
 				default: {
-					error_message="invalid escape sequence";
+					error_message="Invalid escape sequence";
 					return false;
 				}
 			}
@@ -777,7 +964,7 @@ private:
 				while (first+run<last && first[run]=='"') run++;
 				if (run>=3) {
 					if (run>5) {
-						error_message="too many quotes at the end of a multi-line string";
+						error_message="Too many quotes at the end of a multi-line string";
 						return false;
 					}
 					for (std::size_t i=0;i<run-3;i++) out.push_back('"');
@@ -798,7 +985,7 @@ private:
 						else if (*first=='\r') {
 							if (first+1<last && first[1]=='\n') first+=2;
 							else {
-								error_message="stray carriage return in multi-line string";
+								error_message="Stray carriage return in multi-line string";
 								return false;
 							}
 						} else break;
@@ -806,7 +993,7 @@ private:
 					continue;
 				}
 				if (first+1>=last) {
-					error_message="unterminated escape in multi-line string";
+					error_message="Unterminated escape in multi-line string";
 					return false;
 				}
 				const char escape=first[1];
@@ -823,27 +1010,27 @@ private:
 					case 'U': {
 						const int count=escape=='u'?4:8;
 						if (last-first<count) {
-							error_message="truncated unicode escape";
+							error_message="Truncated unicode escape";
 							return false;
 						}
 						for (int i=0;i<count;i++) {
 							const char h=first[i];
 							if (!((h>='0' && h<='9') || (h>='a' && h<='f') || (h>='A' && h<='F'))) {
-								error_message="invalid unicode escape";
+								error_message="Invalid unicode escape";
 								return false;
 							}
 						}
 						const unsigned long cp=hex_value(first,count);
 						first+=count;
 						if (!valid_scalar_codepoint(cp)) {
-							error_message="unicode escape is not a Unicode scalar value";
+							error_message="Unicode escape is not a Unicode scalar value";
 							return false;
 						}
 						append_codepoint(out,cp);
 						break;
 					}
 					default: {
-						error_message="invalid escape sequence";
+						error_message="Invalid escape sequence";
 						return false;
 					}
 				}
@@ -856,7 +1043,7 @@ private:
 					first+=2;
 					continue;
 				}
-				error_message="stray carriage return in multi-line string";
+				error_message="Stray carriage return in multi-line string";
 				return false;
 			}
 			if (c=='\n' || c=='\t') {
@@ -865,13 +1052,13 @@ private:
 				continue;
 			}
 			if (static_cast<unsigned char>(c)<0x20 || c=='\x7F') {
-				error_message="control character in multi-line string";
+				error_message="Control character in multi-line string";
 				return false;
 			}
 			out.push_back(c);
 			first++;
 		}
-		error_message="unterminated multi-line string";
+		error_message="Unterminated multi-line string";
 		return false;
 	}
 	static bool scan_ml_literal(const char* first,const char* const last,string_t& out,std::size_t& consumed,std::string& error_message) {
@@ -885,7 +1072,7 @@ private:
 				while (first+run<last && first[run]=='\'') run++;
 				if (run>=3) {
 					if (run>5) {
-						error_message="too many quotes at the end of a multi-line literal string";
+						error_message="Too many quotes at the end of a multi-line literal string";
 						return false;
 					}
 					for (std::size_t i=0;i<run-3;i++) out.push_back('\'');
@@ -903,7 +1090,7 @@ private:
 					first+=2;
 					continue;
 				}
-				error_message="stray carriage return in multi-line literal string";
+				error_message="Stray carriage return in multi-line literal string";
 				return false;
 			}
 			if (c=='\n' || c=='\t') {
@@ -912,13 +1099,13 @@ private:
 				continue;
 			}
 			if (static_cast<unsigned char>(c)<0x20 || c=='\x7F') {
-				error_message="control character in multi-line literal string";
+				error_message="Control character in multi-line literal string";
 				return false;
 			}
 			out.push_back(c);
 			first++;
 		}
-		error_message="unterminated multi-line literal string";
+		error_message="Unterminated multi-line literal string";
 		return false;
 	}
 
@@ -943,14 +1130,14 @@ private:
 	}
 	static bool validate_time(const toml_datetime& value,std::string& error_message) {
 		if (value.hour>23 || value.minute>59 || value.second>60) {
-			error_message="time component out of range";
+			error_message="Time component out of range";
 			return false;
 		}
 		return true;
 	}
 	static bool validate_date(const toml_datetime& value,std::string& error_message) {
 		if (value.month<1 || value.month>12 || value.day<1 || value.day>days_in_month(value.year,value.month)) {
-			error_message="date component out of range";
+			error_message="Date component out of range";
 			return false;
 		}
 		return true;
@@ -970,6 +1157,7 @@ private:
 	}
 
 	static bool tokenize(std::string_view input,std::vector<toml_token>& tokens,std::size_t& error_position,std::string& error_message) {
+		if (!validate_characters(input,error_position,error_message)) return false;
 		const char* first=input.data();
 		const char* const last=input.data()+input.size();
 		if (last-first>=3 && static_cast<unsigned char>(first[0])==0xEF && static_cast<unsigned char>(first[1])==0xBB && static_cast<unsigned char>(first[2])==0xBF) first+=3;
@@ -990,7 +1178,7 @@ private:
 					const unsigned char uc=static_cast<unsigned char>(*first);
 					if ((uc<0x20 && uc!='\t') || uc==0x7F) {
 						error_position=static_cast<std::size_t>(first-input.data());
-						error_message="control character in comment";
+						error_message="Control character in comment";
 						return false;
 					}
 					first++;
@@ -1005,7 +1193,7 @@ private:
 				error_position=static_cast<std::size_t>(first-input.data());
 				if (c=='\r') {
 					if (first+1>=last || first[1]!='\n') {
-						error_message="stray carriage return";
+						error_message="Stray carriage return";
 						return false;
 					}
 					first+=2;
@@ -1019,10 +1207,10 @@ private:
 				} else if (ctx.back()=='A') {
 					//数组允许跨行,换行被抑制
 				} else if (ctx.back()=='T') {
-					error_message="newline is not allowed inside an inline table";
+					error_message="Newline is not allowed inside an inline table";
 					return false;
 				} else {
-					error_message="newline is not allowed inside a table header";
+					error_message="Newline is not allowed inside a table header";
 					return false;
 				}
 				continue;
@@ -1033,7 +1221,7 @@ private:
 			if (mode_key) {
 				if (c=='[') {
 					if (!ctx.empty()) {
-						error_message="unexpected '[' in key position";
+						error_message="Unexpected '[' in key position";
 						return false;
 					}
 					if (first+1<last && first[1]=='[') {
@@ -1052,14 +1240,14 @@ private:
 						first++;
 					} else if (!ctx.empty() && ctx.back()=='D') {
 						if (first+1>=last || first[1]!=']') {
-							error_message="expected ']]' to close an array of tables header";
+							error_message="Expected ']]' to close an array of tables header";
 							return false;
 						}
 						token.symbol=TS_ARRAY_TABLE_CLOSE;
 						ctx.pop_back();
 						first+=2;
 					} else {
-						error_message="unexpected ']'";
+						error_message="Unexpected ']'";
 						return false;
 					}
 				} else if (c=='.') {
@@ -1071,7 +1259,7 @@ private:
 					first++;
 				} else if (c=='}') {
 					if (ctx.empty() || ctx.back()!='T') {
-						error_message="unexpected '}'";
+						error_message="Unexpected '}'";
 						return false;
 					}
 					token.symbol=TS_RBRACE;
@@ -1080,18 +1268,18 @@ private:
 					post_value();
 				} else if (c==',') {
 					if (ctx.empty() || ctx.back()!='T') {
-						error_message="unexpected ','";
+						error_message="Unexpected ','";
 						return false;
 					}
 					token.symbol=TS_COMMA;
 					first++;
 				} else if (c=='"') {
 					if (last-first>=3 && first[1]=='"' && first[2]=='"') {
-						error_message="multi-line strings cannot be used as keys";
+						error_message="Multi-line strings cannot be used as keys";
 						return false;
 					}
 					if (!std::regex_search(first,last,match,basic_string_regex(),flags)) {
-						error_message="malformed quoted key";
+						error_message="Malformed quoted key";
 						return false;
 					}
 					token.symbol=TS_KEY;
@@ -1099,11 +1287,11 @@ private:
 					first=match[0].second;
 				} else if (c=='\'') {
 					if (last-first>=3 && first[1]=='\'' && first[2]=='\'') {
-						error_message="multi-line strings cannot be used as keys";
+						error_message="Multi-line strings cannot be used as keys";
 						return false;
 					}
 					if (!std::regex_search(first,last,match,literal_string_regex(),flags)) {
-						error_message="malformed literal key";
+						error_message="Malformed literal key";
 						return false;
 					}
 					token.symbol=TS_KEY;
@@ -1114,7 +1302,7 @@ private:
 					token.text.assign(match[0].first,match[0].second);
 					first=match[0].second;
 				} else {
-					error_message=std::string("unexpected character '")+c+"' in key position";
+					error_message="Unexpected "+describe_byte(c)+" in key position";
 					return false;
 				}
 			} else {
@@ -1124,7 +1312,7 @@ private:
 					first++;
 				} else if (c==']') {
 					if (ctx.empty() || ctx.back()!='A') {
-						error_message="unexpected ']'";
+						error_message="Unexpected ']'";
 						return false;
 					}
 					token.symbol=TS_RBRACKET;
@@ -1138,7 +1326,7 @@ private:
 					first++;
 				} else if (c==',') {
 					if (ctx.empty() || ctx.back()!='A') {
-						error_message="unexpected ','";
+						error_message="Unexpected ','";
 						return false;
 					}
 					token.symbol=TS_COMMA;
@@ -1151,7 +1339,7 @@ private:
 						first+=3+consumed;
 					} else {
 						if (!std::regex_search(first,last,match,basic_string_regex(),flags)) {
-							error_message="malformed string";
+							error_message="Malformed string";
 							return false;
 						}
 						if (!decode_basic(match[0].first,match[0].second,token.text,error_message)) return false;
@@ -1166,7 +1354,7 @@ private:
 						first+=3+consumed;
 					} else {
 						if (!std::regex_search(first,last,match,literal_string_regex(),flags)) {
-							error_message="malformed literal string";
+							error_message="Malformed literal string";
 							return false;
 						}
 						token.text.assign(match[0].first+1,match[0].second-1);
@@ -1175,7 +1363,7 @@ private:
 					post_value();
 				} else if (std::regex_search(first,last,match,datetime_regex(),flags)) {
 					if (!value_boundary(match[0].second,last)) {
-						error_message="invalid value";
+						error_message="Invalid value";
 						return false;
 					}
 					token.symbol=TS_DATETIME;
@@ -1206,7 +1394,7 @@ private:
 								const int hours=decode_pair(match[10].first);
 								const int minutes=decode_pair(match[11].first);
 								if (hours>23 || minutes>59) {
-									error_message="time offset out of range";
+									error_message="Time offset out of range";
 									return false;
 								}
 								moment.variant=TDV_OFFSET_DATETIME;
@@ -1218,7 +1406,7 @@ private:
 					post_value();
 				} else if (std::regex_search(first,last,match,prefixed_int_regex(),flags)) {
 					if (!value_boundary(match[0].second,last)) {
-						error_message="invalid value";
+						error_message="Invalid value";
 						return false;
 					}
 					token.symbol=TS_INT;
@@ -1228,7 +1416,7 @@ private:
 					errno=0;
 					const long long value=std::strtoll(digits.c_str(),nullptr,base);
 					if (errno==ERANGE || value<static_cast<long long>((std::numeric_limits<int_t>::min)()) || value>static_cast<long long>((std::numeric_limits<int_t>::max)())) {
-						error_message="integer does not fit into int_t";
+						error_message="Integer does not fit into int_t";
 						return false;
 					}
 					token.integer=static_cast<int_t>(value);
@@ -1236,7 +1424,7 @@ private:
 					post_value();
 				} else if (std::regex_search(first,last,match,float_regex(),flags)) {
 					if (!value_boundary(match[0].second,last)) {
-						error_message="invalid value";
+						error_message="Invalid value";
 						return false;
 					}
 					token.symbol=TS_FLOAT;
@@ -1252,7 +1440,7 @@ private:
 					post_value();
 				} else if (std::regex_search(first,last,match,dec_int_regex(),flags)) {
 					if (!value_boundary(match[0].second,last)) {
-						error_message="invalid value";
+						error_message="Invalid value";
 						return false;
 					}
 					token.symbol=TS_INT;
@@ -1261,7 +1449,7 @@ private:
 					errno=0;
 					const long long value=std::strtoll(digits.c_str(),nullptr,10);
 					if (errno==ERANGE || value<static_cast<long long>((std::numeric_limits<int_t>::min)()) || value>static_cast<long long>((std::numeric_limits<int_t>::max)())) {
-						error_message="integer does not fit into int_t";
+						error_message="Integer does not fit into int_t";
 						return false;
 					}
 					token.integer=static_cast<int_t>(value);
@@ -1269,7 +1457,7 @@ private:
 					post_value();
 				} else if (std::regex_search(first,last,match,bool_regex(),flags)) {
 					if (!value_boundary(match[0].second,last)) {
-						error_message="invalid value";
+						error_message="Invalid value";
 						return false;
 					}
 					token.symbol=TS_BOOL;
@@ -1278,7 +1466,7 @@ private:
 					first=match[0].second;
 					post_value();
 				} else {
-					error_message=std::string("unexpected character '")+c+"' in value position";
+					error_message="Unexpected "+describe_byte(c)+" in value position";
 					return false;
 				}
 			}
@@ -1342,20 +1530,19 @@ private:
 		target.generate_parser();
 		return true;
 	}
+	//LR机在解析过程中会写自己的表,所以每个线程各持一份。这去掉了全局锁,
+	//也让回调内的重入解析不再自锁。
 	static parser_t& grammar() {
-		static parser_t instance(TS_START,TS_EPSILON,TS_EOF);
-		static const bool initialized=initialize_grammar(instance);
+		static thread_local parser_t instance(TS_START,TS_EPSILON,TS_EOF);
+		static thread_local const bool initialized=initialize_grammar(instance);
 		static_cast<void>(initialized);
-		return instance;
-	}
-	static std::mutex& grammar_mutex() {
-		static std::mutex instance;
 		return instance;
 	}
 
 	class toml_listener : public syntax::parser_listener<toml_symbol,toml_production> {
 		std::vector<toml_token>* tokens_=nullptr;
 		sax_t* sax_=nullptr;
+		const parser_t* parser_=nullptr;
 		std::vector<string_t> path_;
 		bool aborted_=false;
 		bool failed_=false;
@@ -1365,9 +1552,31 @@ private:
 		}
 
 	public:
-		void reset(std::vector<toml_token>& tokens,sax_t& sax) {
+		//分析表本来就知道当前状态接受哪些终结符,诊断直接把它们报出来。
+		std::string expected_symbols(int state) const {
+			if (!parser_) return std::string();
+			std::vector<std::string> names;
+			for (const auto& it:parser_->lr_sheet) {
+				if (it.first.second!=static_cast<uintptr_t>(state) || it.second.type==syntax::ST_ERROR) continue;
+				const toml_symbol symbol=it.first.first;
+				if (symbol==TS_EPSILON) continue;
+				const auto found=parser_->ptrs.find(symbol);
+				if (found!=parser_->ptrs.end() && found->second) continue;
+				names.push_back(symbol_name(symbol));
+			}
+			if (names.empty()) return std::string();
+			if (names.size()==1) return names[0];
+			std::string result((names.size()>2)?"one of ":"");
+			for (std::size_t i=0;i<names.size();i++) {
+				if (i) result+=(i+1==names.size())?" or ":", ";
+				result+=names[i];
+			}
+			return result;
+		}
+		void reset(std::vector<toml_token>& tokens,sax_t& sax,const parser_t& parser) {
 			tokens_=&tokens;
 			sax_=&sax;
+			parser_=&parser;
 			path_.clear();
 			aborted_=false;
 			failed_=false;
@@ -1382,7 +1591,8 @@ private:
 		intptr_t on_shift(uintptr_t id,int state,toml_symbol word) override {
 			static_cast<void>(state);
 			if (aborted_ || failed_) return 0;
-			static_cast<void>((*tokens_)[id-1]);
+			abort_check(sax_->location((*tokens_)[id-1].position));
+			if (aborted_) return 0;
 			switch (word) {
 				case TS_EQ: abort_check(sax_->key(path_));break;
 				case TS_LBRACKET: abort_check(sax_->start_array(static_cast<std::size_t>(-1)));break;
@@ -1397,6 +1607,8 @@ private:
 			static_cast<void>(reduction_num);
 			if (aborted_ || failed_) return 0;
 			toml_token& token=(*tokens_)[id-2];
+			abort_check(sax_->location(token.position));
+			if (aborted_) return 0;
 			switch (sentence_id) {
 				case TP_KEYPATH_FIRST: {
 					path_.clear();
@@ -1441,11 +1653,19 @@ private:
 			static_cast<void>(state);
 			static_cast<void>(word);
 			failed_=true;
+			std::string message="Unexpected token";
+			const std::string expected=expected_symbols(state);
 			if (sax_ && tokens_ && id!=static_cast<uintptr_t>(-1) && id>=1 && id<=tokens_->size()) {
 				const toml_token& token=(*tokens_)[id-1];
 				const std::string text(token.text.begin(),token.text.end());
-				sax_->parse_error(token.position,text,"Unexpected token");
-			} else if (sax_) sax_->parse_error(0,std::string(),"Unexpected end of input");
+				message+=std::string(", found ")+symbol_name(token.symbol);
+				if (!expected.empty()) message+=" while expecting "+expected;
+				sax_->parse_error(token.position,text,message);
+			} else if (sax_) {
+				message="Unexpected end of input";
+				if (!expected.empty()) message+=" while expecting "+expected;
+				sax_->parse_error((tokens_ && !tokens_->empty())?tokens_->back().position:0,std::string(),message);
+			}
 			return 0;
 		}
 	};
@@ -1467,19 +1687,20 @@ public:
 			node.op=it.symbol;
 			nodes.push_back(std::move(node));
 		}
-		std::lock_guard<std::mutex> lock(grammar_mutex());
 		parser_t& parser=grammar();
-		static toml_listener listener;
-		listener.reset(tokens,*sax);
+		toml_listener listener;
+		listener.reset(tokens,*sax,parser);
+		std::vector<syntax::parser_listener<toml_symbol,toml_production>*> outer;
+		outer.swap(parser.listeners);
 		parser.listeners.push_back(&listener);
 		bool result=false;
 		try {
 			result=parser.parse_with_listener(nodes);
 		} catch (...) {
-			parser.listeners.pop_back();
+			parser.listeners.swap(outer);
 			throw;
 		}
-		parser.listeners.pop_back();
+		parser.listeners.swap(outer);
 		return result && !listener.aborted() && !listener.failed();
 	}
 	static toml parse(std::string_view input,bool allow_exceptions=true) {
@@ -1487,7 +1708,7 @@ public:
 		toml_sax_dom_builder<toml> builder(result);
 		const bool ok=sax_parse(input,&builder) && builder.completed();
 		if (!ok) {
-			if (allow_exceptions) throw std::runtime_error(std::string("Parse error at byte ")+std::to_string(builder.error_position())+std::string(": ")+(builder.error_message().empty()?std::string("Incomplete document"):builder.error_message()));
+			if (allow_exceptions) throw std::runtime_error(std::string("Parse error at ")+describe_position(input,builder.error_position())+std::string(": ")+(builder.error_message().empty()?std::string("Incomplete document"):builder.error_message()));
 			return toml();
 		}
 		return result;
@@ -1499,9 +1720,12 @@ public:
 		out=std::move(result);
 		return true;
 	}
+	//语法通过还不等于文档有效:重复键、表与值冲突、[[..]]与[..]冲突都只在建树时
+	//才被检查,所以accept走完整的构建路径,与parse保持同一个判断。
 	static bool accept(std::string_view input) {
-		toml_sax_acceptor<toml> acceptor;
-		return sax_parse(input,&acceptor);
+		toml result;
+		toml_sax_dom_builder<toml> builder(result);
+		return sax_parse(input,&builder) && builder.completed();
 	}
 
 private:
@@ -1605,6 +1829,7 @@ private:
 		}
 		char buffer[64];
 		int length=std::snprintf(buffer,sizeof(buffer),"%.15g",static_cast<double>(value));
+		if (std::strtod(buffer,nullptr)!=static_cast<double>(value)) length=std::snprintf(buffer,sizeof(buffer),"%.16g",static_cast<double>(value));
 		if (std::strtod(buffer,nullptr)!=static_cast<double>(value)) length=std::snprintf(buffer,sizeof(buffer),"%.17g",static_cast<double>(value));
 		bool needs_dot=true;
 		for (int i=0;i<length;i++) {
@@ -1764,11 +1989,15 @@ private:
 	}
 
 public:
-	virtual string_t dump(int indent=-1,typename string_t::value_type indent_char=' ',bool ensure_ascii=false) const {
-		if (!this->is_object()) throw std::invalid_argument("toml: top-level value must be a table");
+	//toml的子节点是纯dom,经成员dump()序列化子树需要一次深拷贝,这个入口不需要。
+	static string_t dump_node(const base_t& node,int indent=-1,typename string_t::value_type indent_char=' ',bool ensure_ascii=false) {
+		if (!node.is_object()) throw std::invalid_argument("Top level value must be a table");
 		string_t result;
-		dump_table(*this,result,string_t(),0,indent,indent_char,ensure_ascii);
+		dump_table(node,result,string_t(),0,indent,indent_char,ensure_ascii);
 		return result;
+	}
+	virtual string_t dump(int indent=-1,typename string_t::value_type indent_char=' ',bool ensure_ascii=false) const {
+		return dump_node(*this,indent,indent_char,ensure_ascii);
 	}
 
 	friend std::ostream& operator <<(std::ostream& os,const toml& value) {
@@ -1801,6 +2030,9 @@ using basic_toml::toml_sax_acceptor;
 using basic_toml::to_string;
 using basic_toml::toml_datetime;
 using basic_toml::toml_datetime_variant;
+using basic_toml::toml_datetime_convert;
+using basic_toml::is_convertible_datetime;
+using basic_toml::is_convertible_datetime_v;
 using basic_toml::TDV_OFFSET_DATETIME;
 using basic_toml::TDV_LOCAL_DATETIME;
 using basic_toml::TDV_LOCAL_DATE;
