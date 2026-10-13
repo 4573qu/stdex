@@ -1,10 +1,8 @@
-//Last Modified At 2026/10/07
-//@Version 2.0.0.0
+//Last Modified At 2026/10/13
+//@Version 2.1.0.0
 #ifndef _STDEX_UTILITY_KIND_H_
 #define _STDEX_UTILITY_KIND_H_ 1
 
-#include <cstddef>
-#include <limits>
 #include <type_traits>
 
 #if __has_include("../macros/cpp_version.h")
@@ -19,38 +17,45 @@ namespace stdex {
 
 namespace utility {
 
-constexpr int kind_ordinal_bits=12;
+template <typename _Tp,typename=void>
+struct is_kind : std::false_type { };
 
 template <typename _Tp>
-constexpr int kind_tag_bits() noexcept {
-	return std::numeric_limits<_Tp>::digits-kind_ordinal_bits;
-}
-
-constexpr unsigned long long kind_name_hash(const char* text) noexcept {
-	unsigned long long result=14695981039346656037ull;
-	while (*text) {
-		result^=static_cast<unsigned long long>(static_cast<unsigned char>(*text++));
-		result*=1099511628211ull;
-	}
-	return result;
-}
+struct is_kind<_Tp,std::void_t<typename _Tp::stdex_kind_self>> : std::true_type { };
 
 template <typename _Tp>
-constexpr _Tp kind_tag_of(const char* name) noexcept {
-	const unsigned long long limit=(1ull<<static_cast<unsigned>(kind_tag_bits<_Tp>()))-1ull;
-	return static_cast<_Tp>(kind_name_hash(name)%limit+1ull);
+constexpr bool is_kind_v=is_kind<_Tp>::value;
+
+template <typename _Lhs,typename _Rhs>
+struct kind_related : std::integral_constant<bool,std::is_base_of<_Lhs,_Rhs>::value || std::is_base_of<_Rhs,_Lhs>::value> { };
+
+template <typename _Lhs,typename _Rhs>
+constexpr bool kind_related_v=kind_related<_Lhs,_Rhs>::value;
+
+template <typename _Enum,typename=void>
+struct kind_enum_owner { using type=void; };
+
+template <typename _Enum>
+struct kind_enum_owner<_Enum,std::void_t<decltype(stdex_kind_owner_of(std::declval<_Enum>()))>> {
+	using type=decltype(stdex_kind_owner_of(std::declval<_Enum>()));
+};
+
+template <typename _Enum>
+using kind_enum_owner_t=typename kind_enum_owner<_Enum>::type;
+
+template <typename _Lhs,typename _Rhs>
+struct kind_enum_unrelated : std::integral_constant<bool,
+	!std::is_same<kind_enum_owner_t<_Lhs>,void>::value
+	&& !std::is_same<kind_enum_owner_t<_Rhs>,void>::value
+	&& !kind_related<kind_enum_owner_t<_Lhs>,kind_enum_owner_t<_Rhs>>::value> { };
+
+namespace kind_adl {
+
+void stdex_kind_owner_of(...);
+
 }
 
-template <typename _Tp>
-constexpr _Tp kind_begin_of(const char* name,long long start) noexcept {
-	const _Tp ordinal=static_cast<_Tp>((start<0)?0:start);
-	return static_cast<_Tp>((kind_tag_of<_Tp>(name)<<kind_ordinal_bits)|ordinal);
-}
-
-template <typename _Tp>
-constexpr _Tp kind_tag_of_value(_Tp value) noexcept {
-	return static_cast<_Tp>(value>>kind_ordinal_bits);
-}
+using kind_adl::stdex_kind_owner_of;
 
 template <typename _Base,typename _Tp=int>
 struct kind {
@@ -104,11 +109,17 @@ struct kind_derived : _Base {
 	static constexpr value_type begin_value=_Base::end_value;
 };
 
-template <typename _Lhs,typename _Rhs>
-struct kind_distinct : std::integral_constant<bool,(_Lhs::kind_tag!=_Rhs::kind_tag)> { };
+template <typename _Lhs,typename _Rhs,std::enable_if_t<
+	is_kind<_Lhs>::value && is_kind<_Rhs>::value && !kind_related<_Lhs,_Rhs>::value,int> =0>
+constexpr bool operator ==(const _Lhs&,const _Rhs&) noexcept=delete;
 
-template <typename _Lhs,typename _Rhs>
-constexpr bool kind_distinct_v=kind_distinct<_Lhs,_Rhs>::value;
+template <typename _Lhs,typename _Rhs,std::enable_if_t<
+	is_kind<_Lhs>::value && is_kind<_Rhs>::value && !kind_related<_Lhs,_Rhs>::value,int> =0>
+constexpr bool operator !=(const _Lhs&,const _Rhs&) noexcept=delete;
+
+template <typename _Lhs,typename _Rhs,std::enable_if_t<
+	is_kind<_Lhs>::value && is_kind<_Rhs>::value && !kind_related<_Lhs,_Rhs>::value,int> =0>
+constexpr bool operator <(const _Lhs&,const _Rhs&) noexcept=delete;
 
 }
 
@@ -125,15 +136,15 @@ struct name : stdex::utility::kind<name,type> { \
 	using stdex_kind_self=name; \
 	using enumeration_type=name##_values; \
 	using stdex::utility::kind<name,type>::kind; \
-	static constexpr type kind_tag=static_cast<type>(0); \
 	static constexpr type end_value=static_cast<type>(name##_end_value); \
 	static constexpr type get_next() noexcept { return end_value; } \
-};
+}; \
+constexpr name stdex_kind_owner_of(name##_values) noexcept { return name(static_cast<type>(0)); }
 
 #define _STDEX_DERIVED_KIND(name,base,start,...) \
-static_assert((start)==_STDEX_KIND_AUTO_START || ((start)>=0 && (start)<(1<<stdex::utility::kind_ordinal_bits)),"Start value must be a valid ordinal within this kind."); \
+static_assert((start)==_STDEX_KIND_AUTO_START || (start)>=base::get_next(),"Start value cannot be less than the next available value."); \
 enum name##_values : base::value_type { \
-	name##_begin_value=stdex::utility::kind_begin_of<base::value_type>(#name,(start))-1, \
+	name##_begin_value=((start)==_STDEX_KIND_AUTO_START?base::get_next():(start))-1, \
 	__VA_ARGS__ \
 	name##_end_value \
 }; \
@@ -141,18 +152,20 @@ struct name : stdex::utility::kind_derived<name,base> { \
 	using stdex_kind_self=name; \
 	using enumeration_type=name##_values; \
 	using stdex::utility::kind_derived<name,base>::kind_derived; \
-	static constexpr value_type kind_tag=stdex::utility::kind_tag_of<value_type>(#name); \
-	static constexpr value_type begin_value=static_cast<value_type>(name##_begin_value)+1; \
 	static constexpr value_type end_value=static_cast<value_type>(name##_end_value); \
 	static constexpr value_type get_next() noexcept { return end_value; } \
-	static constexpr bool owns(value_type value) noexcept { \
-		return stdex::utility::kind_tag_of_value(value)==kind_tag; \
+	static constexpr bool owns(value_type v) noexcept { \
+		return v>=static_cast<value_type>(name##_begin_value)+1 && v<end_value; \
 	} \
-	static_assert(static_cast<base::value_type>(name##_end_value)-static_cast<base::value_type>(name##_begin_value)<=(1<<stdex::utility::kind_ordinal_bits),"Too many values for a single derived kind."); \
-};
+}; \
+constexpr name stdex_kind_owner_of(name##_values) noexcept { return name(static_cast<base::value_type>(name##_begin_value)+1); } \
+template <typename _Other,std::enable_if_t<stdex::utility::kind_enum_unrelated<name##_values,_Other>::value,int> =0> \
+constexpr bool operator ==(name##_values,_Other) noexcept=delete; \
+template <typename _Other,std::enable_if_t<stdex::utility::kind_enum_unrelated<name##_values,_Other>::value,int> =0> \
+constexpr bool operator !=(name##_values,_Other) noexcept=delete;
 
 #define _STDEX_KIND_ASSERT_DISTINCT(lhs,rhs) \
-static_assert(stdex::utility::kind_distinct<lhs,rhs>::value,"Two derived kinds share the same lineage tag; rename one of them.");
+static_assert(!stdex::utility::kind_related<lhs,rhs>::value,"These two kinds share a lineage; they are not isolated from each other.");
 
 #define _STDEX_KIND_VALUE(name,value) name=(value),
 #define _STDEX_KIND_VALUE_AUTO(name) name,
